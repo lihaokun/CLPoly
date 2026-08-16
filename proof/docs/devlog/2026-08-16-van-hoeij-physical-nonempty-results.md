@@ -53,3 +53,23 @@ push is nonzero as an L2 polynomial.
   surface.
 - Next: thread this certificate through the complete result array and prove
   positive modular degree/nonunit status.
+
+## Thread L2 nonzeroness through complete validation
+
+`validateCandidatesLoop_result_ne_zero` strengthens the live validation
+invariant to carry both the canonical current quotient and pointwise L2
+nonzeroness of the physical result array.  On the successful branch it applies
+`validationRecoveredFactor_ne_zero` to exactly the factor being pushed,
+constructs the pushed-array invariant occurrence-sensitively, and derives the
+next quotient's canonical representation from the same exact-division and
+primitive-normalization traces.  Every non-success branch reuses the unchanged
+physical state.
+
+`validateCandidates_result_ne_zero` specializes the invariant to the complete
+generated entry.  The final result array needed by the normalized-factor count
+therefore has a direct execution-derived nonzero certificate for every member.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: establish nonunit status using the positive degree of nonempty products
+  of the selected modular irreducible factors.

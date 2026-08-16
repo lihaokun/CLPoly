@@ -15831,6 +15831,150 @@ theorem validateCandidatesLoop_fStar_canonical
         cases hout
         exact hcanonical
 
+/-- Candidate validation simultaneously preserves the live canonical
+remainder and L2 nonzeroness of every physical result factor. -/
+theorem validateCandidatesLoop_result_ne_zero
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidates : Array (Array Int32)) (candidateIndex : Nat)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (fStar fStar' : SparsePolyZZ) (result result' : Array SparsePolyZZ)
+    (consumed consumed' : Array Bool) (remaining : Nat)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hresult : ∀ factor ∈ result.toList, SparsePolyZZ.toPoly factor ≠ 0)
+    (hrun : Generated.StrictRecombine.validateCandidatesLoop ops candidates
+      candidateIndex activeLifted modulus fStar result consumed remaining =
+        .ok (fStar', result', consumed')) :
+    StrictPolynomialMod.SparsePolyZZCanonical fStar' ∧
+      ∀ factor ∈ result'.toList, SparsePolyZZ.toPoly factor ≠ 0 := by
+  induction hmeasure : candidates.size - candidateIndex using Nat.strong_induction_on
+      generalizing candidateIndex fStar result consumed remaining fStar' result' consumed' with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.validateCandidatesLoop] at hrun
+      split at hrun
+      next hcandidates =>
+        dsimp at hrun
+        split at hrun
+        next hempty =>
+          exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+            (candidateIndex := candidateIndex + 1) (fStar := fStar)
+            (result := result) (consumed := consumed) (remaining := remaining)
+            (fStar' := fStar') (result' := result') (consumed' := consumed')
+            hcanonical hresult hrun rfl
+        next hempty =>
+          split at hrun
+          next htrivial =>
+            exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+              (candidateIndex := candidateIndex + 1) (fStar := fStar)
+              (result := result) (consumed := consumed) (remaining := remaining)
+              (fStar' := fStar') (result' := result') (consumed' := consumed')
+              hcanonical hresult hrun rfl
+          next hnontrivial =>
+            cases havailable : Generated.StrictRecombine.candidateAvailable
+                candidates[candidateIndex] consumed with
+            | error fault => simp [havailable] at hrun
+            | ok available =>
+              cases available with
+              | false =>
+                simp only [havailable] at hrun
+                exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+                  (candidateIndex := candidateIndex + 1) (fStar := fStar)
+                  (result := result) (consumed := consumed)
+                  (remaining := remaining) (fStar' := fStar')
+                  (result' := result') (consumed' := consumed') hcanonical
+                  hresult hrun rfl
+              | true =>
+                simp only [havailable] at hrun
+                split at hrun
+                next hfstar =>
+                  cases hproduct : Generated.StrictRecombine.trialProductLoop
+                      ops.product candidates[candidateIndex] activeLifted modulus 0
+                      #[(⟨0⟩, fStar[0].2)] with
+                  | error fault => simp [hproduct] at hrun
+                  | ok product =>
+                    simp only [hproduct] at hrun
+                    cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                        product modulus with
+                    | error fault => simp [hsymmetric] at hrun
+                    | ok symmetric =>
+                      simp only [hsymmetric] at hrun
+                      cases hprimitive : Generated.StrictRecombine.primitiveRaw
+                          symmetric with
+                      | error fault => simp [hprimitive] at hrun
+                      | ok primitiveResult =>
+                        rcases primitiveResult with ⟨content, factor⟩
+                        simp only [hprimitive] at hrun
+                        cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                            fStar factor with
+                        | error fault => simp [hdivmod] at hrun
+                        | ok divResult =>
+                          rcases divResult with ⟨quotient, remainder⟩
+                          simp only [hdivmod] at hrun
+                          by_cases hremainder : remainder.isEmpty = true
+                          · simp only [hremainder, if_true] at hrun
+                            have hremainderEmpty : remainder = #[] :=
+                              Array.isEmpty_iff.mp hremainder
+                            subst remainder
+                            cases hquotientPrimitive :
+                                Generated.StrictRecombine.primitiveRaw quotient with
+                            | error fault => simp [hquotientPrimitive] at hrun
+                            | ok quotientResult =>
+                              rcases quotientResult with ⟨quotientContent,
+                                quotientPrimitive⟩
+                              simp only [hquotientPrimitive] at hrun
+                              cases hmark : Generated.StrictRecombine.markConsumedLoop
+                                  candidates[candidateIndex] 0 consumed with
+                              | error fault => simp [hmark] at hrun
+                              | ok consumedNext =>
+                                simp only [hmark] at hrun
+                                have hfactorNe := validationRecoveredFactor_ne_zero
+                                  ops candidates[candidateIndex] activeLifted modulus
+                                  fStar product symmetric factor quotient #[] content
+                                  hfstar hcanonical hproduct hsymmetric hprimitive
+                                  hdivmod
+                                have hresultPush : ∀ candidateFactor ∈
+                                    (result.push factor).toList,
+                                    SparsePolyZZ.toPoly candidateFactor ≠ 0 := by
+                                  intro candidateFactor hcandidateFactor
+                                  rw [Array.toList_push] at hcandidateFactor
+                                  rcases List.mem_append.mp hcandidateFactor with
+                                    hprefix | hlast
+                                  · exact hresult candidateFactor hprefix
+                                  · have hsame : candidateFactor = factor := by
+                                      simpa using hlast
+                                    subst candidateFactor
+                                    exact hfactorNe
+                                have hquotientCanonical :=
+                                  exactDivmodRaw_quotient_canonical fStar factor
+                                    quotient #[] hcanonical.2 hdivmod
+                                have hprimitiveCanonical :=
+                                  primitiveRaw_canonical quotient quotientPrimitive
+                                    quotientContent hquotientCanonical
+                                    hquotientPrimitive
+                                exact ih
+                                  (candidates.size - (candidateIndex + 1))
+                                  (by omega) (candidateIndex := candidateIndex + 1)
+                                  (fStar := quotientPrimitive)
+                                  (result := result.push factor)
+                                  (consumed := consumedNext)
+                                  (remaining := remaining -
+                                    candidates[candidateIndex].size)
+                                  (fStar' := fStar') (result' := result')
+                                  (consumed' := consumed') hprimitiveCanonical
+                                  hresultPush hrun rfl
+                          · simp only [hremainder, if_false] at hrun
+                            exact ih
+                              (candidates.size - (candidateIndex + 1))
+                              (by omega) (candidateIndex := candidateIndex + 1)
+                              (fStar := fStar) (result := result)
+                              (consumed := consumed) (remaining := remaining)
+                              (fStar' := fStar') (result' := result')
+                              (consumed' := consumed') hcanonical hresult hrun rfl
+                next hfstar => contradiction
+      next hcandidates =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        exact ⟨hcanonical, hresult⟩
+
 theorem validateCandidates_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
@@ -15863,6 +16007,24 @@ theorem validateCandidates_fStar_canonical
     modulus fStar fStar' result result'
     (Array.replicate activeLifted.size false) consumed activeLifted.size
     hcanonical hrun
+
+theorem validateCandidates_result_ne_zero
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ)
+    (fStar' : SparsePolyZZ) (result' : Array SparsePolyZZ)
+    (consumed : Array Bool)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hresult : ∀ factor ∈ result.toList, SparsePolyZZ.toPoly factor ≠ 0)
+    (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
+      modulus candidates result = .ok (fStar', result', consumed)) :
+    StrictPolynomialMod.SparsePolyZZCanonical fStar' ∧
+      ∀ factor ∈ result'.toList, SparsePolyZZ.toPoly factor ≠ 0 := by
+  unfold Generated.StrictRecombine.validateCandidates at hrun
+  exact validateCandidatesLoop_result_ne_zero ops candidates 0 activeLifted
+    modulus fStar fStar' result result'
+    (Array.replicate activeLifted.size false) consumed activeLifted.size
+    hcanonical hresult hrun
 
 /-- A successful concrete validation run cannot hide a non-unit integer
 content factor when its incoming accumulated product is primitive.  This is

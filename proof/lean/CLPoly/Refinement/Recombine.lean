@@ -16213,6 +16213,208 @@ theorem validateCandidatesLoop_result_ne_zero
         cases hout
         exact ⟨hcanonical, hresult⟩
 
+/-- Full physical validation invariant needed for the van-Hoeij cardinality
+closure.  Every recursive state is obtained from the generated execution. -/
+theorem validateCandidatesLoop_result_nonunit
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (candidates : Array (Array Int32)) (candidateIndex : Nat)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)] (hmodulus : 0 < modulus)
+    (hdivides : base ∣ modulus)
+    (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[activeIndex]))
+    (fStar fStar' : SparsePolyZZ) (result result' : Array SparsePolyZZ)
+    (consumed consumed' : Array Bool) (remaining : Nat)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hconsumedSize : consumed.size = activeLifted.size)
+    (hresult : ∀ factor ∈ result.toList,
+      ¬ IsUnit (SparsePolyZZ.toPoly factor))
+    (hrun : Generated.StrictRecombine.validateCandidatesLoop ops candidates
+      candidateIndex activeLifted (modulus : ZZ) fStar result consumed remaining =
+        .ok (fStar', result', consumed')) :
+    StrictPolynomialMod.SparsePolyZZCanonical fStar' ∧
+      0 < fStar'.size ∧
+      ((SparsePolyZZ.toPoly fStar').leadingCoeff : ZMod base) ≠ 0 ∧
+      consumed'.size = activeLifted.size ∧
+      ∀ factor ∈ result'.toList,
+        ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+  induction hmeasure : candidates.size - candidateIndex using Nat.strong_induction_on
+      generalizing candidateIndex fStar result consumed remaining fStar' result' consumed' with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.validateCandidatesLoop] at hrun
+      split at hrun
+      next hcandidates =>
+        dsimp at hrun
+        split at hrun
+        next hempty =>
+          exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+            (candidateIndex := candidateIndex + 1) (fStar := fStar)
+            (result := result) (consumed := consumed) (remaining := remaining)
+            (fStar' := fStar') (result' := result') (consumed' := consumed')
+            hcanonical hnonempty hleading hconsumedSize hresult hrun rfl
+        next hempty =>
+          split at hrun
+          next htrivial =>
+            exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+              (candidateIndex := candidateIndex + 1) (fStar := fStar)
+              (result := result) (consumed := consumed) (remaining := remaining)
+              (fStar' := fStar') (result' := result') (consumed' := consumed')
+              hcanonical hnonempty hleading hconsumedSize hresult hrun rfl
+          next hnontrivial =>
+            cases havailable : Generated.StrictRecombine.candidateAvailable
+                candidates[candidateIndex] consumed with
+            | error fault => simp [havailable] at hrun
+            | ok available =>
+              cases available with
+              | false =>
+                simp only [havailable] at hrun
+                exact ih (candidates.size - (candidateIndex + 1)) (by omega)
+                  (candidateIndex := candidateIndex + 1) (fStar := fStar)
+                  (result := result) (consumed := consumed)
+                  (remaining := remaining) (fStar' := fStar')
+                  (result' := result') (consumed' := consumed') hcanonical
+                  hnonempty hleading hconsumedSize hresult hrun rfl
+              | true =>
+                simp only [havailable] at hrun
+                by_cases hfstar : 0 < fStar.size
+                ·
+                  cases hproduct : Generated.StrictRecombine.trialProductLoop
+                      ops.product candidates[candidateIndex] activeLifted
+                      (modulus : ZZ) 0 #[(⟨0⟩, fStar[0].2)] with
+                  | error fault => simp [hproduct] at hrun
+                  | ok product =>
+                    simp only [hproduct] at hrun
+                    cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                        product (modulus : ZZ) with
+                    | error fault => simp [hsymmetric] at hrun
+                    | ok symmetric =>
+                      simp only [hsymmetric] at hrun
+                      cases hprimitive : Generated.StrictRecombine.primitiveRaw
+                          symmetric with
+                      | error fault => simp [hprimitive] at hrun
+                      | ok primitiveResult =>
+                        rcases primitiveResult with ⟨content, factor⟩
+                        simp only [hprimitive] at hrun
+                        cases hdivmod : Generated.StrictRecombine.exactDivmodRaw
+                            fStar factor with
+                        | error fault => simp [hdivmod] at hrun
+                        | ok divResult =>
+                          rcases divResult with ⟨quotient, remainder⟩
+                          simp only [hdivmod] at hrun
+                          by_cases hremainder : remainder.isEmpty = true
+                          · simp only [hremainder, if_true] at hrun
+                            have hremainderEmpty : remainder = #[] :=
+                              Array.isEmpty_iff.mp hremainder
+                            subst remainder
+                            cases hquotientPrimitive :
+                                Generated.StrictRecombine.primitiveRaw quotient with
+                            | error fault => simp [hquotientPrimitive] at hrun
+                            | ok quotientResult =>
+                              rcases quotientResult with ⟨quotientContent,
+                                quotientPrimitive⟩
+                              simp only [hquotientPrimitive] at hrun
+                              cases hmark : Generated.StrictRecombine.markConsumedLoop
+                                  candidates[candidateIndex] 0 consumed with
+                              | error fault => simp [hmark] at hrun
+                              | ok consumedNext =>
+                                simp only [hmark] at hrun
+                                have hcandidateNonempty :
+                                    0 < candidates[candidateIndex].size := by
+                                  by_contra hnot
+                                  have hzero :
+                                      candidates[candidateIndex].size = 0 :=
+                                    Nat.eq_zero_of_not_pos hnot
+                                  apply hempty
+                                  simp [Array.isEmpty, hzero]
+                                have hvalidConsumed := candidateAvailable_true_valid
+                                  candidates[candidateIndex] consumed havailable
+                                have hvalid : CandidateIndicesValid
+                                    candidates[candidateIndex]
+                                    (Array.replicate activeLifted.size false) := by
+                                  intro position hposition
+                                  have hentry := hvalidConsumed position hposition
+                                  simpa [hconsumedSize] using hentry
+                                have hheadEq := sparsePolyZZ_leadingCoeff_eq_head
+                                  fStar hcanonical hnonempty
+                                have hheadLeading :
+                                    (fStar[0].2 : ZMod base) ≠ 0 := by
+                                  simpa [hheadEq] using hleading
+                                have hfactorNonunit :=
+                                  validationRecoveredFactor_not_isUnit ops
+                                    candidates[candidateIndex] activeLifted
+                                    modulus base fStar product symmetric factor
+                                    content hmodulus hdivides hvalid
+                                    hcandidateNonempty hirreducible hnonempty
+                                    hheadLeading hproduct hsymmetric hprimitive
+                                have hresultPush : ∀ candidateFactor ∈
+                                    (result.push factor).toList,
+                                    ¬ IsUnit
+                                      (SparsePolyZZ.toPoly candidateFactor) := by
+                                  intro candidateFactor hcandidateFactor
+                                  rw [Array.toList_push] at hcandidateFactor
+                                  rcases List.mem_append.mp hcandidateFactor with
+                                    hprefix | hlast
+                                  · exact hresult candidateFactor hprefix
+                                  · have hsame : candidateFactor = factor := by
+                                      simpa using hlast
+                                    subst candidateFactor
+                                    exact hfactorNonunit
+                                have hquotientCanonical :=
+                                  exactDivmodRaw_quotient_canonical fStar factor
+                                    quotient #[] hcanonical.2 hdivmod
+                                have hprimitiveCanonical :=
+                                  primitiveRaw_canonical quotient quotientPrimitive
+                                    quotientContent hquotientCanonical
+                                    hquotientPrimitive
+                                have hnextLeading :=
+                                  validationQuotient_leading_mod_ne_zero base
+                                    fStar factor quotient quotientPrimitive
+                                    quotientContent hleading hdivmod
+                                    hquotientPrimitive
+                                have hnextNonempty :
+                                    0 < quotientPrimitive.size := by
+                                  by_contra hnot
+                                  have hzero : quotientPrimitive.size = 0 :=
+                                    Nat.eq_zero_of_not_pos hnot
+                                  have hemptyQ : quotientPrimitive = #[] :=
+                                    Array.size_eq_zero_iff.mp hzero
+                                  subst quotientPrimitive
+                                  simp [SparsePolyZZ.toPoly] at hnextLeading
+                                have hconsumedNext :=
+                                  markConsumedLoop_size_of_success
+                                    candidates[candidateIndex] 0 consumed
+                                    consumedNext hmark
+                                exact ih
+                                  (candidates.size - (candidateIndex + 1))
+                                  (by omega) (candidateIndex := candidateIndex + 1)
+                                  (fStar := quotientPrimitive)
+                                  (result := result.push factor)
+                                  (consumed := consumedNext)
+                                  (remaining := remaining -
+                                    candidates[candidateIndex].size)
+                                  (fStar' := fStar') (result' := result')
+                                  (consumed' := consumed') hprimitiveCanonical
+                                  hnextNonempty hnextLeading
+                                  (hconsumedNext.trans hconsumedSize)
+                                  hresultPush hrun rfl
+                          · simp only [hremainder, if_false] at hrun
+                            exact ih
+                              (candidates.size - (candidateIndex + 1))
+                              (by omega) (candidateIndex := candidateIndex + 1)
+                              (fStar := fStar) (result := result)
+                              (consumed := consumed) (remaining := remaining)
+                              (fStar' := fStar') (result' := result')
+                              (consumed' := consumed') hcanonical hnonempty
+                              hleading hconsumedSize hresult hrun rfl
+                · contradiction
+      next hcandidates =>
+        have hout := Except.ok.inj hrun
+        cases hout
+        exact ⟨hcanonical, hnonempty, hleading, hconsumedSize, hresult⟩
+
 theorem validateCandidates_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
@@ -16263,6 +16465,38 @@ theorem validateCandidates_result_ne_zero
     modulus fStar fStar' result result'
     (Array.replicate activeLifted.size false) consumed activeLifted.size
     hcanonical hresult hrun
+
+/-- The public generated validation entry preserves the complete physical
+state needed by the van-Hoeij irreducibility argument. -/
+theorem validateCandidates_result_nonunit
+    (ops : Generated.StrictRecombine.CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
+    (modulus base : Nat) [Fact (Nat.Prime base)]
+    (hmodulus : 0 < modulus) (hdivides : base ∣ modulus)
+    (hirreducible : ∀ activeIndex (hactive : activeIndex < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[activeIndex]))
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ)
+    (fStar' : SparsePolyZZ) (result' : Array SparsePolyZZ)
+    (consumed : Array Bool)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hresult : ∀ factor ∈ result.toList,
+      ¬ IsUnit (SparsePolyZZ.toPoly factor))
+    (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
+      (modulus : ZZ) candidates result = .ok (fStar', result', consumed)) :
+    StrictPolynomialMod.SparsePolyZZCanonical fStar' ∧
+      0 < fStar'.size ∧
+      ((SparsePolyZZ.toPoly fStar').leadingCoeff : ZMod base) ≠ 0 ∧
+      consumed.size = activeLifted.size ∧
+      ∀ factor ∈ result'.toList,
+        ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+  unfold Generated.StrictRecombine.validateCandidates at hrun
+  exact validateCandidatesLoop_result_nonunit ops candidates 0 activeLifted
+    modulus base hmodulus hdivides hirreducible fStar fStar' result result'
+    (Array.replicate activeLifted.size false) consumed activeLifted.size
+    hcanonical hnonempty hleading (by simp) hresult hrun
 
 /-- A successful concrete validation run cannot hide a non-unit integer
 content factor when its incoming accumulated product is primitive.  This is

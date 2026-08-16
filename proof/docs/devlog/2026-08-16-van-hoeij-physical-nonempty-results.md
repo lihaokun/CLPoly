@@ -120,3 +120,30 @@ rather than only at the first validation push.
 - Next: package canonicality, nonempty live quotient, nonzero modular leading
   coefficient, consumed-array size, and pointwise nonunit results into the
   complete generated validation-loop invariant.
+
+## Preserve nonunit results through the generated validation loop
+
+`validateCandidatesLoop_result_nonunit` follows the literal generated
+candidate-index recursion and carries the complete physical state needed by
+the final van-Hoeij cardinality argument.  At each accepted exact division it
+uses the actual trial product, symmetric recovery, primitive normalization,
+exact quotient, quotient normalization, and consumed-marker update.  It proves
+simultaneously that the live quotient remains canonical and physically
+nonempty, its leading coefficient remains nonzero modulo the selected prime,
+the consumed bitmap retains the active lifted-factor length, and every factor
+actually pushed into the result array is nonunit over `ZZ`.
+
+`validateCandidates_result_nonunit` instantiates that invariant at the public
+generated `validateCandidates` entry, including its literal false-filled
+consumed bitmap and active-factor count.  Neither theorem replaces execution
+with an abstract factorization or existence oracle; both invert and recurse
+over the generated `RawExec` control flow.
+
+- Termination measure: `candidates.size - candidateIndex`, inherited directly
+  from the generated well-founded validation loop.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: apply the invariant to the validation call inside the generated
+  van-Hoeij iteration, combine nonzero/nonunit output membership with exact
+  output cardinality and associated products, and close irreducibility through
+  the literal retry loop.

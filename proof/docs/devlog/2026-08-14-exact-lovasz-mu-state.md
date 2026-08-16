@@ -2822,3 +2822,24 @@ existence witness.
 so this step has no new C++ b2b change surface.  Next, the left-only and
 right-only constructors add one recursive call each using the strict frames;
 the branch constructor then composes both calls under index disjointness.
+
+## Preserve interval heads through the complete recursive lift walk
+
+`HenselLiftRecursiveCorrect.physicalHeads` now covers all four constructors of
+the actual generated well-founded traversal.  The leaf case uses the concrete
+step/store proof.  The left-only and right-only cases frame the root write,
+invoke the exact child trace, and recover the stored root through
+`preserves_not_mem`.  The two-child case decomposes the generated topology's
+`Nodup` proof into root exclusion, child `Nodup`, and left/right disjointness;
+it then transports the untouched right certificate across the left call and
+the completed left certificate across the right call.
+
+Every recursive target is the value used by the source: `lifted.g` on the left
+and the preserved parent `h` on the right.  Canonicality and physical heads are
+taken from the actual `HenselStepCorrect` result.  The theorem therefore
+certifies the concrete mutable execution rather than an abstract tree update.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, the outer quadratic
+precision loop will iterate this certificate and extraction will convert it
+to `HenselFactorArrayOneHeadFrom 1` before final normalization.

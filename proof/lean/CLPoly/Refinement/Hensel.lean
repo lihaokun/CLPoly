@@ -12218,6 +12218,184 @@ theorem HenselLiftRecursiveCorrect.physicalHeads_leaf
             (fun child hchild => by cases hchild)
             (fun child hchild => by cases hchild)
 
+/-- One complete execution of the generated well-founded Hensel tree walk
+preserves the exact interval-indexed physical-head certificate.  `Nodup` is
+the concrete generated-topology fact that justifies all mutable-array frames
+between the root, left subtree, and right subtree. -/
+theorem HenselLiftRecursiveCorrect.physicalHeads
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {m : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes output : Array HenselNode} {target : SparsePolyZZ}
+    (hcorrect : HenselLiftRecursiveCorrect termination m tree nodes target
+      output) :
+    ∀ {start stop : Nat},
+      HenselTreePhysicalHeads start stop tree nodes →
+      (henselLiftTreeIndices tree).Nodup →
+      1 < m →
+      StrictPolynomialMod.SparsePolyZZCanonical target →
+      (0 < start → HasPhysicalOneHead target) →
+      HenselTreePhysicalHeads start stop tree output := by
+  induction hcorrect with
+  | leaf index nodes stored target inputNode lifted parent hnode hstep
+      hstepCorrect hstored hparent =>
+      intro start stop hheads hnodup hm htargetCanonical htargetHead
+      exact physicalHeads_leaf
+        (.leaf index nodes stored target inputNode lifted parent hnode hstep
+          hstepCorrect hstored hparent)
+        hheads hm htargetCanonical htargetHead
+  | left index left nodes stored nodesAfterLeft target inputNode lifted parent
+      hnode hstep hstepCorrect hstored hleftRun hleftCorrect hparent ih =>
+      intro start stop hheads hnodup hm htargetCanonical htargetHead
+      cases hheads with
+      | cert _ _ _ _ _ _ value hvalue hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          have hparts : index ∉ henselLiftTreeIndices left ∧
+              (henselLiftTreeIndices left).Nodup := by
+            simpa [henselLiftTreeIndices] using hnodup
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hinputEq : inputNode = value :=
+            Option.some.inj (hnode.symm.trans hvalue)
+          have hinputH : HasPhysicalOneHead inputNode.h := by
+            simpa [hinputEq] using hHOneHead
+          have hliftedHeads := hstepCorrect.intervalPhysicalHeads hm
+            htargetCanonical htargetHead hinputH
+          subst stored
+          have hchildStored :=
+            (hleftHeads left rfl).of_setBang_not_mem (value := lifted)
+              hindex hparts.1
+          have hchildFinal := ih hchildStored hparts.2 hm
+            hstepCorrect.2.2.2.2.2.1 hliftedHeads.1
+          have hliftedLookup :
+              (nodes.set! index lifted)[index]? = some lifted := by
+            simp [Array.set!, hindex]
+          have hrootPreserved :=
+            hleftCorrect.preserves_not_mem index hparts.1
+          have hparentEq : parent = lifted := Option.some.inj
+            (hparent.symm.trans (hrootPreserved.trans hliftedLookup))
+          subst parent
+          exact .cert start stop index (some left) none nodesAfterLeft lifted
+            hparent hliftedHeads.1 hliftedHeads.2
+            (fun child hchild => by
+              injection hchild with heq
+              subst child
+              exact hchildFinal)
+            (fun child hchild => by cases hchild)
+  | right index right nodes stored output target inputNode lifted parent hnode
+      hstep hstepCorrect hstored hparent hrightRun hrightCorrect ih =>
+      intro start stop hheads hnodup hm htargetCanonical htargetHead
+      cases hheads with
+      | cert _ _ _ _ _ _ value hvalue hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          have hparts : index ∉ henselLiftTreeIndices right ∧
+              (henselLiftTreeIndices right).Nodup := by
+            simpa [henselLiftTreeIndices] using hnodup
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hinputEq : inputNode = value :=
+            Option.some.inj (hnode.symm.trans hvalue)
+          have hinputH : HasPhysicalOneHead inputNode.h := by
+            simpa [hinputEq] using hHOneHead
+          have hliftedHeads := hstepCorrect.intervalPhysicalHeads hm
+            htargetCanonical htargetHead hinputH
+          subst stored
+          have hliftedLookup :
+              (nodes.set! index lifted)[index]? = some lifted := by
+            simp [Array.set!, hindex]
+          have hparentEq : parent = lifted :=
+            Option.some.inj (hparent.symm.trans hliftedLookup)
+          subst parent
+          have hchildStored :=
+            (hrightHeads right rfl).of_setBang_not_mem (value := lifted)
+              hindex hparts.1
+          have hchildFinal := ih hchildStored hparts.2 hm
+            hstepCorrect.2.2.2.2.2.2.1 (fun _ => hliftedHeads.2)
+          have hrootPreserved :=
+            hrightCorrect.preserves_not_mem index hparts.1
+          have hroot : output[index]? = some lifted :=
+            hrootPreserved.trans hliftedLookup
+          exact .cert start stop index none (some right) output lifted hroot
+            hliftedHeads.1 hliftedHeads.2
+            (fun child hchild => by cases hchild)
+            (fun child hchild => by
+              injection hchild with heq
+              subst child
+              exact hchildFinal)
+  | branch index left right nodes stored nodesAfterLeft output target inputNode
+      lifted parent hnode hstep hstepCorrect hstored hleftRun hleftCorrect
+      hparent hrightRun hrightCorrect leftIH rightIH =>
+      intro start stop hheads hnodup hm htargetCanonical htargetHead
+      cases hheads with
+      | cert _ _ _ _ _ _ value hvalue hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          have hparts : index ∉ henselLiftTreeIndices left ∧
+              index ∉ henselLiftTreeIndices right ∧
+              (henselLiftTreeIndices left).Nodup ∧
+              (henselLiftTreeIndices right).Nodup ∧
+              List.Disjoint (henselLiftTreeIndices left)
+                (henselLiftTreeIndices right) := by
+            have hparts :
+                (index ∉ henselLiftTreeIndices left ∧
+                  index ∉ henselLiftTreeIndices right) ∧
+                (henselLiftTreeIndices left).Nodup ∧
+                (henselLiftTreeIndices right).Nodup ∧
+                ∀ a ∈ henselLiftTreeIndices left,
+                  ∀ b ∈ henselLiftTreeIndices right, ¬a = b := by
+              simpa [henselLiftTreeIndices, List.nodup_append] using hnodup
+            exact ⟨hparts.1.1, hparts.1.2, hparts.2.1, hparts.2.2.1,
+              by simpa [List.disjoint_iff_ne] using hparts.2.2.2⟩
+          have hindex : index < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hinputEq : inputNode = value :=
+            Option.some.inj (hnode.symm.trans hvalue)
+          have hinputH : HasPhysicalOneHead inputNode.h := by
+            simpa [hinputEq] using hHOneHead
+          have hliftedHeads := hstepCorrect.intervalPhysicalHeads hm
+            htargetCanonical htargetHead hinputH
+          subst stored
+          have hleftStored :=
+            (hleftHeads left rfl).of_setBang_not_mem (value := lifted)
+              hindex hparts.1
+          have hleftFinal := leftIH hleftStored hparts.2.2.1 hm
+            hstepCorrect.2.2.2.2.2.1 hliftedHeads.1
+          have hrightStored :=
+            (hrightHeads right rfl).of_setBang_not_mem (value := lifted)
+              hindex hparts.2.1
+          have hrightAfterLeft := hrightStored.of_recursive_disjoint
+            hleftCorrect hparts.2.2.2.2.symm
+          have hliftedLookup :
+              (nodes.set! index lifted)[index]? = some lifted := by
+            simp [Array.set!, hindex]
+          have hrootAfterLeft :=
+            hleftCorrect.preserves_not_mem index hparts.1
+          have hparentEq : parent = lifted := Option.some.inj
+            (hparent.symm.trans (hrootAfterLeft.trans hliftedLookup))
+          subst parent
+          have hrightFinal := rightIH hrightAfterLeft hparts.2.2.2.1 hm
+            hstepCorrect.2.2.2.2.2.2.1 (fun _ => hliftedHeads.2)
+          have hleftOutput := hleftFinal.of_recursive_disjoint
+            hrightCorrect hparts.2.2.2.2
+          have hrootAfterRight :=
+            hrightCorrect.preserves_not_mem index hparts.2.1
+          have hroot : output[index]? = some lifted :=
+            hrootAfterRight.trans hparent
+          exact .cert start stop index (some left) (some right) output lifted
+            hroot hliftedHeads.1 hliftedHeads.2
+            (fun child hchild => by
+              injection hchild with heq
+              subst child
+              exact hleftOutput)
+            (fun child hchild => by
+              injection hchild with heq
+              subst child
+              exact hrightFinal)
+
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}

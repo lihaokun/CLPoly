@@ -3450,3 +3450,19 @@ full Hensel state required by subsequent real candidate executions.
   thread it through the generated Zassenhaus outer recursion; use the recorded
   smaller-scan rejection history to prove every physically pushed factor
   irreducible.
+
+## Lift full-product preservation through the physical fixed-size scan
+
+`LiveHenselProduct.extractScan` accepts the literal result of the generated
+fixed-size scan and the literal subsequent `removeCombination` result.  It
+replays the scan recursion to recover both the precise successful
+`zassenhausAttempt` equation and the returned candidate's legality, then
+invokes the dual-precision extraction theorem.  The next recursive state is
+therefore certified from exactly the candidate returned by execution, rather
+than from a separately chosen subset with the same semantic product.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: carry this certificate and the smaller-scan execution history through
+  the complete generated outer loop, proving irreducibility of every factor
+  appended by the real extraction branch.

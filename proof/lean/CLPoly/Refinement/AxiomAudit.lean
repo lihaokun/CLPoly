@@ -146,6 +146,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.mapped_leadingCoeff_isUnit_primePower
 #print axioms Refinement.StrictFactorZZ.zassenhausAttempt_extracted_content_units
 #print axioms Refinement.StrictFactorZZ.LiveHenselProduct.extract
+#print axioms Refinement.StrictFactorZZ.LiveHenselProduct.extractScan
 #print axioms Refinement.StrictFactorZZ.henselCandidate_physicalComplement_coprime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_eq_divisor_mod_prime
 #print axioms Refinement.StrictFactorZZ.henselCandidate_scaled_leadingCoeff

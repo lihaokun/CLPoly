@@ -1148,6 +1148,54 @@ theorem LiveHenselProduct.extract
       hnextScalePrime, by simpa [remainingLarge] using hnextProductLarge,
       by simpa [remainingPrime] using hnextProductPrime⟩ }
 
+/-- The full live Hensel product is preserved by the candidate physically
+returned by a concrete fixed-size scan and by the subsequent literal removal.
+The successful attempt equation and legality certificate are recovered by
+replaying that same scan; neither is supplied independently. -/
+theorem LiveHenselProduct.extractScan
+    {prime exponent count : Nat} [Fact (Nat.Prime prime)]
+    {source factor quotient : SparsePolyZZ}
+    {active remaining : Array SparsePolyZZ} {candidate : Array Nat}
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hfits : count ≤ active.size)
+    (hcandidateSize : candidate.size = count)
+    (hscan : Generated.StrictRecombine.scanZassenhausCombinations
+      (StrictRecombine.concreteZassenhausTermination.combinations
+        active.size count)
+      source active (((prime ^ exponent : Nat) : ZZ))
+      (Generated.StrictRecombine.initialCombination count)
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) =
+        .ok (.extracted factor quotient candidate hcandidateSize))
+    (hremove : Generated.StrictRecombine.removeCombination candidate active =
+      .ok remaining) :
+    LiveHenselProduct prime exponent quotient remaining := by
+  have hlegalCount : StrictRecombine.LegalCombination active.size count
+      candidate :=
+    StrictRecombine.concreteScan_extracted_legal source factor quotient active
+      (((prime ^ exponent : Nat) : ZZ)) candidate hcandidateSize hfits hscan
+  have hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate := by
+    simpa [hcandidateSize] using hlegalCount
+  have hattempt : Generated.StrictRecombine.zassenhausAttempt source active
+      (((prime ^ exponent : Nat) : ZZ)) candidate =
+        .ok (.extracted factor quotient) :=
+    StrictRecombine.scanZassenhausCombinations_extracted_attempt
+      (StrictRecombine.concreteZassenhausTermination.combinations
+        active.size count)
+      source factor quotient active (((prime ^ exponent : Nat) : ZZ))
+      (Generated.StrictRecombine.initialCombination count) candidate
+      hcandidateSize
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) hscan
+  exact state.extract activeState hcanonical hnonempty hprimitive hleading
+    hlegal hattempt hremove
+
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/
 theorem selectionHenselFactors_liveProduct

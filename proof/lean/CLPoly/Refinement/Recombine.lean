@@ -6452,6 +6452,175 @@ theorem norm_le_pow_two_mul_later
               pow_succ]
             ring
 
+/-- The diagonal entry of the physical Gram matrix is the exact squared norm
+decomposition of one returned basis row. -/
+theorem gram_diagonal_eq_mu_sum_add_norm
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (row : Nat) (hrow : row < state.matrix.size) :
+    gramPrefixMatrixQQ state.matrix (row + 1) ⟨row, by omega⟩ ⟨row, by omega⟩ =
+      (∑ column : Fin row,
+        ((state.mu[row]!)[column.val]!) ^ 2 *
+          state.norms[column.val]!) + state.norms[row]! := by
+  have hgram := hvalid.gram_schmidt (row + 1) (by omega)
+  have hentry := congrFun (congrFun hgram ⟨row, by omega⟩) ⟨row, by omega⟩
+  rw [gsLowerNormMul_apply] at hentry
+  rw [gsLowerNormSum_new_diagonal] at hentry
+  simpa [pow_two] using hentry
+
+private theorem half_square_geometric_sum_le (row : Nat) :
+    (∑ column : Fin row,
+      ((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) + 1 ≤
+        (2 : QQ) ^ row := by
+  induction row with
+  | zero => simp
+  | succ row ih =>
+      rw [Fin.sum_univ_castSucc]
+      have hcast :
+          (∑ column : Fin row,
+            ((1 : QQ) / 4) *
+              (2 : QQ) ^ (row + 1 - column.castSucc.val)) =
+            2 * (∑ column : Fin row,
+              ((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) := by
+        rw [Finset.mul_sum]
+        apply Finset.sum_congr rfl
+        intro column _
+        simp only [Fin.val_castSucc]
+        rw [show row + 1 - column.val = (row - column.val) + 1 by omega,
+          pow_succ]
+        ring
+      rw [hcast]
+      simp only [Fin.val_last]
+      rw [show row + 1 - row = 1 by omega, pow_one, pow_succ]
+      nlinarith
+
+/-- Full size reduction and the physical Lovasz chain bound the actual
+squared norm of returned row `row` by `2^row` times its GS norm. -/
+theorem gram_diagonal_le_pow_two_mul_norm
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsizeReduced : ∀ row, row < state.matrix.size →
+      ∀ column, column < row →
+        |((state.mu[row]!)[column]!)| ≤ (1 : QQ) / 2)
+    (hlovasz : ∀ index, 0 < index → index < state.matrix.size →
+      ((3 : QQ) / 4 -
+          ((state.mu[index]!)[index - 1]!) *
+            ((state.mu[index]!)[index - 1]!)) *
+          state.norms[index - 1]! ≤ state.norms[index]!)
+    (row : Nat) (hrow : row < state.matrix.size) :
+    gramPrefixMatrixQQ state.matrix (row + 1)
+        ⟨row, by omega⟩ ⟨row, by omega⟩ ≤
+      (2 : QQ) ^ row * state.norms[row]! := by
+  rw [gram_diagonal_eq_mu_sum_add_norm state hvalid row hrow]
+  have hnormNonnegative : 0 ≤ state.norms[row]! := le_of_lt
+    (hvalid.norms_positive row (by simpa [hvalid.norms_size] using hrow))
+  calc
+    (∑ column : Fin row,
+        ((state.mu[row]!)[column.val]!) ^ 2 *
+          state.norms[column.val]!) + state.norms[row]! ≤
+      (∑ column : Fin row,
+        (((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) *
+          state.norms[row]!) + state.norms[row]! := by
+        apply add_le_add_right
+        apply Finset.sum_le_sum
+        intro column _
+        let mu := (state.mu[row]!)[column.val]!
+        have hhalfNonnegative : (0 : QQ) ≤ 1 / 2 := by norm_num
+        have hmuSquare : mu ^ 2 ≤ (1 : QQ) / 4 := by
+          have hsquare : mu ^ 2 ≤ ((1 : QQ) / 2) ^ 2 := by
+            rw [← sq_abs]
+            exact (sq_le_sq₀ (abs_nonneg mu) hhalfNonnegative).2
+              (hsizeReduced row hrow column.val column.isLt)
+          norm_num at hsquare ⊢
+          exact hsquare
+        have hcolumnNorm := norm_le_pow_two_mul_later state hvalid
+          hsizeReduced hlovasz column.val row (by omega) hrow
+        have hcolumnNonnegative : 0 ≤ state.norms[column.val]! := le_of_lt
+          (hvalid.norms_positive column.val (by
+            rw [hvalid.norms_size]
+            omega))
+        exact mul_le_mul hmuSquare hcolumnNorm hcolumnNonnegative (sq_nonneg mu)
+    _ = ((∑ column : Fin row,
+          ((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) + 1) *
+          state.norms[row]! := by
+        rw [add_mul, one_mul, Finset.sum_mul]
+    _ ≤ (2 : QQ) ^ row * state.norms[row]! :=
+      mul_le_mul_of_nonneg_right (half_square_geometric_sum_le row)
+        hnormNonnegative
+
+/-- The generated `dotRows` call on a returned basis row succeeds and its
+literal integer result obeys the physical LLL row bound. -/
+theorem dotRows_self_le_pow_two_mul_norm
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsizeReduced : ∀ row, row < state.matrix.size →
+      ∀ column, column < row →
+        |((state.mu[row]!)[column]!)| ≤ (1 : QQ) / 2)
+    (hlovasz : ∀ index, 0 < index → index < state.matrix.size →
+      ((3 : QQ) / 4 -
+          ((state.mu[index]!)[index - 1]!) *
+            ((state.mu[index]!)[index - 1]!)) *
+          state.norms[index - 1]! ≤ state.norms[index]!)
+    (row : Nat) (hrow : row < state.matrix.size) :
+    ∃ norm : ZZ,
+      Generated.StrictRecombine.dotRows state.matrix[row] state.matrix[row] =
+        .ok norm ∧
+      (norm : QQ) ≤ (2 : QQ) ^ row * state.norms[row]! := by
+  let norm : ZZ := ∑ column : Fin state.matrix[row].size,
+    state.matrix[row][column.val] * state.matrix[row][column.val]
+  refine ⟨norm, dotRows_eq_fin_sum state.matrix[row] state.matrix[row]
+    (le_refl _), ?_⟩
+  have hrowSize := hvalid.rows_square row hrow
+  let rowFin : Fin (row + 1) := ⟨row, by omega⟩
+  have hgramSource := gramPrefixMatrixQQ_apply_eq_sourceRowDot state.matrix
+    (row + 1) rowFin rowFin hrow hrow hrowSize hrowSize
+  have hbound := gram_diagonal_le_pow_two_mul_norm state hvalid hsizeReduced
+    hlovasz row hrow
+  rw [hgramSource] at hbound
+  simpa [norm, sourceRowDot, rowFin] using hbound
+
+/-- Every returned basis row up to the last nonzero coordinate is bounded by
+one common `2^index` multiple of the represented vector norm. -/
+theorem dotRows_self_le_pow_two_mul_target
+    (state : Generated.StrictRecombine.LLLState)
+    (hvalid : ConcreteLLLExecutionValid state)
+    (hsizeReduced : ∀ row, row < state.matrix.size →
+      ∀ column, column < row →
+        |((state.mu[row]!)[column]!)| ≤ (1 : QQ) / 2)
+    (hlovasz : ∀ index, 0 < index → index < state.matrix.size →
+      ((3 : QQ) / 4 -
+          ((state.mu[index]!)[index - 1]!) *
+            ((state.mu[index]!)[index - 1]!)) *
+          state.norms[index - 1]! ≤ state.norms[index]!)
+    (targetNorm : QQ) (htargetNonnegative : 0 ≤ targetNorm)
+    (index : Nat) (hindex : index < state.matrix.size)
+    (hindexNorm : state.norms[index]! ≤ targetNorm)
+    (row : Nat) (hrowIndex : row ≤ index) :
+    ∃ norm : ZZ,
+      Generated.StrictRecombine.dotRows state.matrix[row] state.matrix[row] =
+        .ok norm ∧
+      (norm : QQ) ≤ (2 : QQ) ^ index * targetNorm := by
+  have hrow : row < state.matrix.size := lt_of_le_of_lt hrowIndex hindex
+  rcases dotRows_self_le_pow_two_mul_norm state hvalid hsizeReduced hlovasz row
+      hrow with ⟨norm, hnorm, hnormBound⟩
+  refine ⟨norm, hnorm, hnormBound.trans ?_⟩
+  have hrowNorm := norm_le_pow_two_mul_later state hvalid hsizeReduced hlovasz
+    row index hrowIndex hindex
+  have hpowNonnegative : 0 ≤ (2 : QQ) ^ row := pow_nonneg (by norm_num) _
+  have hfirst := mul_le_mul_of_nonneg_left hrowNorm hpowNonnegative
+  have hsecond := mul_le_mul_of_nonneg_left hindexNorm
+    (pow_nonneg (by norm_num : (0 : QQ) ≤ 2) (index - row))
+  calc
+    (2 : QQ) ^ row * state.norms[row]! ≤
+        (2 : QQ) ^ row *
+          ((2 : QQ) ^ (index - row) * state.norms[index]!) := hfirst
+    _ ≤ (2 : QQ) ^ row *
+          ((2 : QQ) ^ (index - row) * targetNorm) :=
+      mul_le_mul_of_nonneg_left hsecond hpowNonnegative
+    _ = (2 : QQ) ^ index * targetNorm := by
+      rw [← pow_add, show row + (index - row) = index by omega]
+      ring
+
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
     (hrun : Generated.StrictRecombine.makeInitialMatrix size scale = .ok matrix) :

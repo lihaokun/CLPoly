@@ -1026,3 +1026,32 @@ derived from the arrays and inequalities proved for the generated C++ loop.
 - Next: use full size reduction to bound each returned physical row by its
   Gram--Schmidt prefix, compare that bound with the literal C++ short-row
   threshold, and establish the transform-row span/separation theorem.
+
+## Bound the literal returned-row dot products
+
+The abstract-looking GS estimates now reach the exact integer operation used
+by C++ short-row collection:
+
+- `gram_diagonal_eq_mu_sum_add_norm` exposes the physical row norm as
+  `sum(mu^2 * B*) + B*[row]` from the generated `G = L D L^T` arrays;
+- `half_square_geometric_sum_le` proves the exact finite geometric estimate
+  needed for all earlier size-reduced coefficients;
+- `gram_diagonal_le_pow_two_mul_norm` combines every physical `|mu| <= 1/2`
+  cell with the proved Lovasz chain to obtain
+  `||b_row||^2 <= 2^row * B*[row]`;
+- `dotRows_self_le_pow_two_mul_norm` identifies that diagonal entry with the
+  successful literal generated integer `dotRows` execution; and
+- `dotRows_self_le_pow_two_mul_target` gives every row before a last nonzero
+  reduced coordinate the common bound `2^index * targetNorm`.
+
+This exposes the remaining issue precisely: a generic LLL argument retains a
+`2^index` loss, whereas the source bound has only the scale chosen by the
+special van-Hoeij lattice.  The next proof must use that lattice's indicator
+and CLD congruence structure; silently assuming the generic loss fits the
+source threshold would be unsound.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: formalize the true-factor indicator vector in each physically extended
+  CLD lattice and prove the special scale/index constraint needed for its
+  separating transform row to be collected.

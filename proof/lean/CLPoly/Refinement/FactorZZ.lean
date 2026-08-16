@@ -3732,6 +3732,128 @@ theorem zassenhausAttempt_extracted_irreducible
   rw [hinnerAttempt] at hrejected
   simp at hrejected
 
+/-- One literal successful fixed-size scan followed by the literal physical
+removal advances every live invariant consumed by the generated outer loop. -/
+theorem scanExtraction_liveStep
+    (prime exponent count : Nat) [Fact (Nat.Prime prime)]
+    (source factor quotient : SparsePolyZZ)
+    (active : Array SparsePolyZZ) (candidate : Array Nat)
+    (candidateSize : candidate.size = count)
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (precision : LiveRecoveryPrecision (prime ^ exponent) source)
+    (history : StrictRecombine.SmallerZassenhausScansExhausted source active
+      (((prime ^ exponent : Nat) : ZZ)) count)
+    (hcount : 0 < count) (hfits : count ≤ active.size)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hscan : Generated.StrictRecombine.scanZassenhausCombinations
+      (StrictRecombine.concreteZassenhausTermination.combinations
+        active.size count)
+      source active (((prime ^ exponent : Nat) : ZZ))
+      (Generated.StrictRecombine.initialCombination count)
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) =
+        .ok (.extracted factor quotient candidate candidateSize)) :
+    ∃ remaining : Array SparsePolyZZ,
+      Generated.StrictRecombine.removeCombination candidate active =
+        .ok remaining ∧
+      Irreducible (SparsePolyZZ.toPoly factor) ∧
+      StrictPolynomialMod.SparsePolyZZCanonical quotient ∧
+      (SparsePolyZZ.toPoly quotient).IsPrimitive ∧
+      0 < quotient.size ∧
+      ((SparsePolyZZ.toPoly quotient).leadingCoeff : ZMod prime) ≠ 0 ∧
+      StrictRecombine.LiveActiveFactors prime remaining ∧
+      LiveHenselProduct prime exponent quotient remaining ∧
+      LiveRecoveryPrecision (prime ^ exponent) quotient ∧
+      Squarefree (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly quotient)) := by
+  have hlegalCount : StrictRecombine.LegalCombination active.size count
+      candidate :=
+    StrictRecombine.concreteScan_extracted_legal source factor quotient active
+      (((prime ^ exponent : Nat) : ZZ)) candidate candidateSize hfits hscan
+  have hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate := by simpa [candidateSize] using hlegalCount
+  have hattempt : Generated.StrictRecombine.zassenhausAttempt source active
+      (((prime ^ exponent : Nat) : ZZ)) candidate =
+        .ok (.extracted factor quotient) :=
+    StrictRecombine.scanZassenhausCombinations_extracted_attempt
+      (StrictRecombine.concreteZassenhausTermination.combinations
+        active.size count)
+      source factor quotient active (((prime ^ exponent : Nat) : ZZ))
+      (Generated.StrictRecombine.initialCombination count) candidate
+      candidateSize
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) hscan
+  rcases StrictRecombine.removeCombination_succeeds candidate active hlegal with
+    ⟨remaining, hremove⟩
+  have hfactorQuotient :=
+    StrictRecombine.scanZassenhausCombinations_extracted_canonical_primitive
+      (StrictRecombine.concreteZassenhausTermination.combinations
+        active.size count)
+      source factor quotient active (((prime ^ exponent : Nat) : ZZ))
+      (Generated.StrictRecombine.initialCombination count) candidate
+      candidateSize hcanonical hnonempty
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) hscan
+  have hmodCertificate :=
+    StrictRecombine.scanZassenhausCombinations_extracted_mod_certificate
+      source factor quotient active (prime ^ exponent) prime
+      (Generated.StrictRecombine.initialCombination count) candidate
+      candidateSize
+      (pow_pos (Fact.out : Nat.Prime prime).pos exponent)
+      (Fact.out : Nat.Prime prime).pos
+      (dvd_pow_self prime (Nat.ne_of_gt state.exponentPositive))
+      activeState.fitsInt32 hcanonical hnonempty hprimitive hleading
+      activeState.irreducible
+      (StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size count hfits) hscan
+  have hquotientLeading := hmodCertificate.2
+  have hquotientNe : SparsePolyZZ.toPoly quotient ≠ 0 := by
+    intro hzero
+    apply hquotientLeading
+    rw [hzero]
+    simp
+  have hquotientNonempty : 0 < quotient.size := by
+    by_contra hnot
+    have hempty : quotient = #[] := Array.size_eq_zero_iff.mp
+      (Nat.eq_zero_of_not_pos hnot)
+    apply hquotientNe
+    simp [hempty, SparsePolyZZ.toPoly]
+  let leading := source[0]
+  have hleadingCell : source[0]? = some leading := by
+    exact Array.getElem?_eq_getElem hnonempty
+  have hheadLeading : leading.2 = (SparsePolyZZ.toPoly source).leadingCoeff := by
+    dsimp [leading]
+    exact (StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source hcanonical
+      hnonempty).symm
+  have hleadingBound : leading.2.natAbs * 2 < prime ^ exponent := by
+    rw [hheadLeading]
+    exact precision.leadingBound
+  have hfactorIrreducible := zassenhausAttempt_extracted_irreducible prime
+    exponent source factor quotient active candidate count state activeState
+    history hcount hlegal candidateSize hcanonical hnonempty hprimitive
+    hsquarefree hleading leading hleadingCell hleadingBound
+    precision.scaledFactorBound hattempt
+  have hfactorNe : SparsePolyZZ.toPoly factor ≠ 0 :=
+    hfactorIrreducible.ne_zero
+  have hactiveNext := activeState.removeCombination candidate hremove
+  have hproductNext := state.extractScan activeState hcanonical hnonempty
+    hprimitive hleading hfits candidateSize hscan hremove
+  have hprecisionNext := precision.extract hprimitive hfactorNe hquotientNe
+    hattempt
+  have hsquarefreeNext := zassenhausAttempt_extracted_quotient_squarefree
+    prime source factor quotient active (((prime ^ exponent : Nat) : ZZ))
+    candidate hprimitive hsquarefree hattempt
+  exact ⟨remaining, hremove, hfactorIrreducible, hfactorQuotient.2.1,
+    hfactorQuotient.2.2, hquotientNonempty, hquotientLeading, hactiveNext,
+    hproductNext, hprecisionNext, hsquarefreeNext⟩
+
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source
 execution theorems above, including exact long division and quotient

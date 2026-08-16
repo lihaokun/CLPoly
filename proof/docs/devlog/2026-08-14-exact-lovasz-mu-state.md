@@ -3569,3 +3569,21 @@ the final `fStar` only in the actual branch that physically pushes it.
   surface.
 - Next: package a successful scan/removal as one live extraction step, then
   use it in the complete outer-loop terminal-state recursion.
+
+## Package the literal successful scan as one live step
+
+`scanExtraction_liveStep` starts from one concrete generated fixed-size scan
+equation.  It replays that scan to recover the exact successful attempt and
+candidate legality, executes the literal reverse erasure, proves the returned
+factor irreducible from the real smaller-scan history, and derives the
+quotient's canonicality, primitivity, nonemptiness, nonzero selected-prime
+leading coefficient, squarefreeness, recovery margin, active-cell invariant,
+and dual-precision Hensel product invariant.  Every conclusion refers to the
+same physical factor, quotient, candidate, and remaining array returned by
+the source execution.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: invoke this package in the extraction arm of the generated
+  `zassenhausLoop` recursion; the exhaustion arm extends the literal scan
+  history.

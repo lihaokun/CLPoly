@@ -722,3 +722,29 @@ partial definition, shape oracle, `sorry`, or custom axiom.
 - Next: combine the certified physical candidate classes with the CLD lattice
   observations and the sufficient-precision separation argument, then close
   the generated van-Hoeij result theorem.
+
+## Preserve the concrete LLL witnesses through candidate extraction
+
+The LLL/candidate boundary now has a composed execution theorem rather than a
+pair of disconnected component facts:
+
+- `concreteLLLReduce_extractCandidates_class_members_equal` takes the exact
+  subtype returned by generated `lllReduce` and the immediately following
+  successful generated `extractCandidates` call; for any two physical values
+  in one returned class it recovers their real source columns and the
+  successful generated comparator execution on the same transform and short
+  rows; and
+- `concreteLLLReduce_extractCandidates_class_members_pointwise` opens that
+  comparator execution and exposes equality of the two actual integer
+  transform entries at every selected physical short row.
+
+Keeping the transform and short-row array as execution witnesses is important
+because `prepareCandidates` intentionally discards both after constructing
+the candidate arrays.  The next theorem can now unfold that wrapper without
+inventing replacement lattice evidence.  No fuel, partial definition,
+semantic candidate oracle, `sorry`, or custom axiom is introduced.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: preserve these witnesses through both `prepareCandidates` branches
+  and connect transform-entry equality to the generated CLD matrix rows.

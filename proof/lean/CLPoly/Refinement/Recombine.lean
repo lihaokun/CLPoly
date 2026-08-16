@@ -11564,6 +11564,72 @@ theorem extractCandidates_class_members_equal
       refine ⟨left, right, by omega, by omega, hleftValue, hrightValue, ?_⟩
       exact hpairwise left right classId hleft hright hleftClass hrightClass
 
+/-- Compose one literal generated `__lll_reduce` result with the immediately
+following generated candidate extraction.  Members of one returned physical
+candidate class are equal on every short row selected by that very LLL run;
+the transform and row array remain explicit execution witnesses. -/
+theorem concreteLLLReduce_extractCandidates_class_members_equal
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ) (factorCount : Nat)
+    (hfactorCount : factorCount ≤ matrix.size)
+    (reduced : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hlll : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok reduced)
+    (candidates : Array (Array Int32))
+    (hnonempty : reduced.val.2.2.isEmpty = false)
+    (hextract : Generated.StrictRecombine.extractCandidates reduced.val.2.2
+      reduced.val.2.1 factorCount = .ok candidates)
+    (classId : Nat) (leftValue rightValue : Int32)
+    (hleftMember : CandidateMember candidates classId leftValue)
+    (hrightMember : CandidateMember candidates classId rightValue) :
+    ∃ left right, left < factorCount ∧ right < factorCount ∧
+      leftValue = left.toUInt32.toInt32 ∧
+      rightValue = right.toUInt32.toInt32 ∧
+      Generated.StrictRecombine.candidateColumnsEqual reduced.val.2.1
+        reduced.val.2.2 left right 0 = .ok true := by
+  exact extractCandidates_class_members_equal reduced.val.2.2 reduced.val.2.1
+    factorCount candidates hnonempty
+    (concreteLLLReduce_candidate_columns_valid matrix hinput bound factorCount
+      hfactorCount reduced hlll)
+    hextract classId leftValue rightValue hleftMember hrightMember
+
+/-- Pointwise form of the preceding execution theorem.  It exposes the exact
+integer transform entries that will be related to the generated CLD lattice
+rows in the next refinement layer. -/
+theorem concreteLLLReduce_extractCandidates_class_members_pointwise
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ) (factorCount : Nat)
+    (hfactorCount : factorCount ≤ matrix.size)
+    (reduced : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hlll : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok reduced)
+    (candidates : Array (Array Int32))
+    (hnonempty : reduced.val.2.2.isEmpty = false)
+    (hextract : Generated.StrictRecombine.extractCandidates reduced.val.2.2
+      reduced.val.2.1 factorCount = .ok candidates)
+    (classId : Nat) (leftValue rightValue : Int32)
+    (hleftMember : CandidateMember candidates classId leftValue)
+    (hrightMember : CandidateMember candidates classId rightValue) :
+    ∃ left right, left < factorCount ∧ right < factorCount ∧
+      leftValue = left.toUInt32.toInt32 ∧
+      rightValue = right.toUInt32.toInt32 ∧
+      ∀ position, position < reduced.val.2.2.size →
+        let row := reduced.val.2.2[position]!
+        (reduced.val.2.1[row]!)[left]! =
+          (reduced.val.2.1[row]!)[right]! := by
+  rcases concreteLLLReduce_extractCandidates_class_members_equal matrix hinput
+      bound factorCount hfactorCount reduced hlll candidates hnonempty hextract
+      classId leftValue rightValue hleftMember hrightMember with
+    ⟨left, right, hleft, hright, hleftValue, hrightValue, hequal⟩
+  refine ⟨left, right, hleft, hright, hleftValue, hrightValue, ?_⟩
+  intro position hposition
+  exact (candidateColumnsEqual_true_sound reduced.val.2.1 reduced.val.2.2
+    left right 0 hequal) position (by omega) hposition |>.2.2.2
+
 /-- During the generated outer partition loop, at most one new class is
 created per unprocessed physical column. -/
 theorem partitionCandidateColumns_classCount_bound

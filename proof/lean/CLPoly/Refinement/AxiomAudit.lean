@@ -261,6 +261,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.collectCandidateClasses_from_empty_member_source
 #print axioms Refinement.StrictRecombine.extractCandidates_members_sound
 #print axioms Refinement.StrictRecombine.extractCandidates_class_members_equal
+#print axioms Refinement.StrictRecombine.concreteLLLReduce_extractCandidates_class_members_equal
+#print axioms Refinement.StrictRecombine.concreteLLLReduce_extractCandidates_class_members_pointwise
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

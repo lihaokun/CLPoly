@@ -3390,6 +3390,53 @@ theorem FixedSizeScanExhausted.rejects
   exact scanZassenhausCombinations_exhausted_rejects_all fStar activeLifted
     modulus hfits hscan
 
+/-- Literal execution history carried while the generated outer loop advances
+its subset size.  Every strictly smaller positive size is backed by an actual
+`.ok .exhausted` run of the corresponding generated fixed-size scan. -/
+def SmallerZassenhausScansExhausted (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (subsetSize : Nat) : Prop :=
+  ∀ count, 0 < count → count < subsetSize →
+    FixedSizeScanExhausted fStar activeLifted modulus count
+
+/-- At the source restart size one there are no smaller positive scans. -/
+theorem SmallerZassenhausScansExhausted.one
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) :
+    SmallerZassenhausScansExhausted fStar activeLifted modulus 1 := by
+  intro count hpositive hsmall
+  omega
+
+/-- Advancing the source subset size records precisely the fixed-size scan
+which just returned `.exhausted`, while retaining all earlier run equations. -/
+theorem SmallerZassenhausScansExhausted.succ
+    {fStar : SparsePolyZZ} {activeLifted : Array SparsePolyZZ}
+    {modulus : ZZ} {subsetSize : Nat}
+    (hprevious : SmallerZassenhausScansExhausted fStar activeLifted modulus
+      subsetSize)
+    (hcurrent : FixedSizeScanExhausted fStar activeLifted modulus subsetSize) :
+    SmallerZassenhausScansExhausted fStar activeLifted modulus
+      (subsetSize + 1) := by
+  intro count hpositive hsmall
+  by_cases heq : count = subsetSize
+  · simpa [heq] using hcurrent
+  · exact hprevious count hpositive (by omega)
+
+/-- Every legal candidate of a previously exhausted smaller size was
+physically executed and rejected. -/
+theorem SmallerZassenhausScansExhausted.rejects
+    {fStar : SparsePolyZZ} {activeLifted : Array SparsePolyZZ}
+    {modulus : ZZ} {subsetSize : Nat}
+    (hhistory : SmallerZassenhausScansExhausted fStar activeLifted modulus
+      subsetSize)
+    (candidate : Array Nat)
+    (hpositive : 0 < candidate.size)
+    (hsmall : candidate.size < subsetSize)
+    (hlegal : LegalCombination activeLifted.size candidate.size candidate) :
+    Generated.StrictRecombine.zassenhausAttempt fStar activeLifted modulus
+      candidate = .ok .rejected :=
+  (hhistory candidate.size hpositive hsmall).rejects candidate hlegal
+
 /-- Pure array value computed by the generated source-shaped μ prefix loop.
 This is used only to state its exact execution theorem; it is itself strictly
 well-founded on the same remaining-prefix measure. -/

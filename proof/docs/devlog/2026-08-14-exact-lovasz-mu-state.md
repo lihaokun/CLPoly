@@ -3283,3 +3283,17 @@ associated with the product of the physically retained active array.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：携带该 invariant 与逐层 fixed-size exhaustion history，证明真实
   extraction 的 factor 不存在非 unit 真因子
+
+## Record literal exhaustion history across subset-size advancement
+
+`SmallerZassenhausScansExhausted` records, for every smaller positive subset
+size, an actual `FixedSizeScanExhausted` execution equation for the current
+physical `fStar` and active array.  The source restart at size one has the
+vacuous history; advancing from `k` to `k+1` inserts precisely the scan which
+just returned `.ok .exhausted`.  Its `rejects` theorem therefore proves that a
+smaller legal candidate was physically attempted and rejected, rather than
+encoding that fact as an abstract minimality assumption.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：从可约 extraction factor 的较小整数因子构造 live candidate，证明
+  该 candidate 的真实 attempt 必提取，与 history 的真实 rejection 冲突

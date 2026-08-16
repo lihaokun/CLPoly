@@ -2843,3 +2843,20 @@ certifies the concrete mutable execution rather than an abstract tree update.
 so this step has no new C++ b2b change surface.  Next, the outer quadratic
 precision loop will iterate this certificate and extraction will convert it
 to `HenselFactorArrayOneHeadFrom 1` before final normalization.
+
+## Iterate interval heads through the quadratic precision loop
+
+`HenselLiftLoopCorrect.physicalHeads` carries the exact interval certificate
+through every executed outer-loop round.  Each step invokes the complete real
+recursive traversal theorem at the current modulus, then follows the source
+update `m := m * m`; the arithmetic proof establishes the strict lower bound
+needed by the next round.  The done branch returns the actual current array.
+
+This is induction over the existing well-founded execution trace, not a fuel
+model and not an independently chosen number of rounds.  The root target is
+the same concrete input polynomial `f` in every generated call.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, exact source-order
+extraction converts the final interval certificate into a factor-array tail
+certificate for the real normalization block.

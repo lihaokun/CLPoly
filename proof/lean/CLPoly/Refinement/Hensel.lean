@@ -12396,6 +12396,32 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
               subst child
               exact hrightFinal)
 
+/-- The actual outer quadratic-precision loop iterates the interval-head
+certificate through every concrete recursive traversal.  Its source update
+`m := m * m` preserves the strict modulus lower bound needed by the next
+round. -/
+theorem HenselLiftLoopCorrect.physicalHeads
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM start stop : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hheads : HenselTreePhysicalHeads start stop tree initialNodes)
+    (hnodup : (henselLiftTreeIndices tree).Nodup)
+    (hm : 2 ≤ initialM)
+    (hfCanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hfHead : 0 < start → HasPhysicalOneHead f) :
+    HenselTreePhysicalHeads start stop tree outputNodes := by
+  induction hcorrect with
+  | done => exact hheads
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      have hnextHeads := hiteration.physicalHeads hheads hnodup (by omega)
+        hfCanonical hfHead
+      have hnextM : 2 ≤ m * m := by nlinarith
+      exact ih hnextHeads hnextM
+
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
     {factors : Array SparsePolyZp}

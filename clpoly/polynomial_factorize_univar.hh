@@ -17,6 +17,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <limits>
 #include <stdexcept>
 #include <cassert>
 #ifdef CLPOLY_PROFILE
@@ -319,6 +320,12 @@ namespace clpoly{
         int leaf_end;           // 叶子范围结束
     };
 
+    inline bool __hensel_factor_count_fits(size_t factor_count)
+    {
+        return factor_count <= static_cast<size_t>(
+            std::numeric_limits<int>::max());
+    }
+
     // ZZ 多项式乘法并 mod m
     inline upolynomial_<ZZ> __upoly_mul_mod(
         const upolynomial_<ZZ>& a,
@@ -394,6 +401,8 @@ namespace clpoly{
         uint64_t p)
     {
         assert(factors.size() >= 2);
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
         std::vector<__hensel_node> nodes;
         nodes.push_back({}); // root at index 0
         __hensel_tree_build_recursive(nodes, factors, p, 0, (int)factors.size(), 0);
@@ -543,6 +552,8 @@ namespace clpoly{
     {
         assert(factors.size() >= 2);
         assert(!f.empty());
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
 
         // 1. 确定提升精度
         ZZ target;

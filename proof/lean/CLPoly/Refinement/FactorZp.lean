@@ -197,11 +197,13 @@ theorem strictEDFCall_refines {State : Type}
       strictEDFCall engine this providers termination #[] f d rng =
         .ok (output, rng') ∧
       StrictEDF.edfResultToL2 this._p.toNat output = factors ∧
-      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors ∧
+      ∀ factor ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat factor := by
   rcases StrictEDF.strictEDFEntryIR_refines_edf engine this providers
-      termination #[] f d rng hinvariant with
-    ⟨output, rng', factors, hrun, hdecode, hcorrect⟩
-  refine ⟨output, rng', factors, ?_, ?_, hcorrect⟩
+      termination #[] f d rng hinvariant (by simp) with
+    ⟨output, rng', factors, hrun, hdecode, hcorrect, hcanonical⟩
+  refine ⟨output, rng', factors, ?_, ?_, hcorrect, hcanonical⟩
   · rw [strictEDFCall_eq engine this providers termination #[] f d rng
       hinvariant]
     exact hrun
@@ -612,6 +614,34 @@ noncomputable def componentSuffixProduct (p : Nat)
   ((components.toList.drop index).map fun item =>
     SparsePolyZp.toPoly p item.1).prod
 
+theorem factorLoop0_preserves_canonical
+    (p : Nat) (factors : Array SparsePolyZp) (multiplicity : UInt64)
+    (index : Nat) (result : Array (SparsePolyZp × UInt64))
+    (hfactors : ∀ factor ∈ factors.toList, SparsePolyZp.Canonical p factor)
+    (hresult : ∀ item ∈ result.toList, SparsePolyZp.Canonical p item.1) :
+    ∀ item ∈ (Generated.StrictFactorZp._loop___factor_Zp_0_raw_ir
+      factors multiplicity index result).toList,
+      SparsePolyZp.Canonical p item.1 := by
+  induction hmeasure : factors.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictFactorZp._loop___factor_Zp_0_raw_ir]
+      split
+      next hindex =>
+        apply ih (factors.size - (index + 1)) (by omega)
+          (index + 1) (result.push (factors[index], multiplicity))
+        · intro item hitem
+          rw [Array.toList_push, List.mem_append] at hitem
+          rcases hitem with hitem | hitem
+          · exact hresult item hitem
+          · have heq : item = (factors[index], multiplicity) := by
+              simpa using hitem
+            subst item
+            exact hfactors factors[index] (by
+              simpa using Array.getElem_mem factors index hindex)
+        · rfl
+      next _ => exact hresult
+
 /-- Genuine refinement of the generated middle loop.  Each EDF factor list is
 obtained from the actual strict call at the current DDF array element. -/
 theorem factorLoop1_refines {State : Type}
@@ -628,7 +658,9 @@ theorem factorLoop1_refines {State : Type}
     (hready : ∀ item ∈ components.toList,
       StrictEDF.EDFEntryInvariant this item.1 item.2)
     (multiplicity : UInt64) (index : Nat) (rng : State)
-    (result : Array (SparsePolyZp × UInt64)) :
+    (result : Array (SparsePolyZp × UInt64))
+    (hresultCanonical : ∀ item ∈ result.toList,
+      SparsePolyZp.Canonical this._p.toNat item.1) :
     let ops : Generated.StrictFactorZp.FactorZpRawOps State := {
       makeMonic := makeMonic
       squarefree := squarefree
@@ -643,7 +675,9 @@ theorem factorLoop1_refines {State : Type}
         factorResultToL2 this._p.toNat result ++
           (factors.map fun q => (q, multiplicity.toNat)) ∧
       componentSuffixProduct this._p.toNat components index = factors.prod ∧
-      ∀ q ∈ factors, Irreducible q ∧ Monic q := by
+      (∀ q ∈ factors, Irreducible q ∧ Monic q) ∧
+      ∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1 := by
   dsimp only
   induction hmeasure : components.size - index using Nat.strong_induction_on
     generalizing index rng result with
@@ -658,7 +692,7 @@ theorem factorLoop1_refines {State : Type}
         rcases strictEDFCall_refines engine this providers termination
             component.1 component.2 rng hinvariant with
           ⟨edfOutput, rngNext, edfFactors, hedfRun, hedfDecode,
-            hedfCorrect⟩
+            hedfCorrect, hedfCanonical⟩
         change ∃ (output : Array (SparsePolyZp × UInt64)) (rng' : State)
             (factors : List (Polynomial (ZMod this._p.toNat))),
           (match strictEDFCall engine this providers termination #[]
@@ -679,15 +713,20 @@ theorem factorLoop1_refines {State : Type}
               (factors.map fun q => (q, multiplicity.toNat)) ∧
           componentSuffixProduct this._p.toNat components index =
             factors.prod ∧
-          ∀ q ∈ factors, Irreducible q ∧ Monic q
+          (∀ q ∈ factors, Irreducible q ∧ Monic q) ∧
+          ∀ item ∈ output.toList,
+            SparsePolyZp.Canonical this._p.toNat item.1
         rw [hedfRun]
         rcases ih (components.size - (index + 1)) (by omega)
             (index + 1) rngNext
             (Generated.StrictFactorZp._loop___factor_Zp_0_raw_ir
-              edfOutput multiplicity 0 result) rfl with
+              edfOutput multiplicity 0 result)
+            (factorLoop0_preserves_canonical this._p.toNat edfOutput
+              multiplicity 0 result hedfCanonical hresultCanonical) rfl with
           ⟨output, rng', tailFactors, htailRun, htailDecode,
-            htailProduct, htailQuality⟩
-        refine ⟨output, rng', edfFactors ++ tailFactors, htailRun, ?_, ?_, ?_⟩
+            htailProduct, htailQuality, houtputCanonical⟩
+        refine ⟨output, rng', edfFactors ++ tailFactors, htailRun, ?_, ?_, ?_,
+          houtputCanonical⟩
         · rw [htailDecode, factorLoop0_toL2_zero]
           simp only [attachMultiplicityToL2, StrictEDF.edfResultToL2,
             List.map_append]
@@ -719,7 +758,7 @@ theorem factorLoop1_refines {State : Type}
         have hle : components.size ≤ index := Nat.le_of_not_gt hindex
         have hdrop : components.toList.drop index = [] := by
           exact List.drop_eq_nil_iff.mpr (by simpa using hle)
-        refine ⟨result, rng, [], rfl, by simp, ?_, by simp⟩
+        refine ⟨result, rng, [], rfl, by simp, ?_, by simp, hresultCanonical⟩
         simp [componentSuffixProduct, hdrop]
 
 /-- Product represented by the unvisited suffix of the concrete SQF array. -/
@@ -746,7 +785,9 @@ theorem factorLoop2_refines {State : Type}
     (hready : ∀ item ∈ squarefreeFactors.toList,
       SQFOutputReady this item)
     (index : Nat) (rng : State)
-    (result : Array (SparsePolyZp × UInt64)) :
+    (result : Array (SparsePolyZp × UInt64))
+    (hresultCanonical : ∀ item ∈ result.toList,
+      SparsePolyZp.Canonical this._p.toNat item.1) :
     let ops : Generated.StrictFactorZp.FactorZpRawOps State := {
       makeMonic := makeMonic
       squarefree := squarefree
@@ -761,8 +802,10 @@ theorem factorLoop2_refines {State : Type}
         factorResultToL2 this._p.toNat result ++ factors ∧
       squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
         (factors.map fun item => item.1 ^ item.2).prod ∧
-      ∀ item ∈ factors,
-        Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2 := by
+      (∀ item ∈ factors,
+        Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2) ∧
+      ∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1 := by
   dsimp only
   induction hmeasure : squarefreeFactors.size - index using
     Nat.strong_induction_on generalizing index rng result with
@@ -801,22 +844,26 @@ theorem factorLoop2_refines {State : Type}
             factorResultToL2 this._p.toNat result ++ factors ∧
           squarefreeSuffixProduct this._p.toNat squarefreeFactors index =
             (factors.map fun item => item.1 ^ item.2).prod ∧
-          ∀ item ∈ factors,
-            Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2
+          (∀ item ∈ factors,
+            Irreducible item.1 ∧ Monic item.1 ∧ 1 ≤ item.2) ∧
+          ∀ item ∈ output.toList,
+            SparsePolyZp.Canonical this._p.toNat item.1
         rw [hddfRun]
         rcases factorLoop1_refines engine this providers termination makeMonic
-            squarefree sortByDegree components hedfReady sqfItem.2 0 rng result with
+            squarefree sortByDegree components hedfReady sqfItem.2 0 rng result
+            hresultCanonical with
           ⟨middleOutput, rngNext, componentFactors, hmiddleRun,
-            hmiddleDecode, hmiddleProduct, hmiddleQuality⟩
+            hmiddleDecode, hmiddleProduct, hmiddleQuality, hmiddleCanonical⟩
         simp only
         rw [hmiddleRun]
         rcases ih (squarefreeFactors.size - (index + 1)) (by omega)
-            (index + 1) rngNext middleOutput rfl with
+            (index + 1) rngNext middleOutput hmiddleCanonical rfl with
           ⟨output, tailFactors, htailRun, htailDecode,
-            htailProduct, htailQuality⟩
+            htailProduct, htailQuality, houtputCanonical⟩
         let currentFactors := componentFactors.map fun q =>
           (q, sqfItem.2.toNat)
-        refine ⟨output, currentFactors ++ tailFactors, htailRun, ?_, ?_, ?_⟩
+        refine ⟨output, currentFactors ++ tailFactors, htailRun, ?_, ?_, ?_,
+          houtputCanonical⟩
         · rw [htailDecode, hmiddleDecode, List.append_assoc]
         · have hsuffix : squarefreeFactors.toList.drop index =
               sqfItem :: squarefreeFactors.toList.drop (index + 1) := by
@@ -861,7 +908,7 @@ theorem factorLoop2_refines {State : Type}
         have hle : squarefreeFactors.size ≤ index := Nat.le_of_not_gt hindex
         have hdrop : squarefreeFactors.toList.drop index = [] := by
           exact List.drop_eq_nil_iff.mpr (by simpa using hle)
-        refine ⟨result, [], rfl, by simp, ?_, by simp⟩
+        refine ⟨result, [], rfl, by simp, ?_, by simp, hresultCanonical⟩
         simp [squarefreeSuffixProduct, hdrop]
 
 /-- End-to-end refinement of the exact generated C++ `__factor_Zp` control
@@ -894,7 +941,9 @@ theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
         .ok (lc, output) ∧
       FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
         (Zp.toZMod this._p.toNat lc)
-        (factorResultToL2 this._p.toNat output) := by
+        (factorResultToL2 this._p.toNat output) ∧
+      (∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1) := by
   dsimp only
   have hempty : f.isEmpty = false := by
     simpa [Array.isEmpty] using (Nat.ne_of_gt hnonempty)
@@ -920,8 +969,9 @@ theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
   rcases factorLoop2_refines engine this providers termination
       (StrictSquarefreeZp.upolyMakeMonicIR this)
       (strictSQFCall this hcfg sqfPhysical) sort.run sqfOutput
-      hsqfOutputReady 0 initialRng #[] with
-    ⟨unsorted, factors, hloops, hdecode, hproduct, hquality⟩
+      hsqfOutputReady 0 initialRng #[] (by simp) with
+    ⟨unsorted, factors, hloops, hdecode, hproduct, hquality,
+      hunsortedCanonical⟩
   rcases sort.permutation unsorted with ⟨sorted, hsort, hpermRaw⟩
   have hunsortedDecode :
       factorResultToL2 this._p.toNat unsorted = factors := by
@@ -931,6 +981,11 @@ theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
     have hp := factorResultToL2_perm (p := this._p.toNat) hpermRaw
     rw [hunsortedDecode] at hp
     exact hp
+  have hsortedCanonical :
+      ∀ item ∈ sorted.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1 := by
+    intro item hitem
+    exact hunsortedCanonical item (hpermRaw.mem_iff.mp hitem)
   have hcorrectUnsorted :
       FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
         (Zp.toZMod this._p.toNat lc) factors := by
@@ -969,7 +1024,7 @@ theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
       exact hsqfEq.trans hrawProduct
     · exact hquality
   refine ⟨lc, sorted, ?_,
-    factorZpCorrect_perm hcorrectUnsorted hpermDecoded⟩
+    factorZpCorrect_perm hcorrectUnsorted hpermDecoded, hsortedCanonical⟩
   simp only [Generated.StrictFactorZp.__factor_Zp_raw_ir, hempty,
     Bool.false_eq_true, ↓reduceIte]
   have hnotConstant : ¬get_deg f ≤ 0 := by

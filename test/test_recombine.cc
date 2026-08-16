@@ -84,6 +84,18 @@ int main() {
     // 辅助函数测试
     // ========================================
 
+    CLPOLY_TEST("__hensel_factor_count_fits int boundary");
+    {
+        const size_t int_max = static_cast<size_t>(
+            std::numeric_limits<int>::max());
+        CLPOLY_ASSERT(__hensel_factor_count_fits(0));
+        CLPOLY_ASSERT(__hensel_factor_count_fits(2));
+        CLPOLY_ASSERT(__hensel_factor_count_fits(int_max));
+        CLPOLY_ASSERT(!__hensel_factor_count_fits(int_max + 1));
+        CLPOLY_ASSERT(!__hensel_factor_count_fits(
+            std::numeric_limits<size_t>::max()));
+    }
+
     CLPOLY_TEST("__upoly_norm_l1");
     {
         // f = 3x^2 - 4x + 5 → |3|+|-4|+|5| = 12

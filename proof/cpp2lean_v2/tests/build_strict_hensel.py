@@ -27,6 +27,9 @@ def validate_cpp_source() -> None:
     polynomial = POLY_SOURCE.read_text()
     for fragment in (
         "inline void __hensel_step(",
+        "inline bool __hensel_factor_count_fits(size_t factor_count)",
+        "if (!__hensel_factor_count_fits(factors.size()))",
+        'throw std::overflow_error("Hensel factor count exceeds int range")',
         "upolynomial_<ZZ> gh = node.g * node.h;",
         "__upoly_divmod_mod(q_se, r_se, se, node.h, m);",
         "__upoly_divmod_mod(q_sep, r_sep, sep, node.h, m);",

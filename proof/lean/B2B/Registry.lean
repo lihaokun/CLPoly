@@ -7,6 +7,7 @@ import Lean.Data.Json
 import B2B.Types
 import CLPoly.Generated.Corpus
 import CLPoly.Generated.StrictFactorZZ
+import CLPoly.Generated.StrictHensel
 import CLPoly.Model
 
 open Lean
@@ -23,6 +24,11 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     return encodeBool
       (Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
         resultCount.toNat modularCount.toNat atFullPrecision)
+  | "__hensel_factor_count_fits" =>
+    let factorCount ← parseUInt64 args[0]!
+    return encodeBool
+      (Generated.StrictHensel.__hensel_factor_count_fits_ir
+        factorCount.toNat)
   | "__make_zp" =>
     let val ← parseInt64 args[0]!
     let p   ← parseUInt64 args[1]!

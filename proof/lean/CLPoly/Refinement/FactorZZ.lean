@@ -52,10 +52,35 @@ theorem concreteSelectPrime_success {State : Type}
     (selection : PrimeSelectionResult)
     (hrun : concreteSelectPrime engine provider initialRng f useLargePrime =
       .ok selection) :
-    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection := by
+    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection ∧
+      StrictSelectPrime.SelectionPhysical selection := by
   exact StrictSelectPrime.__select_prime_raw_ir_refines engine provider
     initialRng useLargePrime f hinitialPrimeCorrect hcanonical hnonempty hdegree hdegreeBound
       hlcSemantic selection hrun
+
+theorem concreteSelectPrime_irreducible_size {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (selection : PrimeSelectionResult)
+    (hrun : concreteSelectPrime engine provider initialRng f useLargePrime =
+      .ok selection) :
+    selection.irreducible = true → selection.factors.size ≤ 1 := by
+  unfold concreteSelectPrime at hrun
+  unfold Generated.StrictSelectPrime.__select_prime_raw_ir at hrun
+  split at hrun
+  · contradiction
+  next hguard =>
+    exact StrictSelectPrime.selectPrimeLoop_irreducible_size
+      (StrictSelectPrime.concreteTryCandidate engine provider)
+      f (get_deg f) (SparsePolyZZ.front! f).2 useLargePrime 3
+      { tried := 0
+        p := if useLargePrime then
+          (18446744073709551615 : UInt64) - 58 else 2
+        rng := initialRng
+        bestCount := 18446744073709551615
+        best := default }
+      selection hrun
 
 /-- Actual generated Hensel entry selected at the runtime prime returned by
 `__select_prime`.  The dense arithmetic object and multiplication workspace
@@ -78,6 +103,47 @@ noncomputable def concreteHenselLift {State : Type}
         f factors p aTarget candidate.prime.two_le
     else .error .assertionFailure
 
+/-- Readiness for the semantic Hensel stages, conditional on the machine
+factor-count guard.  The guard itself is not a caller premise: a successful
+literal raw execution proves it before this readiness is instantiated. -/
+def HenselLiftEntryReadiness
+    (this : DenseUPolyZp)
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp)
+    (aTarget : Int32) : Prop :=
+  factors.size < 2 ^ 31 →
+    StrictHensel.HenselLiftEntryInvariant this termination mulProvider
+      f factors aTarget
+
+/-- The concrete C++ Hensel call cannot succeed unless its checked `size_t`
+factor count is representable by every downstream source `int` index. -/
+theorem concreteHenselLift_factorCountFits_of_success {State : Type}
+    (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : Nat.Prime p.toNat)
+    (output : Array SparsePolyZZ × ZZ)
+    (hrun : concreteHenselLift engine provider f factors p aTarget =
+      .ok output) :
+    factors.size < 2 ^ 31 := by
+  let candidate := provider.physical p hp
+  letI : Fact (Nat.Prime candidate.dense._p.toNat) := ⟨candidate.prime⟩
+  have hrun' :
+      Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+        (StrictHensel.strictHenselRawOps
+          StrictHensel.concreteDivmodTermination)
+        (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+          candidate.providers.mul)
+        f factors p aTarget candidate.prime.two_le = .ok output := by
+    simpa [concreteHenselLift, hp, candidate] using hrun
+  exact StrictHensel.__hensel_lift_upoly_raw_ir_factorCountFits_of_success
+    (StrictHensel.strictHenselRawOps
+      StrictHensel.concreteDivmodTermination)
+    (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+      candidate.providers.mul)
+    f factors p aTarget candidate.prime.two_le output hrun'
+
 /-- A successful call of `concreteHenselLift` is the literal generated
 Hensel execution and therefore carries `HenselLiftEntryCorrect`.  The
 remaining invariant is stage readiness quantified over actual intermediate
@@ -87,9 +153,9 @@ theorem concreteHenselLift_success {State : Type}
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
     (aTarget : Int32) (hp : Nat.Prime p.toNat)
-    (hinvariant :
+    (hreadiness :
       let candidate := provider.physical p hp
-      @StrictHensel.HenselLiftEntryInvariant candidate.dense
+      @HenselLiftEntryReadiness candidate.dense
         StrictHensel.concreteDivmodTermination
         candidate.providers.mul f factors aTarget)
     (output : Array SparsePolyZZ × ZZ)
@@ -108,10 +174,14 @@ theorem concreteHenselLift_success {State : Type}
           candidate.providers.mul)
         f factors p aTarget candidate.prime.two_le = .ok output := by
     simpa [concreteHenselLift, hp, candidate] using hrun
+  have hfactorFits : factors.size < 2 ^ 31 :=
+    concreteHenselLift_factorCountFits_of_success engine provider f factors
+      p aTarget hp output hrun
   rcases StrictHensel.__hensel_lift_upoly_raw_ir_refines candidate.dense
       candidate.configured
       StrictHensel.concreteDivmodTermination candidate.providers.mul
-      f factors aTarget hinvariant with ⟨actual, hactualRun, hcorrect⟩
+      f factors aTarget (hreadiness hfactorFits) with
+        ⟨actual, hactualRun, hcorrect⟩
   have houtput : actual = output := by
     have hactualRun' :
         Generated.StrictHensel.__hensel_lift_upoly_raw_ir
@@ -5136,7 +5206,10 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
         StrictHensel.HenselLiftEntryCorrect
           StrictHensel.concreteDivmodTermination f selection.factors
           selection.prime aTarget henselOutput)
-    (hfactorFits : selection.factors.size < 2 ^ 31)
+    (hfactorFitsOfRun : ∀ aTarget henselOutput,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+        selection.factors.size < 2 ^ 31)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
     (hnonempty : 0 < f.size) (hcellDegree : f[0].1.deg < 2 ^ 63)
@@ -5172,6 +5245,7 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
       FactorZZCorrect (SparsePolyZZ.toPoly f)
         (result.toList.map SparsePolyZZ.toPoly) := by
     intro aTarget henselOutput result hh hv hsize
+    have hfactorFits := hfactorFitsOfRun aTarget henselOutput hh
     rcases concreteVanHoeijRecombine_success f henselOutput.1 result
         henselOutput.2 hv with ⟨hdegree, hraw⟩
     apply selectionHensel_vanHoeij_equal_cardinality_refines_FactorZZCorrect
@@ -5189,6 +5263,7 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
       FactorZZCorrect (SparsePolyZZ.toPoly f)
         (result.toList.map SparsePolyZZ.toPoly) := by
     intro aTarget henselOutput result hh hrecovery hz
+    have hfactorFits := hfactorFitsOfRun aTarget henselOutput hh
     apply selectionHensel_zassenhausRecombine_refines_FactorZZCorrect_of_recovery
       hcount hfactors hleadingSemantic hselection
       (hentry aTarget henselOutput hh) hrecovery
@@ -5209,6 +5284,8 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
     | ok henselH =>
       rcases henselH with ⟨liftedH, mH⟩
       simp only [hlift] at hrun
+      have hfactorFits : selection.factors.size < 2 ^ 31 :=
+        hfactorFitsOfRun aH (liftedH, mH) hlift
       cases hvan : concreteVanHoeijRecombine f liftedH mH with
       | error fault => simp [hvan] at hrun
       | ok result =>
@@ -5302,18 +5379,6 @@ theorem __lll_factorize_raw_ir_refines_FactorZZCorrect
                     hfull, hless])
             exact vanCorrect aH (liftedH, mH) result hlift hvan (by omega)
 
-/-- Representation and machine-range facts retained from the concrete
-prime-selection execution for the downstream Hensel call.  These fields do
-not state a factorization result: that semantic fact is supplied separately
-by `SelectionCorrect` from the generated select-prime refinement. -/
-structure SelectedPrimePhysical
-    (selection : PrimeSelectionResult) : Prop where
-  factorsCanonical : ∀ factor ∈ selection.factors.toList,
-    SparsePolyZp.Canonical selection.prime.toNat factor
-  factorCountFits : selection.factors.size < 2 ^ 31
-  irreducibleCount : selection.irreducible = true →
-    selection.factors.size ≤ 1
-
 /-- Exact outer control-flow composition for the original C++
 `__factor_squarefree_primitive_ZZ` entry.  The selected value and every
 Hensel value are constrained only after they have been returned by their raw
@@ -5325,13 +5390,13 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
     (useLargePrime : Bool) (f : SparsePolyZZ)
     (hselect : ∀ selection,
       selectPrime f useLargePrime = .ok selection →
-      StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection)
-    (hphysical : ∀ selection,
+      StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) selection ∧
+        StrictSelectPrime.SelectionPhysical selection)
+    (hirreducibleCount : ∀ selection,
       selectPrime f useLargePrime = .ok selection →
-      SelectedPrimePhysical selection)
+      selection.irreducible = true → selection.factors.size ≤ 1)
     (hhensel : ∀ (selection : PrimeSelectionResult)
       (hprime : Nat.Prime selection.prime.toNat),
-      SelectedPrimePhysical selection →
       ∀ aTarget henselOutput,
         henselLift f selection.factors selection.prime aTarget =
             .ok henselOutput →
@@ -5339,6 +5404,11 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
             StrictHensel.concreteDivmodTermination f selection.factors
             selection.prime ⟨hprime⟩
             aTarget henselOutput)
+    (hhenselFits : ∀ (selection : PrimeSelectionResult)
+      (hprime : Nat.Prime selection.prime.toNat) aTarget henselOutput,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+        selection.factors.size < 2 ^ 31)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
     (hnonempty : 0 < f.size)
@@ -5363,8 +5433,9 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
   | ok selection =>
     rw [hselectionRun] at hrun
     simp only at hrun
-    have hselection := hselect selection hselectionRun
-    have hselectedPhysical := hphysical selection hselectionRun
+    have hselectionResult := hselect selection hselectionRun
+    have hselection := hselectionResult.1
+    have hselectedCanonical := hselectionResult.2
     letI : Fact (Nat.Prime selection.prime.toNat) :=
       ⟨hselection.goodPrime.prime⟩
     by_cases hsingle : selection.irreducible || selection.factors.size ≤ 1
@@ -5376,7 +5447,7 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
             selection.factors.size ≤ 1 := by
           simpa [Bool.or_eq_true] using hsingle
         rcases hsingleProp with hirreducible | hcount
-        · exact hselectedPhysical.irreducibleCount hirreducible
+        · exact hirreducibleCount selection hselectionRun hirreducible
         · exact hcount
       simpa using selection_atMostOne_refines_singleton_FactorZZCorrect
         hselection hprimitive hdegree hcount
@@ -5397,11 +5468,12 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
         rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
           hnonempty, hfront]
       apply __lll_factorize_raw_ir_refines_FactorZZCorrect henselLift f
-        selection hcount hselectedPhysical.factorsCanonical hleadingSemantic hselection
+        selection hcount hselectedCanonical hleadingSemantic hselection
         (fun aTarget henselOutput hh =>
-          hhensel selection hselection.goodPrime.prime hselectedPhysical
+          hhensel selection hselection.goodPrime.prime
             aTarget henselOutput hh)
-        hselectedPhysical.factorCountFits hcanonical hprimitive hnonempty
+        (hhenselFits selection hselection.goodPrime.prime)
+        hcanonical hprimitive hnonempty
         hdegreeBound leading hleading output
       exact hrun
 
@@ -5419,19 +5491,19 @@ theorem concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
       (if useLargePrime then
         ((18446744073709551615 : UInt64) - 58).toNat
       else (2 : UInt64).toNat))
-    (hphysical : ∀ selection,
-      concreteSelectPrime engine provider initialRng f useLargePrime =
-          .ok selection →
-        SelectedPrimePhysical selection)
     (hhensel : ∀ (selection : PrimeSelectionResult)
       (hprime : Nat.Prime selection.prime.toNat),
-      SelectedPrimePhysical selection →
       ∀ aTarget henselOutput,
         henselLift f selection.factors selection.prime aTarget =
             .ok henselOutput →
           @StrictHensel.HenselLiftEntryCorrect
             StrictHensel.concreteDivmodTermination f selection.factors
             selection.prime ⟨hprime⟩ aTarget henselOutput)
+    (hhenselFits : ∀ (selection : PrimeSelectionResult)
+      (hprime : Nat.Prime selection.prime.toNat) aTarget henselOutput,
+      henselLift f selection.factors selection.prime aTarget =
+          .ok henselOutput →
+        selection.factors.size < 2 ^ 31)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
     (hnonempty : 0 < f.size)
@@ -5464,7 +5536,9 @@ theorem concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
       concreteSelectPrime_success engine provider initialRng useLargePrime f
         hinitialPrimeCorrect hcanonical hnonempty hdegree hdegree62 hlcSemantic selection
           hselectionRun)
-    hphysical hhensel hcanonical hprimitive hnonempty hdegree hdegree63
+    (concreteSelectPrime_irreducible_size engine provider initialRng
+      useLargePrime f)
+    hhensel hhenselFits hcanonical hprimitive hnonempty hdegree hdegree63
       leading hleading output hrun
 
 /-- Outer refinement with both source callees instantiated: prime selection
@@ -5480,14 +5554,10 @@ theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
       (if useLargePrime then
         ((18446744073709551615 : UInt64) - 58).toNat
       else (2 : UInt64).toNat))
-    (hphysical : ∀ selection,
-      concreteSelectPrime engine provider initialRng f useLargePrime =
-          .ok selection →
-        SelectedPrimePhysical selection)
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @StrictHensel.HenselLiftEntryInvariant candidate.dense
+      @HenselLiftEntryReadiness candidate.dense
         StrictHensel.concreteDivmodTermination candidate.providers.mul
         f selection.factors aTarget)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
@@ -5507,12 +5577,17 @@ theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
       (output.toList.map SparsePolyZZ.toPoly) := by
   exact concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
     engine provider initialRng (concreteHenselLift engine provider)
-    useLargePrime f hinitialPrimeCorrect hphysical
+    useLargePrime f hinitialPrimeCorrect
     (by
-      intro selection hp hselected aTarget henselOutput hhenselRun
+      intro selection hp aTarget henselOutput hhenselRun
       exact concreteHenselLift_success engine provider f selection.factors
         selection.prime aTarget hp
         (hhenselInvariant selection hp aTarget) henselOutput hhenselRun)
+    (by
+      intro selection hp aTarget henselOutput hhenselRun
+      exact concreteHenselLift_factorCountFits_of_success engine provider f
+        selection.factors selection.prime aTarget hp henselOutput
+        hhenselRun)
     hcanonical hprimitive hnonempty hdegree hdegree62 hdegree63 leading
     hleading output hrun
 

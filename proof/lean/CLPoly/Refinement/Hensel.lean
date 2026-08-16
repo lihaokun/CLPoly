@@ -13770,12 +13770,13 @@ theorem strictHenselTreeBuildRawIR_succeeds
     (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
       0 < index → (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat
         (getElem factors index hindex)).Monic)
-    (htwo : 2 ≤ factors.size) :
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31) :
     ∃ output,
       Generated.StrictHensel.__hensel_tree_build_raw_ir
           (strictHenselTreeBuildRawOps this mulProvider) factors this._p =
         .ok output ∧
       1 ≤ output.size := by
+  norm_num at hfactorFits
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
@@ -13784,7 +13785,9 @@ theorem strictHenselTreeBuildRawIR_succeeds
     ⟨output, hrun, hframe, hrootBound, hsizeExact, hrootTopology,
       hrootInvariant, hrawCertificate, hsemanticCertificate, hcanonical⟩
   refine ⟨output, ?_, by simpa using hframe.1⟩
-  simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
+  simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir,
+    Generated.StrictHensel.__hensel_factor_count_fits_ir, htwo,
+    hfactorFits] using hrun
 
 /-- Semantic raw-to-safe entry theorem for the generated tree constructor.
 In addition to executing the real root allocation and recursion, it exposes
@@ -13800,7 +13803,7 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
     (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
       0 < index → (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat
         (getElem factors index hindex)).Monic)
-    (htwo : 2 ≤ factors.size) :
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31) :
     ∃ output,
       Generated.StrictHensel.__hensel_tree_build_raw_ir
           (strictHenselTreeBuildRawOps this mulProvider) factors this._p =
@@ -13808,6 +13811,7 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
       ∃ hroot : 0 < output.size,
       HenselTreeNodeGCDInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
+  norm_num at hfactorFits
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
@@ -13817,7 +13821,9 @@ theorem strictHenselTreeBuildRawIR_refines_gcd
       hrawCertificate, hsemanticCertificate, hcanonical⟩
   have hroot : 0 < output.size := by simpa using hframe.1
   exact ⟨output, by
-    simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun,
+    simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir,
+      Generated.StrictHensel.__hensel_factor_count_fits_ir, htwo,
+      hfactorFits] using hrun,
     hroot, hinvariant⟩
 
 /-- The actual number of allocated nodes is exactly the node count of the
@@ -13834,7 +13840,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
     (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
       0 < index → (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat
         (getElem factors index hindex)).Monic)
-    (htwo : 2 ≤ factors.size) :
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31) :
     let tree := henselTreeBuildTopology 0 factors.size 0
     ∃ output,
       Generated.StrictHensel.__hensel_tree_build_raw_ir
@@ -13846,6 +13852,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
       HenselTreeNodeGCDInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
   dsimp only
+  norm_num at hfactorFits
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
@@ -13859,7 +13866,9 @@ theorem strictHenselTreeBuildRawIR_refines_topology_size
     (by simpa using htwo)
   have hroot : 0 < output.size := by simpa using hframe.1
   refine ⟨output, ?_, hroot, ?_, by simp, hinvariant⟩
-  · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
+  · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir,
+      Generated.StrictHensel.__hensel_factor_count_fits_ir, htwo,
+      hfactorFits] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
 
@@ -13876,7 +13885,7 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root
     (hfactorsMonicAfterZero : ∀ index (hindex : index < factors.size),
       0 < index → (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat
         (getElem factors index hindex)).Monic)
-    (htwo : 2 ≤ factors.size)
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31)
     (hcoprime : IsCoprime
       (henselFactorRangeProduct this._p.toNat factors
         (factors.size / 2) 0)
@@ -13890,7 +13899,8 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) := by
   rcases strictHenselTreeBuildRawIR_refines_gcd this hcfg mulProvider
-      factors hfactors hfactorsNonempty hfactorsMonicAfterZero htwo with
+      factors hfactors hfactorsNonempty hfactorsMonicAfterZero htwo
+      hfactorFits with
     ⟨output, hrun, hroot, hinvariant⟩
   exact ⟨output, hrun, hroot,
     hinvariant.toInitial (by simpa using hcoprime)⟩
@@ -13913,7 +13923,7 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root_of_pairwise
       i < j → IsCoprime
         (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
         (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat (getElem factors j hj)))
-    (htwo : 2 ≤ factors.size) :
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31) :
     ∃ output,
       Generated.StrictHensel.__hensel_tree_build_raw_ir
           (strictHenselTreeBuildRawOps this mulProvider) factors this._p =
@@ -13923,6 +13933,7 @@ theorem strictHenselTreeBuildRawIR_refines_initial_root_of_pairwise
         (getElem output 0 hroot) := by
   apply strictHenselTreeBuildRawIR_refines_initial_root this hcfg
     mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero htwo
+      hfactorFits
   exact henselFactorRangeProducts_isCoprime this._p.toNat factors hpairwise
     0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
 
@@ -13943,7 +13954,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
       i < j → IsCoprime
         (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
         (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat (getElem factors j hj)))
-    (htwo : 2 ≤ factors.size)
+    (htwo : 2 ≤ factors.size) (hfactorFits : factors.size < 2 ^ 31)
     (hfitsInt32 : henselTreeInternalNodeCount 0 factors.size < 2 ^ 31) :
     let tree := henselTreeBuildTopology 0 factors.size 0
     ∃ output,
@@ -13965,6 +13976,7 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
       HenselArrayCanonical output ∧
       HenselArrayHOneHead output := by
   dsimp only
+  norm_num at hfactorFits
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
       #[default] 0 factors.size
@@ -14005,7 +14017,9 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
     simpa [heq] using hOneHead
   refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract,
     hsemanticCertificate, ?_, hbuilderCanonical, hbuilderOneHead⟩
-  · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
+  · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir,
+      Generated.StrictHensel.__hensel_factor_count_fits_ir, htwo,
+      hfactorFits] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
   · exact hchildren.1
@@ -14027,6 +14041,7 @@ structure HenselLiftEntryInvariant
   targetNonnegative : ∀ target,
     HenselLiftTargetCorrect f this._p aTarget target → 0 ≤ target
   factorCount : 2 ≤ factors.size
+  factorCountFits : factors.size < 2 ^ 31
   topologyFits : henselTreeInternalNodeCount 0 factors.size < 2 ^ 31
   adjustedCanonical : ∀ adjusted,
     HenselAdjustFirstFactorCorrect f factors this._p adjusted →
@@ -14303,6 +14318,7 @@ private theorem henselLiftUpolyRawIR_run_of_stages
     (target : ZZ) (nodes liftedNodes : Array HenselNode)
     (outputM : Nat) (extracted normalized : Array SparsePolyZZ)
     (hcount : 2 ≤ factors.size)
+    (hfactorFits : factors.size < 2 ^ 31)
     (htarget : Generated.StrictHensel.__hensel_lift_target_raw_ir
       f p aTarget = .ok target)
     (htargetNonnegative : 0 ≤ target)
@@ -14321,8 +14337,9 @@ private theorem henselLiftUpolyRawIR_run_of_stages
     Generated.StrictHensel.__hensel_lift_upoly_raw_ir stepOps treeOps
       f factors p aTarget hp = .ok (normalized, outputM) := by
   rw [Generated.StrictHensel.__hensel_lift_upoly_raw_ir]
-  simp only [hcount, ↓reduceIte, pure, Except.pure, htarget, bind,
-    Except.bind]
+  simp only [hcount, ↓reduceIte,
+    Generated.StrictHensel.__hensel_factor_count_fits_ir, hfactorFits,
+    pure, Except.pure, htarget, bind, Except.bind]
   split
   · simp only [hadjust, Except.bind]
     rw [hbuild]
@@ -14333,6 +14350,30 @@ private theorem henselLiftUpolyRawIR_run_of_stages
     simp only [Except.bind]
     rw [hnormalize]
   · contradiction
+
+/-- A successful concrete Hensel entry proves that the source `size_t` factor
+count survived its explicit `int`-range guard. -/
+theorem __hensel_lift_upoly_raw_ir_factorCountFits_of_success
+    (stepOps : Generated.StrictHensel.HenselStepRawOps)
+    (treeOps : Generated.StrictHensel.HenselTreeBuildRawOps)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : 2 ≤ p.toNat)
+    (output : Array SparsePolyZZ × ZZ)
+    (hrun : Generated.StrictHensel.__hensel_lift_upoly_raw_ir stepOps treeOps
+      f factors p aTarget hp = .ok output) :
+    factors.size < 2 ^ 31 := by
+  rw [Generated.StrictHensel.__hensel_lift_upoly_raw_ir] at hrun
+  by_cases hcount : 2 ≤ factors.size
+  · simp only [hcount, ↓reduceIte, pure, Except.pure, bind,
+      Except.bind] at hrun
+    by_cases hfits : factors.size < 2147483648
+    · norm_num at hfits ⊢
+      exact hfits
+    · simp [Generated.StrictHensel.__hensel_factor_count_fits_ir,
+        hfits] at hrun
+  · simp only [hcount, ↓reduceIte, pure, Except.pure, bind,
+      Except.bind] at hrun
+    contradiction
 
 /-- Genuine raw-to-safe and L1-to-L2 composition theorem for the full C++
 Hensel entry.  Every intermediate is obtained from the strict generated raw
@@ -14378,6 +14419,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
       (hadjustCorrect.monic_of_pos hinvariant.factorsMonic)
       (hinvariant.adjustedPairwise adjusted hadjustCorrect)
       (by rw [hadjustSize]; exact hinvariant.factorCount)
+      (by rw [hadjustSize]; exact hinvariant.factorCountFits)
       (by rw [hadjustSize]; exact hinvariant.topologyFits) with
     ⟨nodes, hnodesRun, hroot, hsize, hrootIndex, hleft, hright,
       hextractInvariant, hsemanticInvariant, hrootInvariant,
@@ -14443,7 +14485,8 @@ theorem __hensel_lift_upoly_raw_ir_refines
       hliftedOneHead, hextractCorrect,
       hnormalizeCorrect, rfl, hnormalizedCanonical, hnormalizedOneHead⟩⟩
   apply henselLiftUpolyRawIR_run_of_stages
-    (hcount := hinvariant.factorCount) (htarget := htargetRun)
+    (hcount := hinvariant.factorCount)
+    (hfactorFits := hinvariant.factorCountFits) (htarget := htargetRun)
     (htargetNonnegative := htargetNonnegative) (hadjust := hadjustRun)
     (hbuild := hnodesRun)
   · simpa [htreeEq] using hliftRun

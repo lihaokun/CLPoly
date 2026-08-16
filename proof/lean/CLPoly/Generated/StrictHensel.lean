@@ -754,14 +754,22 @@ decreasing_by
   · have := henselTreeMidpoint_gt_start start stop hlength
     omega
 
-/-- Strict entry lowering: assert at least two factors, allocate the root,
-then execute the well-founded recursive source builder. -/
+/-- Exact lowering of the source guard protecting every `size_t` to `int`
+conversion used by the Hensel topology. -/
+def __hensel_factor_count_fits_ir (factorCount : Nat) : Bool :=
+  factorCount < 2 ^ 31
+
+/-- Strict entry lowering: assert at least two factors, check that every
+source `int` topology index is representable, allocate the root, then execute
+the well-founded recursive source builder. -/
 def __hensel_tree_build_raw_ir (ops : HenselTreeBuildRawOps)
     (factors : Array SparsePolyZp) (p : UInt64) :
     RawExec (Array HenselNode) :=
   if 2 ≤ factors.size then
-    __hensel_tree_build_recursive_raw_ir ops factors #[default] 0
-      factors.size 0
+    if __hensel_factor_count_fits_ir factors.size then
+      __hensel_tree_build_recursive_raw_ir ops factors #[default] 0
+        factors.size 0
+    else .error .arithmeticOverflow
   else .error .assertionFailure
 
 /-- Exact source selection of the lifting threshold.  The zero exponent uses
@@ -790,6 +798,8 @@ def __hensel_lift_upoly_raw_ir (stepOps : HenselStepRawOps)
     (aTarget : Int32) (hp : 2 ≤ p.toNat) :
     RawExec (Array SparsePolyZZ × ZZ) := do
   if 2 ≤ factors.size then pure () else .error .assertionFailure
+  if __hensel_factor_count_fits_ir factors.size then pure ()
+  else .error .arithmeticOverflow
   let tree := henselTreeBuildTopologyRawIR 0 factors.size 0
   let targetZZ ← __hensel_lift_target_raw_ir f p aTarget
   if htarget : 0 ≤ targetZZ then

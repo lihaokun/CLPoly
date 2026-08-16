@@ -1047,7 +1047,9 @@ theorem strictEDFState_refines
     (termination : Generated.StrictEDF.EDFTermination
       (strictEDFRawOps engine this providers))
     (state : Generated.StrictEDF.EDFState
-      (strictEDFRawOps engine this providers)) :
+      (strictEDFRawOps engine this providers))
+    (hresultCanonical : ∀ factor ∈ state.result.toList,
+      SparsePolyZp.Canonical this._p.toNat factor) :
     ∃ output rng factors,
       Generated.StrictEDF.__edf_Zp_raw_ir_state
           (strictEDFRawOps engine this providers)
@@ -1056,7 +1058,9 @@ theorem strictEDFState_refines
       edfResultToL2 this._p.toNat output =
         edfResultToL2 this._p.toNat state.result ++ factors ∧
       EDFCorrect (SparsePolyZp.toPoly this._p.toNat state.f)
-        state.d.toNat factors := by
+        state.d.toNat factors ∧
+      ∀ factor ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat factor := by
   generalize hmeasure : Generated.StrictEDF.edfMeasure state.f = measure
   induction measure using Nat.strong_induction_on generalizing state with
   | h measure ih =>
@@ -1084,11 +1088,18 @@ theorem strictEDFState_refines
           simpa [strictEDFRawOps] using hmake
         rw [certifyRawExec_ok_eq _ _ hmakeOps]
         refine ⟨state.result.push state.f, state.rng,
-          [SparsePolyZp.toPoly this._p.toNat state.f], rfl, ?_, ?_⟩
+          [SparsePolyZp.toPoly this._p.toNat state.f], rfl, ?_, ?_, ?_⟩
         · simp
         · exact base_factor_correct
             (SparsePolyZp.toPoly this._p.toNat state.f) state.d.toNat
             hvalid.monic hvalid.dPositive hdegreeEq hvalid.equalDegree
+        · intro factor hfactor
+          rw [Array.toList_push, List.mem_append] at hfactor
+          rcases hfactor with hfactor | hfactor
+          · exact hresultCanonical factor hfactor
+          · have heq : factor = state.f := by simpa using hfactor
+            subst factor
+            exact hvalid.canonical
       next hnotBase =>
         split
         next hnonpositive =>
@@ -1131,9 +1142,9 @@ theorem strictEDFState_refines
             dsimp [leftState]
             rw [← hmeasure]
             exact hstep.2.2.1
-          rcases ih _ hleftMeasure leftState rfl with
+          rcases ih _ hleftMeasure leftState (by simpa [leftState] using hresultCanonical) rfl with
             ⟨leftOutput, leftRng, leftFactors, hleftRun,
-              hleftDecode, hleftCorrect⟩
+              hleftDecode, hleftCorrect, hleftCanonical⟩
           rw [hleftRun]
           let rightState : Generated.StrictEDF.EDFState
               (strictEDFRawOps engine this providers) :=
@@ -1143,9 +1154,10 @@ theorem strictEDFState_refines
             dsimp [rightState]
             rw [← hmeasure]
             exact hstep.2.2.2
-          rcases ih _ hrightMeasure rightState rfl with
+          rcases ih _ hrightMeasure rightState (by
+              simpa [rightState] using hleftCanonical) rfl with
             ⟨output, rng, rightFactors, hrightRun,
-              hrightDecode, hrightCorrect⟩
+              hrightDecode, hrightCorrect, hrightCanonical⟩
           have hproduct := strictSplitCalls_product engine this providers
             state.f state.d splitState.rngBefore splitState.rng
             splitState.randomPoly splitState.factor hRaw gMonic hMonic
@@ -1162,7 +1174,7 @@ theorem strictEDFState_refines
             (SparsePolyZp.toPoly this._p.toNat hMonic) state.d.toNat
             hassociated leftFactors rightFactors hleftCorrect hrightCorrect
           refine ⟨output, rng, leftFactors ++ rightFactors, hrightRun, ?_,
-            hcorrect⟩
+            hcorrect, hrightCanonical⟩
           rw [hrightDecode, hleftDecode]
           simp [rightState, leftState, List.append_assoc]
 
@@ -1176,7 +1188,9 @@ theorem strictEDFEntryIR_refines_edf
     (termination : Generated.StrictEDF.EDFTermination
       (strictEDFRawOps engine this providers))
     (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
-    (rng : State) (hinvariant : EDFEntryInvariant this f d) :
+    (rng : State) (hinvariant : EDFEntryInvariant this f d)
+    (hresultCanonical : ∀ factor ∈ result.toList,
+      SparsePolyZp.Canonical this._p.toNat factor) :
     ∃ output rng' factors,
       Generated.StrictEDF.__edf_Zp_raw_ir
           (strictEDFRawOps engine this providers)
@@ -1184,11 +1198,13 @@ theorem strictEDFEntryIR_refines_edf
           result f d rng hinvariant = .ok (output, rng') ∧
       edfResultToL2 this._p.toNat output =
         edfResultToL2 this._p.toNat result ++ factors ∧
-      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors ∧
+      ∀ factor ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat factor := by
   simpa [Generated.StrictEDF.__edf_Zp_raw_ir] using
     strictEDFState_refines engine this providers termination
       (⟨result, f, d, rng, hinvariant⟩ : Generated.StrictEDF.EDFState
-        (strictEDFRawOps engine this providers))
+        (strictEDFRawOps engine this providers)) hresultCanonical
 
 end StrictEDF
 

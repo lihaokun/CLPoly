@@ -154,6 +154,34 @@ theorem appendFactorsLoop_refines (p : Nat) (source : Array SparsePolyZp)
           List.drop_eq_nil_iff.mpr (Nat.le_of_not_gt hindex)
         simp [factorArrayToL2, hdrop]
 
+theorem appendFactorsLoop_preserves_canonical (p : Nat)
+    (source : Array SparsePolyZp) (index : Nat)
+    (result : Array SparsePolyZp)
+    (hsource : ∀ factor ∈ source.toList,
+      SparsePolyZp.Canonical p factor)
+    (hresult : ∀ factor ∈ result.toList,
+      SparsePolyZp.Canonical p factor) :
+    ∀ factor ∈
+        (Generated.StrictSelectPrime.appendFactorsLoop source index result).toList,
+      SparsePolyZp.Canonical p factor := by
+  induction hmeasure : source.size - index using Nat.strong_induction_on
+      generalizing index result with
+  | h measure ih =>
+      rw [Generated.StrictSelectPrime.appendFactorsLoop]
+      split
+      next hindex =>
+        apply ih (source.size - (index + 1)) (by omega)
+          (index + 1) (result.push source[index])
+        · intro factor hfactor
+          simp only [Array.toList_push, List.mem_append,
+            List.mem_singleton] at hfactor
+          rcases hfactor with hfactor | rfl
+          · exact hresult factor hfactor
+          · exact hsource source[index]
+              (List.getElem_mem (by simpa using hindex))
+        · rfl
+      next hindex => exact hresult
+
 /-- The exact nested DDF-component/EDF-factor range-for returns the flattening
 of the actual strict EDF calls, including the concrete final RNG state. -/
 theorem factorComponentsLoop_refines {State : Type}
@@ -167,7 +195,9 @@ theorem factorComponentsLoop_refines {State : Type}
     (components : Array (SparsePolyZp × UInt64))
     (hready : ∀ item ∈ components.toList,
       StrictEDF.EDFEntryInvariant this item.1 item.2)
-    (index : Nat) (rng : State) (result : Array SparsePolyZp) :
+    (index : Nat) (rng : State) (result : Array SparsePolyZp)
+    (hresultCanonical : ∀ factor ∈ result.toList,
+      SparsePolyZp.Canonical this._p.toNat factor) :
     ∃ output rng' factors,
       Generated.StrictSelectPrime.factorComponentsLoop ops components index
           rng result = .ok (output, rng') ∧
@@ -175,7 +205,9 @@ theorem factorComponentsLoop_refines {State : Type}
         factorArrayToL2 this._p.toNat result ++ factors ∧
       StrictFactorZp.componentSuffixProduct this._p.toNat components index =
         factors.prod ∧
-      ∀ q ∈ factors, Irreducible q ∧ Monic q := by
+      (∀ q ∈ factors, Irreducible q ∧ Monic q) ∧
+      ∀ factor ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat factor := by
   induction hmeasure : components.size - index using Nat.strong_induction_on
       generalizing index rng result with
   | h measure ih =>
@@ -186,18 +218,23 @@ theorem factorComponentsLoop_refines {State : Type}
         have hmem : component ∈ components.toList :=
           List.getElem_mem (by simpa using hindex)
         have hinvariant := hready component hmem
-        rcases StrictFactorZp.strictEDFCall_refines engine this providers
-            termination component.1 component.2 rng hinvariant with
-          ⟨edfOutput, rngNext, edfFactors, hedfRun, hedfDecode, hedfCorrect⟩
+        obtain ⟨edfOutput, rngNext, edfFactors, hedfRun, hedfDecode,
+            hedfPayload⟩ := StrictFactorZp.strictEDFCall_refines engine this providers
+            termination component.1 component.2 rng hinvariant
+        have hedfCorrect := hedfPayload.1
+        have hedfOutputCanonical := hedfPayload.2
         simp only
         rw [hedf]
         rw [hedfRun]
         rcases ih (components.size - (index + 1)) (by omega)
             (index + 1) rngNext
             (Generated.StrictSelectPrime.appendFactorsLoop edfOutput 0 result)
+            (appendFactorsLoop_preserves_canonical this._p.toNat edfOutput 0
+              result hedfOutputCanonical hresultCanonical)
             rfl with ⟨output, rng', tail, htailRun, htailDecode,
-              htailProduct, htailQuality⟩
-        refine ⟨output, rng', edfFactors ++ tail, htailRun, ?_, ?_, ?_⟩
+              htailProduct, htailQuality, htailCanonical⟩
+        refine ⟨output, rng', edfFactors ++ tail, htailRun, ?_, ?_, ?_,
+          htailCanonical⟩
         · rw [htailDecode, appendFactorsLoop_refines]
           simpa [factorArrayToL2, hedfDecode, List.append_assoc]
         · have hsuffix : components.toList.drop index =
@@ -222,7 +259,8 @@ theorem factorComponentsLoop_refines {State : Type}
         have hdrop : components.toList.drop index = [] :=
           List.drop_eq_nil_iff.mpr (Nat.le_of_not_gt hindex)
         exact ⟨result, rng, [], rfl, by simp, by
-          simp [StrictFactorZp.componentSuffixProduct, hdrop], by simp⟩
+          simp [StrictFactorZp.componentSuffixProduct, hdrop], by simp,
+          hresultCanonical⟩
 
 /-- A normalized GCD of degree zero is a unit, hence the source polynomial
 and its derivative are coprime and the polynomial is squarefree. -/
@@ -313,13 +351,18 @@ def SelectionCorrect (f : Polynomial Int) (result : PrimeSelectionResult) : Prop
   CandidateCorrect f result.prime.toNat
     (factorArrayToL2 result.prime.toNat result.factors)
 
+def SelectionPhysical (result : PrimeSelectionResult) : Prop :=
+  ∀ factor ∈ result.factors.toList,
+    SparsePolyZp.Canonical result.prime.toNat factor
+
 /-- The mutable `best` fields are either still at their exact C++ initial
 state, or contain a genuinely refined candidate whose stored count agrees
 with the concrete array. -/
 def BestInvariant {State : Type} (f : Polynomial Int)
-    (state : Generated.StrictSelectPrime.LoopState State) : Prop :=
+  (state : Generated.StrictSelectPrime.LoopState State) : Prop :=
   (state.tried = 0 ∧ state.bestCount = 18446744073709551615) ∨
   (0 < state.tried ∧ SelectionCorrect f state.best ∧
+    SelectionPhysical state.best ∧
     state.bestCount = state.best.factors.size)
 
 /-- Execution-only contract used by the outer generated loop.  It speaks
@@ -332,7 +375,9 @@ def CandidateExecutionCorrect {State : Type}
   ∀ p rng fp factors rng', Nat.Prime p.toNat →
     tryCandidate f degF lcF p rng = .ok (.factored fp factors rng') →
     CandidateCorrect (SparsePolyZZ.toPoly f) p.toNat
-      (factorArrayToL2 p.toNat factors)
+        (factorArrayToL2 p.toNat factors) ∧
+      (∀ factor ∈ factors.toList,
+        SparsePolyZp.Canonical p.toNat factor)
 
 theorem selectPrimeLoop_refines {State : Type}
     (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
@@ -349,13 +394,15 @@ theorem selectPrimeLoop_refines {State : Type}
     (hrun : Generated.StrictSelectPrime.selectPrimeLoop
       (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
       f degF lcF useLargePrime maxTries state = .ok result) :
-    SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+    SelectionCorrect (SparsePolyZZ.toPoly f) result ∧
+      SelectionPhysical result := by
   let motive : Generated.StrictSelectPrime.LoopState State → Prop := fun state =>
     Nat.Prime state.p.toNat → BestInvariant (SparsePolyZZ.toPoly f) state →
       ∀ result, Generated.StrictSelectPrime.selectPrimeLoop
         (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
         f degF lcF useLargePrime maxTries state = .ok result →
-        SelectionCorrect (SparsePolyZZ.toPoly f) result
+        SelectionCorrect (SparsePolyZZ.toPoly f) result ∧
+          SelectionPhysical result
   have hall : ∀ state, motive state := by
     apply Generated.StrictSelectPrime.selectPrimeLoop.induct
       (ops := selectPrimeRawOps tryCandidate)
@@ -370,7 +417,7 @@ theorem selectPrimeLoop_refines {State : Type}
       cases hresult
       rcases hinvariant with hinitial | hbest
       · omega
-      · simpa [SelectionCorrect] using hbest.2.1
+      · exact ⟨hbest.2.1, hbest.2.2.1⟩
     · intro state hnotdone fault hcandError _ _ result hrun
       rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
         dif_neg hnotdone, hcandError] at hrun
@@ -387,7 +434,7 @@ theorem selectPrimeLoop_refines {State : Type}
         result hrun
     · intro state hnotdone fp factors rng' hcand hsmall hprime _ result hrun
       have hcorrect := hcandidate state.p state.rng fp factors rng' hprime hcand
-      have hnonempty := hcorrect.factors_nonempty hdegree
+      have hnonempty := hcorrect.1.factors_nonempty hdegree
       have harrayNonempty : factors.isEmpty = false := by
         apply Bool.eq_false_of_not_eq_true
         intro hempty
@@ -396,7 +443,7 @@ theorem selectPrimeLoop_refines {State : Type}
       simp [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
         hnotdone, hcand, hsmall, harrayNonempty] at hrun
       subst result
-      simpa [SelectionCorrect] using hcorrect
+      simpa [SelectionCorrect, SelectionPhysical] using hcorrect
     · intro state hnotdone fp factors rng' hcand hlarge fault hnextError
         _ _ result hrun
       rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
@@ -430,29 +477,119 @@ theorem selectPrimeLoop_refines {State : Type}
           unfold BestInvariant
           right
           dsimp only
-          refine ⟨by omega, ?_, ?_⟩
-          · dsimp [best]
+          have hchosen : SelectionCorrect (SparsePolyZZ.toPoly f) best ∧
+              SelectionPhysical best := by
+            dsimp [best]
             split
-            next hbetter => simpa [SelectionCorrect] using hcorrect
+            next hbetter => exact ⟨by simpa [SelectionCorrect] using hcorrect.1,
+              by simpa [SelectionPhysical] using hcorrect.2⟩
             next hnotBetter =>
               rcases hinvariant with hinitial | hbest
               · exact False.elim (hnotBetter (by
                   rw [hinitial.2]
-                  simpa [factorArrayToL2] using hcorrect.sizeFits))
-              · exact hbest.2.1
-          · dsimp [best, bestCount]
-            split
-            next hbetter => simp [Nat.min_eq_right (Nat.le_of_lt hbetter)]
-            next hnotBetter =>
-              rcases hinvariant with hinitial | hbest
-              · exact False.elim (hnotBetter (by
-                  rw [hinitial.2]
-                  simpa [factorArrayToL2] using hcorrect.sizeFits))
-              · rw [hbest.2.2]
-                exact Nat.min_eq_left (Nat.le_of_not_gt
-                  (hbest.2.2 ▸ hnotBetter))
+                  simpa [factorArrayToL2] using hcorrect.1.sizeFits))
+              · exact ⟨hbest.2.1, hbest.2.2.1⟩
+          refine ⟨by omega, hchosen.1, hchosen.2, ?_⟩
+          dsimp [best, bestCount]
+          split
+          next hbetter => simp [Nat.min_eq_right (Nat.le_of_lt hbetter)]
+          next hnotBetter =>
+            rcases hinvariant with hinitial | hbest
+            · exact False.elim (hnotBetter (by
+                rw [hinitial.2]
+                simpa [factorArrayToL2] using hcorrect.1.sizeFits))
+            · rw [hbest.2.2.2]
+              exact Nat.min_eq_left (Nat.le_of_not_gt
+                (hbest.2.2.2 ▸ hnotBetter))
         · exact hrun
   exact hall state hprime hinvariant result hrun
+
+/-- The generated loop sets `irreducible` only on its literal at-most-one
+factor return branch.  This is a control-flow fact about the concrete result,
+not a certificate supplied by the caller. -/
+theorem selectPrimeLoop_irreducible_size {State : Type}
+    (tryCandidate : SparsePolyZZ → Int64 → ZZ → UInt64 → State →
+      RawExec (Generated.StrictSelectPrime.CandidateResult State))
+    (f : SparsePolyZZ) (degF : Int64) (lcF : ZZ)
+    (useLargePrime : Bool) (maxTries : Nat)
+    (state : Generated.StrictSelectPrime.LoopState State)
+    (result : PrimeSelectionResult)
+    (hrun : Generated.StrictSelectPrime.selectPrimeLoop
+      (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
+      f degF lcF useLargePrime maxTries state = .ok result) :
+    result.irreducible = true → result.factors.size ≤ 1 := by
+  let motive : Generated.StrictSelectPrime.LoopState State → Prop := fun state =>
+    ∀ result, Generated.StrictSelectPrime.selectPrimeLoop
+      (selectPrimeRawOps tryCandidate) (selectPrimeTermination tryCandidate)
+      f degF lcF useLargePrime maxTries state = .ok result →
+      result.irreducible = true → result.factors.size ≤ 1
+  have hall : ∀ state, motive state := by
+    apply Generated.StrictSelectPrime.selectPrimeLoop.induct
+      (ops := selectPrimeRawOps tryCandidate)
+      (termination := selectPrimeTermination tryCandidate)
+      (f := f) (degF := degF) (lcF := lcF)
+      (useLargePrime := useLargePrime) (maxTries := maxTries)
+      (motive := motive)
+    · intro state hdone result hrun hirreducible
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1, dif_pos hdone] at hrun
+      have hresult := Except.ok.inj hrun
+      subst result
+      simp at hirreducible
+    · intro state hnotdone fault hcandError result hrun _
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcandError] at hrun
+      contradiction
+    · intro state hnotdone rng' hcand fault hnextError result hrun _
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcand, hnextError] at hrun
+      contradiction
+    · intro state hnotdone rng' hcand p' hnext ih result hrun hirreducible
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone, hcand, hnext] at hrun
+      exact ih result hrun hirreducible
+    · intro state hnotdone fp factors rng' hcand hsmall result hrun _
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone] at hrun
+      simp only [hcand] at hrun
+      rw [if_pos hsmall] at hrun
+      have hresult := Except.ok.inj hrun
+      clear hrun
+      cases hresult
+      dsimp only
+      split
+      next hempty =>
+        have hsize : factors.size = 0 := by
+          simpa [Array.isEmpty] using hempty
+        simp [hsize]
+      next _ => exact hsmall
+    · intro state hnotdone fp factors rng' hcand hlarge fault hnextError
+        result hrun _
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone] at hrun
+      simp only [hcand] at hrun
+      rw [if_neg hlarge] at hrun
+      split at hrun
+      next fault' hcase =>
+        rw [hnextError] at hcase
+        cases hrun
+      next p' hcase =>
+        rw [hnextError] at hcase
+        contradiction
+    · intro state hnotdone fp factors rng' hcand hlarge best bestCount p' hnext ih
+        result hrun hirreducible
+      rw [Generated.StrictSelectPrime.selectPrimeLoop.eq_1,
+        dif_neg hnotdone] at hrun
+      simp only [hcand] at hrun
+      rw [if_neg hlarge] at hrun
+      split at hrun
+      next fault hcase =>
+        rw [hnext] at hcase
+        contradiction
+      next p'' hcase =>
+        have hp' : p'' = p' := Except.ok.inj (hcase.symm.trans hnext)
+        subst p''
+        exact ih result hrun hirreducible
+  exact hall state result hrun
 
 private theorem canonical_prime_word_eq
     (p : UInt64) (f : SparsePolyZp)
@@ -491,7 +628,9 @@ theorem tryCandidateRaw_factored_refines {State : Type}
       (strictCandidateRawOps engine physical edfTermination)
       f degF lcF p rng = .ok (.factored fp factors rng')) :
     CandidateCorrect (SparsePolyZZ.toPoly f) p.toNat
-      (factorArrayToL2 p.toNat factors) := by
+        (factorArrayToL2 p.toNat factors) ∧
+      (∀ factor ∈ factors.toList,
+        SparsePolyZp.Canonical p.toNat factor) := by
   let rawMod := polynomial_mod f p
   letI : Fact (Nat.Prime p.toNat) := ⟨physical.prime⟩
   have hp : 0 < p.toNat := physical.prime.pos
@@ -665,9 +804,9 @@ theorem tryCandidateRaw_factored_refines {State : Type}
           rcases factorComponentsLoop_refines engine physical.dense
               physical.providers edfTermination
               (strictCandidateRawOps engine physical edfTermination) rfl
-              components hedfReady 0 rng #[] with
+              components hedfReady 0 rng #[] (by simp) with
             ⟨output, rngOut, decoded, hloops, hdecode, hcomponentProduct,
-              hquality⟩
+              hquality, houtputCanonical⟩
           have hloops' := hloops
           simp only [strictCandidateRawOps] at hloops'
           rw [hloops'] at hrun
@@ -698,7 +837,7 @@ theorem tryCandidateRaw_factored_refines {State : Type}
                 StrictDDF.ddfResultToL2, Function.comp_def]
             exact Associated.trans hddfProduct (by
               rw [← hcomponentAll, hcomponentProductP])
-          refine ⟨?_, ?_, ?_, ?_⟩
+          refine ⟨⟨?_, ?_, ?_, ?_⟩, houtputCanonical⟩
           · have hlcModNonzero : (lcF : ZMod p.toNat) ≠ 0 := by
               intro hlcZero
               apply hlcNonzero
@@ -806,7 +945,8 @@ theorem __select_prime_raw_ir_refines {State : Type}
       (selectPrimeRawOps (concreteTryCandidate engine provider))
       (selectPrimeTermination (concreteTryCandidate engine provider))
       initialRng useLargePrime f = .ok result) :
-    SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+    SelectionCorrect (SparsePolyZZ.toPoly f) result ∧
+      SelectionPhysical result := by
   unfold Generated.StrictSelectPrime.__select_prime_raw_ir at hrun
   split at hrun
   next hguard => contradiction

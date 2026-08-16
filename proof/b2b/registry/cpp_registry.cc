@@ -29,6 +29,11 @@ json dispatch(const std::string& fn, const json& args) {
         return serialize_Bool(clpoly::__needs_zassenhaus_safety_net(
             result_count, modular_count, at_full_precision));
     }
+    if (fn == "__hensel_factor_count_fits") {
+        uint64_t factor_count = parse_UInt64(args.at(0));
+        return serialize_Bool(clpoly::__hensel_factor_count_fits(
+            static_cast<size_t>(factor_count)));
+    }
 
     if (fn == "__make_zp") {
         int64_t  val = parse_Int64(args.at(0));

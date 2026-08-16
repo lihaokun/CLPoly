@@ -702,6 +702,118 @@ theorem henselSelectedProduct_monic
     (by simpa using hactive), Array.getElem_toList hactive]
   exact hentry.outputToPolyModMonic modulus indices[position] hactive
 
+/-- Integer-polynomial version used by the concrete scalar-pruning loops. -/
+theorem henselSelectedIntegerProduct_monic
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p
+      aTarget output)
+    (indices : Array Nat)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < output.1.size) :
+    ((StrictRecombine.selectSourceIndices output.1.toList indices.toList).map
+      SparsePolyZZ.toPoly).prod.Monic := by
+  apply monic_list_product
+  intro candidate hcandidate
+  rcases List.mem_map.mp hcandidate with ⟨lifted, hlifted, rfl⟩
+  unfold StrictRecombine.selectSourceIndices at hlifted
+  rcases List.mem_map.mp hlifted with ⟨index, hindex, rfl⟩
+  rcases List.mem_iff_getElem.mp hindex with
+    ⟨position, hposition, hindexEq⟩
+  have hpositionArray : position < indices.size := by simpa using hposition
+  have hactive := hbound position hpositionArray
+  have hselected : indices[position] = index := by
+    rw [← Array.getElem_toList hpositionArray]
+    exact hindexEq
+  rw [← hselected, getElem!_pos output.1.toList indices[position]
+    (by simpa using hactive), Array.getElem_toList hactive]
+  exact hentry.outputToPolyMonic indices[position] hactive
+
+/-- The first scalar-pruning branch of the literal `zassenhausAttempt` cannot
+reject a bounded candidate drawn from the actual normalized Hensel output.
+Every selected physical head is one, so the generated accumulator is exactly
+the source leading coefficient; the generated Mignotte precision then makes
+`ZZ.symmetricMod` recover that coefficient literally. -/
+theorem zassenhausLeadingPrune_accepts_hensel_candidate
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {output : Array SparsePolyZZ × ZZ}
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f factors p 0
+      output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (indices : Array Nat)
+    (hbound : ∀ position (hposition : position < indices.size),
+      indices[position] < output.1.size) :
+    ∃ leadingProduct,
+      Generated.StrictRecombine.selectedLeadingProductLoop indices output.1
+        0 leading.2 = .ok leadingProduct ∧
+      ¬(ZZ.symmetricMod leadingProduct output.2 ≠ 0 ∧
+        ZZ.fdiv_r 0 (leading.2 * leading.2)
+          (ZZ.symmetricMod leadingProduct output.2) ≠ 0) := by
+  have hselectedMonic := henselSelectedIntegerProduct_monic hentry indices
+    hbound
+  have hselectedCanonical : ∀ position
+      (hposition : position < indices.size),
+      StrictPolynomialMod.SparsePolyZZCanonical
+        output.1[indices[position]]! := by
+    intro position hposition
+    have hactive := hbound position hposition
+    simpa [getElem!_pos output.1 indices[position] hactive] using
+      hentry.outputCanonical indices[position] hactive
+  have hselectedNonempty : ∀ position
+      (hposition : position < indices.size),
+      output.1[indices[position]]!.isEmpty = false := by
+    intro position hposition
+    have hactive := hbound position hposition
+    rcases hentry.outputOneHead indices[position] hactive with
+      ⟨head, tail, hlist⟩
+    have hsize : 0 < output.1[indices[position]].size := by
+      have hlength := congrArg List.length hlist
+      simp at hlength
+      omega
+    simpa [getElem!_pos output.1 indices[position] hactive,
+      Array.isEmpty, Nat.ne_of_gt hsize]
+  have hleadingValues :=
+    StrictRecombine.selectedLeadingValues_prod_eq_leadingCoeff_of_canonical
+      indices output.1 hbound hselectedCanonical hselectedNonempty
+  have hvaluesOne :
+      (StrictRecombine.selectedLeadingValues indices output.1 0).prod = 1 := by
+    rw [hleadingValues, hselectedMonic.leadingCoeff]
+  have hloop := StrictRecombine.selectedLeadingProductLoop_succeeds indices
+    output.1 0 leading.2 hbound hselectedNonempty
+  rw [hvaluesOne, mul_one] at hloop
+  refine ⟨leading.2, hloop, ?_⟩
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f
+      hcanonical hnonempty
+    rw [hzero] at hhead
+    exact hcanonical.2 f[0] (Array.getElem_mem_toList hnonempty)
+      (by simpa using hhead.symm)
+  have hprecision := StrictRecombine.hensel_output_modulus_bounds_scaled_divisor
+    hentry rfl hcanonical hnonempty hdegree leading hleading
+      (1 : Polynomial Int) hsourceNe (one_dvd _)
+  let modulus := output.2.toNat
+  have hmodulusCast : (modulus : Int) = output.2 := by
+    exact Int.toNat_of_nonneg hprecision.1.le
+  have hmodulus : 0 < modulus := by
+    exact Int.pos_iff_toNat_pos.mp hprecision.1
+  have hleadingBound : leading.2.natAbs * 2 < modulus := by
+    have hzeroBound := hprecision.2 0
+    simpa [modulus, hmodulusCast] using hzeroBound
+  have hrecovered : ZZ.symmetricMod leading.2 output.2 = leading.2 := by
+    rw [← hmodulusCast]
+    exact StrictRecombine.symmetricMod_eq_of_strict_bound leading.2 modulus
+      hmodulus hleadingBound
+  rw [hrecovered]
+  exact StrictRecombine.zassenhaus_prune_condition_false_of_dvd
+    (leading.2 * leading.2) leading.2 (dvd_mul_right _ _)
+
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was
 not omitted: that exact index array was executed and rejected.  This is the

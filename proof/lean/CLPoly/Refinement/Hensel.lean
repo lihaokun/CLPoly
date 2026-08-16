@@ -4768,11 +4768,11 @@ theorem henselSparsePolyZZ_leadingCoeff_eq_head (poly : SparsePolyZZ)
     henselSparseZZTail_coeff_zero_above head.1.deg rest hrestLt, add_zero,
     hheadEq]
 
-theorem HasPhysicalOneHead.toPolyMod_monic
-    {m : Nat} {factor : SparsePolyZZ}
+theorem HasPhysicalOneHead.toPoly_monic
+    {factor : SparsePolyZZ}
     (hhead : HasPhysicalOneHead factor)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical factor) :
-    (toPolyMod m factor).Monic := by
+    (SparsePolyZZ.toPoly factor).Monic := by
   rcases hhead with ⟨head, tail, hlist⟩
   have hsize : 0 < factor.size := by
     have hlength := congrArg List.length hlist
@@ -4781,11 +4781,16 @@ theorem HasPhysicalOneHead.toPolyMod_monic
   have hfirst : factor[0].2 = 1 := by
     have hget := Array.getElem_toList hsize
     simpa [hlist] using (congrArg Prod.snd hget).symm
-  have hmonicInt : (SparsePolyZZ.toPoly factor).Monic := by
-    rw [Polynomial.Monic,
-      henselSparsePolyZZ_leadingCoeff_eq_head factor hcanonical hsize,
-      hfirst]
-  exact hmonicInt.map (Int.castRingHom (ZMod m))
+  rw [Polynomial.Monic,
+    henselSparsePolyZZ_leadingCoeff_eq_head factor hcanonical hsize,
+    hfirst]
+
+theorem HasPhysicalOneHead.toPolyMod_monic
+    {m : Nat} {factor : SparsePolyZZ}
+    (hhead : HasPhysicalOneHead factor)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical factor) :
+    (toPolyMod m factor).Monic := by
+  exact (hhead.toPoly_monic hcanonical).map (Int.castRingHom (ZMod m))
 
 /-- A canonical, fully reduced concrete factor whose decoded modular
 polynomial is monic must literally store coefficient one at its head. -/
@@ -14133,6 +14138,19 @@ theorem HenselLiftEntryCorrect.outputToPolyModMonic
     (modulus index : Nat) (hindex : index < output.1.size) :
     (toPolyMod modulus output.1[index]).Monic := by
   exact HasPhysicalOneHead.toPolyMod_monic
+    (hcorrect.outputOneHead index hindex)
+    (hcorrect.outputCanonical index hindex)
+
+/-- Integer-polynomial form of the same concrete physical-head certificate. -/
+theorem HenselLiftEntryCorrect.outputToPolyMonic
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {factors : Array SparsePolyZp} {p : UInt64}
+    [Fact (Nat.Prime p.toNat)]
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    (hcorrect : HenselLiftEntryCorrect termination f factors p aTarget output)
+    (index : Nat) (hindex : index < output.1.size) :
+    (SparsePolyZZ.toPoly output.1[index]).Monic := by
+  exact HasPhysicalOneHead.toPoly_monic
     (hcorrect.outputOneHead index hindex)
     (hcorrect.outputCanonical index hindex)
 

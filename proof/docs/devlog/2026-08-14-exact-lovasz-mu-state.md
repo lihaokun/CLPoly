@@ -2927,3 +2927,28 @@ changed, so this step has no new C++ regression or b2b change surface.  Next,
 the exact candidate execution will combine this monicity with the generated
 Mignotte precision, both pruning loops, symmetric recovery, and sparse exact
 division completeness to rule out `.rejected`.
+
+## Close the generated leading-coefficient pruning branch
+
+The physical one-head certificate now also yields integer-polynomial monicity,
+both pointwise and for every occurrence-sensitive candidate subproduct.  This
+is stronger than merely knowing monicity modulo the selected prime and follows
+from the same literal Hensel output cells.
+
+`symmetricMod_eq_of_strict_bound` specializes the existing closed-left
+polynomial recovery theorem to the exact scalar `ZZ.symmetricMod` operation.
+It proves that a signed integer strictly inside the half-modulus interval is
+recovered literally by the C++ representative rule.
+
+`zassenhausLeadingPrune_accepts_hensel_candidate` executes the generated
+`selectedLeadingProductLoop` for the real candidate array.  Since every chosen
+Hensel factor physically stores head coefficient one, the loop's accumulator
+is exactly the source leading coefficient.  The actual default Hensel entry's
+generated Mignotte precision (applied to the divisor `1`) puts that coefficient
+strictly inside the recovery interval, so the subsequent generated remainder
+test cannot reject it.  No candidate value, modulus, or execution result is
+supplied by an oracle.
+
+No C++ files changed, so this step has no new C++ regression or b2b change
+surface.  The remaining rejection branch starts at the constant-coefficient
+prune and requires the full-modulus Hensel subset uniqueness bridge.

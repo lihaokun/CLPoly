@@ -4887,14 +4887,15 @@ theorem HenselStepCorrect.intervalPhysicalHeads
     {target : SparsePolyZZ} {m start : Nat} {input output : HenselNode}
     (hcorrect : HenselStepCorrect target m input output)
     (hm : 1 < m)
-    (htargetCanonical : StrictPolynomialMod.SparsePolyZZCanonical target)
+    (htargetCanonical : 0 < start →
+      StrictPolynomialMod.SparsePolyZZCanonical target)
     (htargetHead : 0 < start → HasPhysicalOneHead target)
     (hinputH : HasPhysicalOneHead input.h) :
     (0 < start → HasPhysicalOneHead output.g) ∧
       HasPhysicalOneHead output.h := by
   constructor
   · intro hstart
-    exact hcorrect.gOneHead_of_target hm htargetCanonical
+    exact hcorrect.gOneHead_of_target hm (htargetCanonical hstart)
       (htargetHead hstart) hinputH
   · rcases hinputH with ⟨head, tail, hhead⟩
     rcases hcorrect.2.2.2.2.2.2.2.1 head tail hhead hm with
@@ -6447,6 +6448,22 @@ def HenselExtractPrefixReady (start : Nat)
   (start = 0 → factors.size = 0) ∧
   (0 < start → 0 < factors.size)
 
+/-- A source-order tail proof implies the positional array convention used by
+the normalization block. -/
+theorem HenselFactorArrayOneHeadFrom.of_tail_forall
+    {factors : Array SparsePolyZZ}
+    (hforall : factors.toList.tail.Forall HasPhysicalOneHead) :
+    HenselFactorArrayOneHeadFrom 1 factors := by
+  intro index hlower hindex
+  have htailIndex : index - 1 < factors.toList.tail.length := by
+    simp
+    omega
+  have hhead : HasPhysicalOneHead factors.toList.tail[index - 1] :=
+    (List.forall_iff_forall_mem.mp hforall) _
+      (List.getElem_mem htailIndex)
+  simpa only [List.getElem_tail, Nat.sub_add_cancel hlower,
+    Array.getElem_toList] using hhead
+
 theorem HenselFactorArrayCanonical.push
     {factors : Array SparsePolyZZ} {factor : SparsePolyZZ}
     (hfactors : HenselFactorArrayCanonical factors)
@@ -6552,6 +6569,25 @@ decreasing_by
       index child right
   · exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
       index left child
+
+/-- Every concrete extraction topology denotes at least one factor. -/
+theorem henselExtractedFactors_ne_nil
+    (tree : Generated.StrictHensel.HenselLiftTree)
+    (nodes : Array HenselNode) :
+    henselExtractedFactors tree nodes ≠ [] := by
+  cases htree : tree with
+  | node index left right =>
+      rw [henselExtractedFactors.eq_def]
+      cases right with
+      | none => simp
+      | some child =>
+          exact List.append_ne_nil_of_right_ne_nil _
+            (henselExtractedFactors_ne_nil child nodes)
+termination_by tree.nodeCount
+decreasing_by
+  subst tree
+  exact Generated.StrictHensel.HenselLiftTree.right_nodeCount_lt
+    index left child
 
 /-- The pure extraction denotation depends only on the concrete array cells
 visited by its topology.  This is the exact transport lemma used when the
@@ -12239,7 +12275,8 @@ theorem HenselLiftRecursiveCorrect.physicalHeads_leaf
     (hheads : HenselTreePhysicalHeads start stop
       (.node index none none) nodes)
     (hm : 1 < m)
-    (htargetCanonical : StrictPolynomialMod.SparsePolyZZCanonical target)
+    (htargetCanonical : 0 < start →
+      StrictPolynomialMod.SparsePolyZZCanonical target)
     (htargetHead : 0 < start → HasPhysicalOneHead target) :
     HenselTreePhysicalHeads start stop (.node index none none) output := by
   cases hcorrect with
@@ -12283,7 +12320,7 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
       HenselTreePhysicalHeads start stop tree nodes →
       (henselLiftTreeIndices tree).Nodup →
       1 < m →
-      StrictPolynomialMod.SparsePolyZZCanonical target →
+      (0 < start → StrictPolynomialMod.SparsePolyZZCanonical target) →
       (0 < start → HasPhysicalOneHead target) →
       HenselTreePhysicalHeads start stop tree output := by
   induction hcorrect with
@@ -12318,7 +12355,7 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
             (hleftHeads left rfl).of_setBang_not_mem (value := lifted)
               hindex hparts.1
           have hchildFinal := ih hchildStored hparts.2 hm
-            hstepCorrect.2.2.2.2.2.1 hliftedHeads.1
+            (fun _ => hstepCorrect.2.2.2.2.2.1) hliftedHeads.1
           have hliftedLookup :
               (nodes.set! index lifted)[index]? = some lifted := by
             simp [Array.set!, hindex]
@@ -12364,7 +12401,8 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
             (hrightHeads right rfl).of_setBang_not_mem (value := lifted)
               hindex hparts.1
           have hchildFinal := ih hchildStored hparts.2 hm
-            hstepCorrect.2.2.2.2.2.2.1 (fun _ => hliftedHeads.2)
+            (fun _ => hstepCorrect.2.2.2.2.2.2.1)
+            (fun _ => hliftedHeads.2)
           have hrootPreserved :=
             hrightCorrect.preserves_not_mem index hparts.1
           have hroot : output[index]? = some lifted :=
@@ -12414,7 +12452,7 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
             (hleftHeads left rfl).of_setBang_not_mem (value := lifted)
               hindex hparts.1
           have hleftFinal := leftIH hleftStored hparts.2.2.1 hm
-            hstepCorrect.2.2.2.2.2.1 hliftedHeads.1
+            (fun _ => hstepCorrect.2.2.2.2.2.1) hliftedHeads.1
           have hrightStored :=
             (hrightHeads right rfl).of_setBang_not_mem (value := lifted)
               hindex hparts.2.1
@@ -12429,7 +12467,8 @@ theorem HenselLiftRecursiveCorrect.physicalHeads
             (hparent.symm.trans (hrootAfterLeft.trans hliftedLookup))
           subst parent
           have hrightFinal := rightIH hrightAfterLeft hparts.2.2.2.1 hm
-            hstepCorrect.2.2.2.2.2.2.1 (fun _ => hliftedHeads.2)
+            (fun _ => hstepCorrect.2.2.2.2.2.2.1)
+            (fun _ => hliftedHeads.2)
           have hleftOutput := hleftFinal.of_recursive_disjoint
             hrightCorrect hparts.2.2.2.2
           have hrootAfterRight :=
@@ -12461,7 +12500,8 @@ theorem HenselLiftLoopCorrect.physicalHeads
     (hheads : HenselTreePhysicalHeads start stop tree initialNodes)
     (hnodup : (henselLiftTreeIndices tree).Nodup)
     (hm : 2 ≤ initialM)
-    (hfCanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hfCanonical : 0 < start →
+      StrictPolynomialMod.SparsePolyZZCanonical f)
     (hfHead : 0 < start → HasPhysicalOneHead f) :
     HenselTreePhysicalHeads start stop tree outputNodes := by
   induction hcorrect with
@@ -12472,6 +12512,20 @@ theorem HenselLiftLoopCorrect.physicalHeads
         hfCanonical hfHead
       have hnextM : 2 ≤ m * m := by nlinarith
       exact ih hnextHeads hnextM
+
+theorem HenselLiftLoopCorrect.outputM_ge_two
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {tree : Generated.StrictHensel.HenselLiftTree} {f : SparsePolyZZ}
+    {target initialM outputM : Nat}
+    {initialNodes outputNodes : Array HenselNode}
+    (hcorrect : HenselLiftLoopCorrect termination tree f target initialM
+      initialNodes outputNodes outputM)
+    (hm : 2 ≤ initialM) : 2 ≤ outputM := by
+  induction hcorrect with
+  | done => exact hm
+  | step m nodes nextNodes outputNodes outputM hcontinue hrun hiteration
+      htail ih =>
+      exact ih (by nlinarith)
 
 /-- Every factor denoted by a positive-start interval has a literal
 coefficient-one head.  This folds the exact source extraction order over the
@@ -12512,6 +12566,116 @@ theorem HenselTreePhysicalHeads.extractedFactors_forall_of_pos
           | some rightTree =>
               have hrightAll := rightIH rightTree rfl (by omega) hmidStop
               simp [hleftAll, hrightAll]
+
+/-- For the exact generated root topology, only the first source-order leaf
+may lack a physical coefficient-one head.  Recursion follows the concrete
+left spine; every right half starts positively and is discharged by
+`extractedFactors_forall_of_pos`. -/
+theorem HenselTreePhysicalHeads.extractedFactors_tail_forall
+    {stop root : Nat} {nodes : Array HenselNode}
+    (hcertificate : HenselTreePhysicalHeads 0 stop
+      (henselTreeBuildTopology 0 stop root) nodes)
+    (hlength : 2 ≤ stop) :
+    (henselExtractedFactors (henselTreeBuildTopology 0 stop root) nodes).tail.Forall
+      HasPhysicalOneHead := by
+  let mid := stop / 2
+  have hmidPos : 0 < mid := by
+    dsimp [mid]
+    simpa using
+      (Generated.StrictHensel.henselTreeMidpoint_gt_start 0 stop (by omega))
+  have hmidStop : mid ≤ stop := by omega
+  by_cases hleft : 2 ≤ mid
+  · by_cases hright : 2 ≤ stop - mid
+    · dsimp [mid] at hleft hright hcertificate ⊢
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      have hleft' : 2 ≤ (0 + stop) / 2 - 0 := by simpa using hleft
+      have hright' : 2 ≤ stop - (0 + stop) / 2 := by simpa using hright
+      rw [if_pos hleft', if_pos hright'] at hcertificate ⊢
+      cases hcertificate with
+      | cert _ _ _ _ _ _ value hnode hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          rw [henselExtractedFactors.eq_def]
+          have hleftTail := extractedFactors_tail_forall
+            (hleftHeads _ rfl) (by simpa using hleft)
+          have hrightAll := (hrightHeads _ rfl).extractedFactors_forall_of_pos
+            (by simpa [mid] using hmidPos) (by simpa [mid] using hmidStop)
+          rw [List.tail_append_of_ne_nil
+            (henselExtractedFactors_ne_nil _ nodes)]
+          exact List.forall_append.mpr ⟨hleftTail, hrightAll⟩
+    · dsimp [mid] at hleft hright hcertificate ⊢
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      have hleft' : 2 ≤ (0 + stop) / 2 - 0 := by simpa using hleft
+      have hright' : ¬2 ≤ stop - (0 + stop) / 2 := by simpa using hright
+      rw [if_pos hleft', if_neg hright'] at hcertificate ⊢
+      cases hcertificate with
+      | cert _ _ _ _ _ _ value hnode hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          have hrootBound : root < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hrootEq : nodes[root]! = value := by
+            have heq : nodes[root] = value := Option.some.inj
+              ((Array.getElem?_eq_getElem hrootBound).symm.trans hnode)
+            simpa [getElem!_def, Array.getElem?_eq_getElem hrootBound] using heq
+          rw [henselExtractedFactors.eq_def]
+          have hleftTail := extractedFactors_tail_forall
+            (hleftHeads _ rfl) (by simpa using hleft)
+          rw [List.tail_append_of_ne_nil
+            (henselExtractedFactors_ne_nil _ nodes)]
+          exact List.forall_append.mpr
+            ⟨hleftTail, by simp [hrootEq, hHOneHead]⟩
+  · by_cases hright : 2 ≤ stop - mid
+    · dsimp [mid] at hleft hright hcertificate ⊢
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      have hleft' : ¬2 ≤ (0 + stop) / 2 - 0 := by simpa using hleft
+      have hright' : 2 ≤ stop - (0 + stop) / 2 := by simpa using hright
+      rw [if_neg hleft', if_pos hright'] at hcertificate ⊢
+      cases hcertificate with
+      | cert _ _ _ _ _ _ value hnode hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          rw [henselExtractedFactors.eq_def]
+          have hrightAll := (hrightHeads _ rfl).extractedFactors_forall_of_pos
+            (by simpa [mid] using hmidPos) (by simpa [mid] using hmidStop)
+          simpa using hrightAll
+    · dsimp [mid] at hleft hright hcertificate ⊢
+      rw [henselTreeBuildTopology] at hcertificate ⊢
+      have hleft' : ¬2 ≤ (0 + stop) / 2 - 0 := by simpa using hleft
+      have hright' : ¬2 ≤ stop - (0 + stop) / 2 := by simpa using hright
+      rw [if_neg hleft', if_neg hright'] at hcertificate ⊢
+      cases hcertificate with
+      | cert _ _ _ _ _ _ value hnode hGOneHead hHOneHead hleftHeads
+          hrightHeads =>
+          have hrootBound : root < nodes.size := by
+            by_contra hnot
+            rw [Array.getElem?_eq_none (by omega)] at hnode
+            contradiction
+          have hrootEq : nodes[root]! = value := by
+            have heq : nodes[root] = value := Option.some.inj
+              ((Array.getElem?_eq_getElem hrootBound).symm.trans hnode)
+            simpa [getElem!_def, Array.getElem?_eq_getElem hrootBound] using heq
+          simp [henselExtractedFactors, hrootEq, hHOneHead]
+termination_by stop
+decreasing_by all_goals omega
+
+/-- The actual generated extraction run from the empty output prefix produces
+an array whose every cell after the distinguished first factor has a literal
+coefficient-one head. -/
+theorem HenselExtractCorrect.outputOneHeadFrom_empty
+    {stop root : Nat} {nodes : Array HenselNode}
+    {output : Array SparsePolyZZ}
+    (hcorrect : HenselExtractCorrect
+      (henselTreeBuildTopology 0 stop root) nodes #[] output)
+    (hheads : HenselTreePhysicalHeads 0 stop
+      (henselTreeBuildTopology 0 stop root) nodes)
+    (hlength : 2 ≤ stop) :
+    HenselFactorArrayOneHeadFrom 1 output := by
+  apply HenselFactorArrayOneHeadFrom.of_tail_forall
+  have hlist : output.toList =
+      henselExtractedFactors (henselTreeBuildTopology 0 stop root) nodes := by
+    simpa using hcorrect.toList_eq
+  rw [hlist]
+  exact hheads.extractedFactors_tail_forall hlength
 
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]
@@ -13921,7 +14085,8 @@ def HenselLiftEntryCorrect
       liftedNodes #[] extracted ∧
     HenselNormalizeCorrect extracted outputM output.1 ∧
     output.2 = outputM ∧
-    HenselFactorArrayCanonical output.1
+    HenselFactorArrayCanonical output.1 ∧
+    HenselFactorArrayOneHeadFrom 0 output.1
 
 private theorem henselLeafOrigins_trans
     {p : Nat} {inputs : List SparsePolyZp} {initial final : List SparsePolyZZ}
@@ -13965,7 +14130,7 @@ theorem HenselLiftEntryCorrect.preNormalizationOrigins
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htarget, hadjust, hsemantic, hlift, _hliftedOneHead, hextract,
       hnormalize, houtputM,
-      _houtputCanonical⟩
+      _houtputCanonical, _houtputOneHead⟩
   have hinitial := hsemantic.extractedFactors_forall₂ hcount
   have harray := hlift.arrayReduces_of_dvd (dvd_refl p.toNat)
   have hlifted := hsemantic.extractedFactors_forall₂_of_reduces harray
@@ -14006,7 +14171,7 @@ theorem HenselLiftEntryCorrect.preNormalizationProduct
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       _htarget, hadjust, hsemantic, hlift, _hliftedOneHead, hextract,
       hnormalize, houtputM,
-      _houtputCanonical⟩
+      _houtputCanonical, _houtputOneHead⟩
   have hproduct := hsemantic.liftLoop_extractedFactors_product hlift hcount
     (hsource adjusted hadjust)
   have hextracted : extracted.toList =
@@ -14039,7 +14204,7 @@ theorem HenselLiftEntryCorrect.outputModulus_gt_target
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htarget, hadjust, _hsemantic, hlift, _hliftedOneHead, hextract,
       hnormalize, houtputM,
-      _houtputCanonical⟩
+      _houtputCanonical, _houtputOneHead⟩
   refine ⟨target, htarget, ?_⟩
   rw [houtputM]
   have htargetNonnegative' := htargetNonnegative target htarget
@@ -14146,14 +14311,28 @@ theorem __hensel_lift_upoly_raw_ir_refines
   rcases __hensel_lift_loop_raw_ir_refines termination tree f target.toNat
       this._p.toNat nodes
       (hinvariant.liftReady target adjusted nodes htargetCorrect hadjustCorrect
-        hnodesRun) with
+      hnodesRun) with
     ⟨liftedNodes, outputM, hliftRun, hliftCorrect⟩
+  have htreeNodup : (henselLiftTreeIndices tree).Nodup := by
+    simpa [tree] using
+      (henselTreeBuildTopology_indices_nodup_bounded 0 factors.size 0
+        hinvariant.factorCount).1
+  have hinitialPhysical := hsemanticInvariant'.toPhysicalHeads
+  have hliftedPhysical : HenselTreePhysicalHeads 0 factors.size tree
+      liftedNodes :=
+    hliftCorrect.physicalHeads hinitialPhysical htreeNodup
+      (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat))
+      (fun h => by omega) (fun h => by omega)
   have hextractInvariant' : HenselExtractInvariant tree nodes := by
     simpa [tree, hadjustSize] using hextractInvariant
   have hliftedExtract :=
     hextractInvariant'.of_topologyEq hliftCorrect.topologyEq
   rcases __hensel_extract_factors_raw_ir_refines tree liftedNodes #[]
       hliftedExtract with ⟨extracted, hextractRun, hextractCorrect⟩
+  have hextractedOneHead : HenselFactorArrayOneHeadFrom 1 extracted := by
+    apply hextractCorrect.outputOneHeadFrom_empty
+    · simpa [tree] using hliftedPhysical
+    · exact hinvariant.factorCount
   have hliftedCanonical : HenselArrayCanonical liftedNodes :=
     hliftCorrect.arrayCanonical hnodesCanonical
   have hliftedOneHead : HenselArrayHOneHead liftedNodes :=
@@ -14172,11 +14351,17 @@ theorem __hensel_lift_upoly_raw_ir_refines
     ⟨normalized, hnormalizeRun, hnormalizeCorrect⟩
   have hnormalizedCanonical : HenselFactorArrayCanonical normalized :=
     hnormalizeCorrect.outputCanonical hextractedCanonical
+  have hnormalizedOneHead : HenselFactorArrayOneHeadFrom 0 normalized :=
+    hnormalizeCorrect.outputOneHead
+      (by have := hliftCorrect.outputM_ge_two
+            (Nat.Prime.two_le (Fact.out : Nat.Prime this._p.toNat))
+          omega)
+      hextractedOneHead
   refine ⟨(normalized, outputM), ?_,
     ⟨target, adjusted, nodes, liftedNodes, outputM, extracted,
       htargetCorrect, hadjustCorrect, hsemanticInvariant', hliftCorrect,
       hliftedOneHead, hextractCorrect,
-      hnormalizeCorrect, rfl, hnormalizedCanonical⟩⟩
+      hnormalizeCorrect, rfl, hnormalizedCanonical, hnormalizedOneHead⟩⟩
   apply henselLiftUpolyRawIR_run_of_stages
     (hcount := hinvariant.factorCount) (htarget := htargetRun)
     (htargetNonnegative := htargetNonnegative) (hadjust := hadjustRun)

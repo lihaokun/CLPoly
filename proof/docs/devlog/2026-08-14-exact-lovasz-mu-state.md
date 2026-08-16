@@ -2880,3 +2880,28 @@ branches; it does not infer representation monicity from modular semantics.
 so this step has no new C++ b2b change surface.  Next, recursion down the exact
 generated left spine will show that only the first emitted factor may be
 non-monic; all remaining factors feed the existing normalization theorem.
+
+## Close extraction and normalization physical monicity
+
+The exact generated root topology now satisfies
+`extractedFactors_tail_forall`: recursion follows only its concrete left spine,
+while every right half is discharged by the positive-interval theorem.  A
+structural nonempty theorem justifies the literal identity
+`tail (left ++ right) = tail left ++ right`.  Consequently only the first
+source-order leaf may lack a physical coefficient-one head.
+
+`HenselExtractCorrect.outputOneHeadFrom_empty` transports that pure list result
+through the actual extraction trace and its exact `toList_eq`, obtaining
+`HenselFactorArrayOneHeadFrom 1` for the concrete extracted array.  The entry
+refinement now composes builder, every actual quadratic lift round, extraction,
+and the real normalization branch.  `HenselLiftEntryCorrect` records that every
+final normalized factor has a literal coefficient-one head.
+
+The root target canonicality requirement was also tightened to its real use:
+it is required only for positive-start intervals.  At the root `start = 0`, so
+the complete C++ entry receives no artificial canonicality premise for `f`.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  This closes the physical
+monicity prerequisite used by exact Hensel subset reconstruction in the ZZ
+recombination proof.

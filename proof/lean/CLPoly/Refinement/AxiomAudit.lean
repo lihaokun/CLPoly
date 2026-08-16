@@ -70,6 +70,11 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselFactorArrayOneHeadFrom.push
 #print axioms Refinement.StrictHensel.HenselExtractCorrect.size_lt
 #print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.extractedFactors_forall_of_pos
+#print axioms Refinement.StrictHensel.henselExtractedFactors_ne_nil
+#print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.extractedFactors_tail_forall
+#print axioms Refinement.StrictHensel.HenselFactorArrayOneHeadFrom.of_tail_forall
+#print axioms Refinement.StrictHensel.HenselExtractCorrect.outputOneHeadFrom_empty
+#print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.outputM_ge_two
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.of_preservesFrom
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.oneHead_of_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_complete

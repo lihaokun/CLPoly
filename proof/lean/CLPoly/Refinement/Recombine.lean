@@ -5090,13 +5090,13 @@ theorem lllLexRank_swap (oldPotential newPotential dimension oldIndex newIndex :
 /-- Integer Gram matrix of the first `prefix` rows of the current C++ lattice
 basis.  Total reads make the definition available on every raw state; the
 operational validity invariant later states that the basis is square. -/
-noncomputable def gramPrefixMatrix
+def gramPrefixMatrix
     (matrix : Generated.StrictRecombine.LLLMatrix) (rowCount : Nat) :
     Matrix (Fin rowCount) (Fin rowCount) Int :=
   fun i j => ∑ c : Fin matrix.size,
     (matrix[i.val]!)[c.val]! * (matrix[j.val]!)[c.val]!
 
-noncomputable def basisPrefixMatrix
+def basisPrefixMatrix
     (matrix : Generated.StrictRecombine.LLLMatrix)
     (rowCount columnCount : Nat) : Matrix (Fin rowCount) (Fin columnCount) Int :=
   fun i j => (matrix[i.val]!)[j.val]!
@@ -5137,11 +5137,11 @@ theorem gramPrefixMatrix_eq_mul_transpose
 the discrete version of the rational LLL potential
 `∏ᵢ Bᵢ^(n-i)`: Gram–Schmidt identifies the determinant of prefix `r`
 with `∏ i<r, Bᵢ`. -/
-noncomputable def lllDeterminantPotential
+def lllDeterminantPotential
     (matrix : Generated.StrictRecombine.LLLMatrix) : Nat :=
   ∏ i : Fin matrix.size, (Matrix.det (gramPrefixMatrix matrix (i.val + 1))).natAbs
 
-noncomputable def concreteLLLRank
+def concreteLLLRank
     (state : Generated.StrictRecombine.LLLState) : Nat :=
   lllLexRank (lllDeterminantPotential state.matrix) state.matrix.size state.k
 
@@ -6221,7 +6221,8 @@ theorem vecMul_gsLowerPrefix_last_nonzero
     Matrix.vecMul (fun position => (coordinates position : QQ))
         (gsLowerPrefix state rowCount) index =
       (coordinates index : QQ) := by
-  rw [Matrix.vecMul_apply]
+  change (∑ position, (coordinates position : QQ) *
+      gsLowerPrefix state rowCount position index) = (coordinates index : QQ)
   let values : Fin rowCount → QQ := fun position =>
     (coordinates position : QQ) *
       gsLowerPrefix state rowCount position index
@@ -6233,16 +6234,26 @@ theorem vecMul_gsLowerPrefix_last_nonzero
         values ⟨position.val, lt_trans position.isLt index.isLt⟩) = 0 := by
       apply Finset.sum_eq_zero
       intro position _
-      simp [values, gsLowerPrefix, show ¬index.val < position.val by omega,
-        show (⟨position.val, lt_trans position.isLt index.isLt⟩ :
-          Fin rowCount) ≠ index by
-            intro heq
-            have := congrArg Fin.val heq
-            omega]
+      have hlt : (⟨position.val, lt_trans position.isLt index.isLt⟩ :
+          Fin rowCount) < index := position.isLt
+      simp [values, gsLowerPrefix, not_lt_of_ge (le_of_lt hlt), ne_of_lt hlt]
     rw [hprefix, zero_add]
     simp [values, gsLowerPrefix]
   · intro later hlater
     simp [values, hzero later hlater]
+
+private theorem finSum_rotate_three {aSize bSize cSize : Nat}
+    (f : Fin aSize → Fin bSize → Fin cSize → QQ) :
+    (∑ a, ∑ b, ∑ c, f a b c) =
+      ∑ c, ∑ b, ∑ a, f a b c := by
+  rw [Finset.sum_comm]
+  calc
+    (∑ b, ∑ a, ∑ c, f a b c) =
+        ∑ b, ∑ c, ∑ a, f a b c := by
+      apply Finset.sum_congr rfl
+      intro b _
+      exact Finset.sum_comm
+    _ = ∑ c, ∑ b, ∑ a, f a b c := Finset.sum_comm
 
 /-- The physical Gram matrix factorization evaluates its quadratic form as
 the weighted sum of squared Gram--Schmidt coordinates. -/
@@ -6252,16 +6263,20 @@ theorem gramSchmidt_quadratic_eq
     (rowCount : Nat) (hrowCount : rowCount ≤ state.matrix.size)
     (coordinates : Fin rowCount → QQ) :
     dotProduct coordinates
-        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ coordinates) =
+        (Matrix.mulVec (gramPrefixMatrixQQ state.matrix rowCount) coordinates) =
       ∑ index : Fin rowCount,
         (Matrix.vecMul coordinates
           (gsLowerPrefix state rowCount) index) ^ 2 *
           state.norms[index.val]! := by
   rw [hvalid.gram_schmidt rowCount hrowCount]
   simp only [Matrix.mul_assoc]
+  simp only [pow_two]
   simp [dotProduct, Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply,
     gsNormDiagonal, Matrix.diagonal_apply, Finset.mul_sum, Finset.sum_mul]
-  ring
+  simpa [mul_assoc, mul_left_comm, mul_comm] using
+    (finSum_rotate_three (fun a b c : Fin rowCount =>
+      coordinates a * gsLowerPrefix state rowCount a c *
+        state.norms[c.val]! * gsLowerPrefix state rowCount b c * coordinates b))
 
 /-- A last nonzero integral coordinate contributes its full positive
 Gram--Schmidt diagonal term to the represented vector's squared norm. -/
@@ -6274,19 +6289,36 @@ theorem last_nonzero_gramSchmidt_term_le
     (hzero : ∀ later, index < later → coordinates later = 0) :
     (coordinates index : QQ) ^ 2 * state.norms[index.val]! ≤
       dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ
-          fun position => (coordinates position : QQ)) := by
+        (Matrix.mulVec (gramPrefixMatrixQQ state.matrix rowCount)
+          (fun position => (coordinates position : QQ))) := by
   rw [gramSchmidt_quadratic_eq state hvalid rowCount hrowCount]
   have hcoordinate := vecMul_gsLowerPrefix_last_nonzero state rowCount coordinates
     index hzero
-  rw [hcoordinate]
-  apply Finset.single_le_sum
-  · intro position _
-    exact mul_nonneg (sq_nonneg _) (le_of_lt
-      (hvalid.norms_positive position.val (by
-        rw [hvalid.norms_size]
-        exact lt_of_lt_of_le position.isLt hrowCount)))
-  · exact Finset.mem_univ index
+  calc
+    (coordinates index : QQ) ^ 2 * state.norms[index.val]! =
+        (Matrix.vecMul (fun position => (coordinates position : QQ))
+          (gsLowerPrefix state rowCount) index) ^ 2 *
+            state.norms[index.val]! := by rw [hcoordinate]
+    _ ≤ ∑ position : Fin rowCount,
+        (Matrix.vecMul (fun coordinate => (coordinates coordinate : QQ))
+          (gsLowerPrefix state rowCount) position) ^ 2 *
+            state.norms[position.val]! := by
+      let f : Fin rowCount → QQ := fun position =>
+        (Matrix.vecMul (fun coordinate => (coordinates coordinate : QQ))
+          (gsLowerPrefix state rowCount) position) ^ 2 *
+            state.norms[position.val]!
+      have hnonnegative : ∀ position ∈ (Finset.univ : Finset (Fin rowCount)),
+          0 ≤ f position := by
+        intro position _
+        dsimp [f]
+        have hposition : position.val < state.norms.size := by
+          rw [hvalid.norms_size]
+          exact lt_of_lt_of_le position.isLt hrowCount
+        rw [getElem!_pos state.norms position.val hposition]
+        exact mul_nonneg (sq_nonneg _) (le_of_lt
+          (hvalid.norms_positive position.val hposition))
+      simpa [f] using Finset.single_le_sum hnonnegative
+        (Finset.mem_univ index)
 
 /-- Because the surviving coordinate is a nonzero integer, its square is at
 least one; hence the represented vector is no shorter than the corresponding
@@ -6301,39 +6333,46 @@ theorem gramSchmidt_norm_le_of_last_nonzero
     (hzero : ∀ later, index < later → coordinates later = 0) :
     state.norms[index.val]! ≤
       dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ state.matrix rowCount *ᵥ
-          fun position => (coordinates position : QQ)) := by
+        (Matrix.mulVec (gramPrefixMatrixQQ state.matrix rowCount)
+          (fun position => (coordinates position : QQ))) := by
   have hsquareInt : (1 : ZZ) ≤ coordinates index ^ 2 :=
     (one_le_sq_iff_one_le_abs (coordinates index)).2 (Int.one_le_abs hne)
   have hsquare : (1 : QQ) ≤ (coordinates index : QQ) ^ 2 := by
     exact_mod_cast hsquareInt
   have hnormNonnegative : 0 ≤ state.norms[index.val]! := le_of_lt
-    (hvalid.norms_positive index.val (by
-      rw [hvalid.norms_size]
-      exact lt_of_lt_of_le index.isLt hrowCount))
+    (by
+      have hindexNorms : index.val < state.norms.size := by
+        rw [hvalid.norms_size]
+        exact lt_of_lt_of_le index.isLt hrowCount
+      rw [getElem!_pos state.norms index.val hindexNorms]
+      exact hvalid.norms_positive index.val hindexNorms)
   exact (le_mul_of_one_le_left hnormNonnegative hsquare).trans
     (last_nonzero_gramSchmidt_term_le state hvalid rowCount hrowCount
       coordinates index hzero)
 
+set_option maxHeartbeats 800000 in
 /-- The concrete integer Gram matrix quadratic form is exactly the squared
 Euclidean norm of the lattice row combination it represents. -/
 theorem gramPrefix_quadratic_eq_vecMul_norm
     (matrix : Generated.StrictRecombine.LLLMatrix)
     (rowCount : Nat) (coordinates : Fin rowCount → ZZ) :
     dotProduct (fun position => (coordinates position : QQ))
-        (gramPrefixMatrixQQ matrix rowCount *ᵥ
-          fun position => (coordinates position : QQ)) =
+        (Matrix.mulVec (gramPrefixMatrixQQ matrix rowCount)
+          (fun position => (coordinates position : QQ))) =
       dotProduct
         (fun column =>
           ((Matrix.vecMul coordinates
-            (basisPrefixMatrix matrix rowCount rowCount) column : ZZ) : QQ))
+            (basisPrefixMatrix matrix rowCount matrix.size) column : ZZ) : QQ))
         (fun column =>
           ((Matrix.vecMul coordinates
-            (basisPrefixMatrix matrix rowCount rowCount) column : ZZ) : QQ)) := by
+            (basisPrefixMatrix matrix rowCount matrix.size) column : ZZ) : QQ)) := by
   simp [gramPrefixMatrixQQ, gramPrefixMatrix, basisPrefixMatrix, dotProduct,
     Matrix.mulVec, Matrix.vecMul, Matrix.mul_apply, Int.cast_sum,
     Finset.mul_sum, Finset.sum_mul]
-  ring
+  simpa [mul_assoc, mul_left_comm, mul_comm] using
+    (finSum_rotate_three (fun (a b : Fin rowCount) (c : Fin matrix.size) =>
+      (coordinates a : QQ) * ((matrix[a.val]!)[c.val]! : QQ) *
+        ((matrix[b.val]!)[c.val]! : QQ) * (coordinates b : QQ)))
 
 /-- Every nonzero vector expressed in the original physical integer basis
 controls one concrete Gram--Schmidt norm of the basis returned by generated
@@ -6367,6 +6406,7 @@ theorem exists_gramSchmidt_norm_le_original_vector
     initial.size hrowCount reduced index hindex hzero
   rw [gramPrefix_quadratic_eq_vecMul_norm state.matrix initial.size reduced]
     at hbound
+  rw [hrel.1] at hbound
   have hreconstruct := integerReducedCoordinates_reconstruct initial state.matrix
     transform hrel hunimodular coefficients
   change Matrix.vecMul reduced
@@ -6400,13 +6440,16 @@ theorem adjacent_norm_le_two_mul
     norm_num at hmuSquare ⊢
     linarith
   have hnormNonnegative : 0 ≤ state.norms[index - 1]! := le_of_lt
-    (hvalid.norms_positive (index - 1) (by
-      rw [hvalid.norms_size]
-      omega))
+    (by
+      have hindexNorms : index - 1 < state.norms.size := by
+        rw [hvalid.norms_size]
+        omega
+      rw [getElem!_pos state.norms (index - 1) hindexNorms]
+      exact hvalid.norms_positive (index - 1) hindexNorms)
   have hscaled := mul_le_mul_of_nonneg_right hcoefficient hnormNonnegative
-  change ((3 : QQ) / 4 - mu ^ 2) * state.norms[index - 1]! ≤
-    state.norms[index]! at hlovasz
-  nlinarith
+  have hlovasz' : ((3 : QQ) / 4 - mu ^ 2) * state.norms[index - 1]! ≤
+      state.norms[index]! := by simpa [mu, pow_two] using hlovasz
+  nlinarith [hlovasz']
 
 /-- Iteration of the physical adjacent Lovasz/size-reduction estimate along
 the returned Gram--Schmidt norm array. -/
@@ -6430,6 +6473,8 @@ theorem norm_le_pow_two_mul_later
   | h distance ih =>
       by_cases heq : left = right
       · subst right
+        have : distance = 0 := by omega
+        subst distance
         simp
       · have hleftPred : left ≤ right - 1 := by omega
         have hpredRight : right - 1 < state.matrix.size := by omega
@@ -6440,7 +6485,8 @@ theorem norm_le_pow_two_mul_later
           (by omega) hright (hsizeReduced right hright (right - 1) (by omega))
           (hlovasz right (by omega) hright)
         have hscaled := mul_le_mul_of_nonneg_left hadjacent
-          (pow_nonneg (by norm_num : (0 : QQ) ≤ 2) _)
+          (pow_nonneg (by norm_num : (0 : QQ) ≤ 2)
+            ((right - 1) - left))
         calc
           state.norms[left]! ≤
               (2 : QQ) ^ ((right - 1) - left) *
@@ -6451,6 +6497,8 @@ theorem norm_le_pow_two_mul_later
             rw [show right - left = ((right - 1) - left) + 1 by omega,
               pow_succ]
             ring
+          _ = (2 : QQ) ^ distance * state.norms[right]! := by
+            rw [← hdistance]
 
 /-- The diagonal entry of the physical Gram matrix is the exact squared norm
 decomposition of one returned basis row. -/
@@ -6513,7 +6561,12 @@ theorem gram_diagonal_le_pow_two_mul_norm
       (2 : QQ) ^ row * state.norms[row]! := by
   rw [gram_diagonal_eq_mu_sum_add_norm state hvalid row hrow]
   have hnormNonnegative : 0 ≤ state.norms[row]! := le_of_lt
-    (hvalid.norms_positive row (by simpa [hvalid.norms_size] using hrow))
+    (by
+      have hrowNorms : row < state.norms.size := by
+        rw [hvalid.norms_size]
+        exact hrow
+      rw [getElem!_pos state.norms row hrowNorms]
+      exact hvalid.norms_positive row hrowNorms)
   calc
     (∑ column : Fin row,
         ((state.mu[row]!)[column.val]!) ^ 2 *
@@ -6521,25 +6574,31 @@ theorem gram_diagonal_le_pow_two_mul_norm
       (∑ column : Fin row,
         (((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) *
           state.norms[row]!) + state.norms[row]! := by
-        apply add_le_add_right
-        apply Finset.sum_le_sum
-        intro column _
-        let mu := (state.mu[row]!)[column.val]!
-        have hhalfNonnegative : (0 : QQ) ≤ 1 / 2 := by norm_num
-        have hmuSquare : mu ^ 2 ≤ (1 : QQ) / 4 := by
-          have hsquare : mu ^ 2 ≤ ((1 : QQ) / 2) ^ 2 := by
-            rw [← sq_abs]
-            exact (sq_le_sq₀ (abs_nonneg mu) hhalfNonnegative).2
-              (hsizeReduced row hrow column.val column.isLt)
-          norm_num at hsquare ⊢
-          exact hsquare
-        have hcolumnNorm := norm_le_pow_two_mul_later state hvalid
-          hsizeReduced hlovasz column.val row (by omega) hrow
-        have hcolumnNonnegative : 0 ≤ state.norms[column.val]! := le_of_lt
-          (hvalid.norms_positive column.val (by
-            rw [hvalid.norms_size]
-            omega))
-        exact mul_le_mul hmuSquare hcolumnNorm hcolumnNonnegative (sq_nonneg mu)
+        apply add_le_add
+        · apply Finset.sum_le_sum
+          intro column _
+          let mu := (state.mu[row]!)[column.val]!
+          have hhalfNonnegative : (0 : QQ) ≤ 1 / 2 := by norm_num
+          have hmuSquare : mu ^ 2 ≤ (1 : QQ) / 4 := by
+            have hsquare : mu ^ 2 ≤ ((1 : QQ) / 2) ^ 2 := by
+              rw [← sq_abs]
+              exact (sq_le_sq₀ (abs_nonneg mu) hhalfNonnegative).2
+                (hsizeReduced row hrow column.val column.isLt)
+            norm_num at hsquare ⊢
+            exact hsquare
+          have hcolumnNorm := norm_le_pow_two_mul_later state hvalid
+            hsizeReduced hlovasz column.val row (by omega) hrow
+          have hcolumnNonnegative : 0 ≤ state.norms[column.val]! := le_of_lt
+            (by
+              have hcolumnNorms : column.val < state.norms.size := by
+                rw [hvalid.norms_size]
+                omega
+              rw [getElem!_pos state.norms column.val hcolumnNorms]
+              exact hvalid.norms_positive column.val hcolumnNorms)
+          have hproduct := mul_le_mul hmuSquare hcolumnNorm
+            hcolumnNonnegative (by norm_num : (0 : QQ) ≤ 1 / 4)
+          simpa [mu, mul_assoc] using hproduct
+        · exact le_rfl
     _ = ((∑ column : Fin row,
           ((1 : QQ) / 4) * (2 : QQ) ^ (row - column.val)) + 1) *
           state.norms[row]! := by
@@ -6566,10 +6625,10 @@ theorem dotRows_self_le_pow_two_mul_norm
       Generated.StrictRecombine.dotRows state.matrix[row] state.matrix[row] =
         .ok norm ∧
       (norm : QQ) ≤ (2 : QQ) ^ row * state.norms[row]! := by
-  let norm : ZZ := ∑ column : Fin state.matrix[row].size,
-    state.matrix[row][column.val] * state.matrix[row][column.val]
-  refine ⟨norm, dotRows_eq_fin_sum state.matrix[row] state.matrix[row]
-    (le_refl _), ?_⟩
+  let rowValues := state.matrix[row]
+  let norm : ZZ := ∑ column : Fin rowValues.size,
+    rowValues[column.val] * rowValues[column.val]
+  refine ⟨norm, dotRows_eq_fin_sum rowValues rowValues (le_refl _), ?_⟩
   have hrowSize := hvalid.rows_square row hrow
   let rowFin : Fin (row + 1) := ⟨row, by omega⟩
   have hgramSource := gramPrefixMatrixQQ_apply_eq_sourceRowDot state.matrix
@@ -6577,7 +6636,9 @@ theorem dotRows_self_le_pow_two_mul_norm
   have hbound := gram_diagonal_le_pow_two_mul_norm state hvalid hsizeReduced
     hlovasz row hrow
   rw [hgramSource] at hbound
-  simpa [norm, sourceRowDot, rowFin] using hbound
+  rw [getElem!_pos state.matrix row hrow] at hbound
+  simpa [norm, rowValues, sourceRowDot, rowFin,
+    getElem!_pos state.matrix row hrow] using hbound
 
 /-- Every returned basis row up to the last nonzero coordinate is bounded by
 one common `2^index` multiple of the represented vector norm. -/
@@ -6618,8 +6679,7 @@ theorem dotRows_self_le_pow_two_mul_target
           ((2 : QQ) ^ (index - row) * targetNorm) :=
       mul_le_mul_of_nonneg_left hsecond hpowNonnegative
     _ = (2 : QQ) ^ index * targetNorm := by
-      rw [← pow_add, show row + (index - row) = index by omega]
-      ring
+      rw [← mul_assoc, ← pow_add, show row + (index - row) = index by omega]
 
 theorem makeInitialMatrix_input_valid (size : Nat) (scale : ZZ)
     (matrix : Generated.StrictRecombine.LLLMatrix) (hscale : scale ≠ 0)
@@ -11542,7 +11602,7 @@ theorem lllStep_preserves_sizeReducedPrefix
 /-- The genuine well-founded certificate for the generated C++ LLL loop.
 Its validity predicate is the executable `G = L D Lᵀ` invariant, and its
 rank is the concrete determinant/index lexicographic rank. -/
-noncomputable def concreteLLLTermination :
+def concreteLLLTermination :
     Generated.StrictRecombine.LLLTermination where
   valid := ConcreteLLLExecutionValid
   rank := concreteLLLRank
@@ -11958,7 +12018,7 @@ theorem initializeLLL_transform_unimodular
     rw [hunit]
     exact isUnit_one
 
-noncomputable def concreteLLLExecution :
+def concreteLLLExecution :
     Generated.StrictRecombine.LLLExecution where
   inputValid := ConcreteLLLInputValid
   termination := concreteLLLTermination
@@ -16147,7 +16207,7 @@ uses the concrete well-founded modular division, LLL uses its determinant
 rank, lattice extension/reset use the actual matrix constructors, candidate
 validation executes the generated loops, and fallback uses the concrete
 combination rank. -/
-noncomputable def concreteVanHoeijRawOps :
+def concreteVanHoeijRawOps :
     Generated.StrictRecombine.VanHoeijRawOps where
   cld := { divmodTermination := StrictHensel.concreteDivmodTermination }
   lll := concreteLLLExecution
@@ -16170,7 +16230,7 @@ noncomputable def concreteVanHoeijRawOps :
   zassenhausTermination := concreteZassenhausTermination
 
 /-- Genuine active-set termination for the sole concrete van-Hoeij bundle. -/
-noncomputable def concreteVanHoeijTermination :
+def concreteVanHoeijTermination :
     Generated.StrictRecombine.VanHoeijTermination concreteVanHoeijRawOps :=
   removalTermination concreteVanHoeijRawOps
 

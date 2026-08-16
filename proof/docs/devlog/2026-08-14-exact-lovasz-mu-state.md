@@ -3132,3 +3132,17 @@ recursion.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：用 Hensel `p^k` 等式和 Mignotte 界识别 trial/symmetric 的物理输出，
   再调用已有 `exactDivmodRaw_complete_of_dvd` 得到实际 `.extracted`
+
+`zassenhausCandidate_executes_through_primitive` now composes those totality
+facts with the real selected-prime/Hensel certificate.  It runs the checked
+`Nat -> Int32` conversion, the physical trial multiplication, symmetric
+recovery, and primitive extraction, retaining every `.ok` equation.  Hensel
+uniqueness identifies the trial modulo the exact returned `p^k`; the generated
+Mignotte bound then proves that the physical symmetric array denotes exactly
+`C(quotient.leadingCoeff) * divisor` coefficient by coefficient.  The final
+primitive result is again obtained by executing `primitiveRaw`, not by choosing
+a semantic representative.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：证明该 primitive result 整除当前 `fStar`，执行 exact division 与
+  quotient primitive normalization，从而关闭完整 `.extracted` 分支

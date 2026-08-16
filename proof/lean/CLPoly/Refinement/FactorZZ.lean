@@ -1534,6 +1534,177 @@ theorem zassenhausConstantPrune_accepts_hensel_divisor_candidate
   simp [target]
   ring
 
+/-- After both literal scalar prunes accept a genuine Hensel candidate, the
+generated checked-index conversion, modular trial product, symmetric recovery,
+and primitive-part calls all execute.  The physical symmetric array denotes
+exactly the quotient-leading-scaled genuine divisor. -/
+theorem zassenhausCandidate_executes_through_primitive
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime 0 output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor).leadingCoeff =
+          (divisor.leadingCoeff : ZMod selection.prime.toNat))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate)
+    (hactiveFits : output.1.size ≤ 2 ^ 31)
+    (hassociated : Associated
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor)
+      (((StrictRecombine.selectSourceIndices output.1.toList
+        candidate.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod)) :
+    ∃ candidate32 product symmetric content recoveredFactor,
+      Generated.StrictRecombine.combinationToInt32 candidate = .ok candidate32 ∧
+      Generated.StrictRecombine.trialProductLoop ⟨()⟩ candidate32 output.1
+        output.2 0 #[(⟨0⟩, leading.2)] = .ok product ∧
+      Generated.StrictRecombine.symmetricModRaw product output.2 = .ok symmetric ∧
+      SparsePolyZZ.toPoly symmetric =
+        Polynomial.C quotient.leadingCoeff * divisor ∧
+      Generated.StrictRecombine.primitiveRaw symmetric =
+        .ok (content, recoveredFactor) := by
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < output.1.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hfits : ∀ position (hposition : position < candidate.size),
+      candidate[position] < 2 ^ 31 := by
+    intro position hposition
+    exact lt_of_lt_of_le (hbound position hposition) hactiveFits
+  rcases StrictRecombine.combinationToInt32_toList candidate hfits with
+    ⟨candidate32, hconvert, _⟩
+  have hvalid := StrictRecombine.combinationToInt32_candidate_valid candidate
+    output.1.size candidate32 hbound hactiveFits hconvert
+  have houtputPositive :=
+    (StrictRecombine.hensel_output_modulus_bounds_scaled_divisor hentry rfl
+      hcanonical hnonempty hdegree leading hleading divisor
+      (by
+        intro hzero
+        apply hselection.goodPrime.lc_nonzero
+        rw [hzero]
+        simp)
+      (hfactor ▸ dvd_mul_right divisor quotient)).1
+  rcases StrictRecombine.trialProductLoop_complete ⟨()⟩ candidate32 output.1
+      output.2 0 #[(⟨0⟩, leading.2)] houtputPositive.ne' hvalid with
+    ⟨product, hproduct⟩
+  rcases henselCandidate_scaled_eq_divisor_mod_primePower hcount hp2 hfactors
+      hleadingSemantic hselection hentry divisor quotient hfactor
+      hdivisorModNonzero hdivisorLeading candidate hlegal hassociated with
+    ⟨exponent, hexponent, houtput, hunique⟩
+  let modulus := selection.prime.toNat ^ exponent
+  let target := Polynomial.C quotient.leadingCoeff * divisor
+  have hmodulus : 0 < modulus :=
+    pow_pos (Fact.out : Nat.Prime selection.prime.toNat).pos exponent
+  have houtputCast : (modulus : Int) = output.2 := by
+    simpa [modulus] using houtput.symm
+  have htrial := StrictRecombine.trialProductLoop_source_indices_refines
+    modulus hmodulus candidate output.1 candidate32
+    #[(⟨0⟩, leading.2)] product hbound hactiveFits hconvert
+    (by simpa [houtputCast] using hproduct)
+  have hsourceLeading : (SparsePolyZZ.toPoly f).leadingCoeff = leading.2 := by
+    have hfront : f[0] = leading := by
+      rw [Array.getElem?_eq_getElem hnonempty] at hleading
+      exact Option.some.inj hleading
+    rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+      hnonempty, hfront]
+  have hcongruent : Polynomial.map (Int.castRingHom (ZMod modulus))
+      (SparsePolyZZ.toPoly product) =
+      Polynomial.map (Int.castRingHom (ZMod modulus)) target := by
+    change StrictHensel.toPolyMod modulus product = _
+    rw [htrial]
+    have hinitialMod : StrictHensel.toPolyMod modulus
+        #[(⟨0⟩, leading.2)] = Polynomial.C (leading.2 : ZMod modulus) := by
+      simp [StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
+    rw [hinitialMod]
+    simpa [modulus, StrictHensel.toPolyMod, target, Polynomial.map_mul,
+      Polynomial.map_C, Polynomial.map_list_prod, hsourceLeading] using hunique
+  have hinitialCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical #[(⟨0⟩, leading.2)] := by
+    constructor
+    · simp
+    · intro term hterm
+      simp at hterm
+      subst term
+      have hfront : f[0] = leading := by
+        rw [Array.getElem?_eq_getElem hnonempty] at hleading
+        exact Option.some.inj hleading
+      rw [← hfront]
+      exact hcanonical.2 f[0] (Array.getElem_mem_toList hnonempty)
+  have hproductCanonical := StrictRecombine.trialProductLoop_canonical ⟨()⟩
+    candidate32 output.1 output.2 0 #[(⟨0⟩, leading.2)] product
+    hinitialCanonical hproduct
+  rcases StrictRecombine.symmetricModRaw_complete product output.2
+      houtputPositive with ⟨symmetric, hsymmetric⟩
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    apply hselection.goodPrime.lc_nonzero
+    rw [hzero]
+    simp
+  have hprecision := StrictRecombine.hensel_output_modulus_bounds_scaled_divisor
+    hentry rfl hcanonical hnonempty hdegree leading hleading divisor hsourceNe
+      (hfactor ▸ dvd_mul_right divisor quotient)
+  have hdivisorNe : divisor ≠ 0 := by
+    intro hzero
+    apply hdivisorModNonzero
+    simp [hzero]
+  have hsourceLeadingFactor : leading.2 =
+      divisor.leadingCoeff * quotient.leadingCoeff := by
+    rw [← hsourceLeading, hfactor, Polynomial.leadingCoeff_mul]
+  have htargetBound : ∀ degree, (target.coeff degree).natAbs * 2 < modulus := by
+    intro degree
+    have hlargeInt := hprecision.2 degree
+    rw [← houtputCast] at hlargeInt
+    have hlarge : (leading.2 * divisor.coeff degree).natAbs * 2 < modulus := by
+      exact_mod_cast hlargeInt
+    have hdivisorLeadingAbs : 0 < divisor.leadingCoeff.natAbs :=
+      Int.natAbs_pos.mpr (Polynomial.leadingCoeff_ne_zero.mpr hdivisorNe)
+    have hle : (quotient.leadingCoeff * divisor.coeff degree).natAbs * 2 ≤
+        (leading.2 * divisor.coeff degree).natAbs * 2 := by
+      rw [hsourceLeadingFactor, Int.natAbs_mul, Int.natAbs_mul,
+        Int.natAbs_mul]
+      have hbase := Nat.le_mul_of_pos_left
+        (quotient.leadingCoeff.natAbs * (divisor.coeff degree).natAbs)
+        hdivisorLeadingAbs
+      have hscaled := Nat.mul_le_mul_right 2 hbase
+      simpa [Nat.mul_assoc, Nat.mul_left_comm, Nat.mul_comm] using hscaled
+    have htargetCoeff : target.coeff degree =
+        quotient.leadingCoeff * divisor.coeff degree := by simp [target]
+    rw [htargetCoeff]
+    exact lt_of_le_of_lt hle hlarge
+  have hsymmetricPoly :=
+    StrictRecombine.symmetricModRaw_recovers_strictly_bounded_target product
+      symmetric target modulus hmodulus hproductCanonical
+      (by simpa [houtputCast] using hsymmetric) hcongruent htargetBound
+  have hsymmetricCanonical := StrictRecombine.symmetricModRaw_canonical product
+    symmetric modulus hmodulus hproductCanonical
+    (by simpa [houtputCast] using hsymmetric)
+  rcases StrictRecombine.primitiveRaw_complete symmetric hsymmetricCanonical with
+    ⟨content, recoveredFactor, hprimitive⟩
+  exact ⟨candidate32, product, symmetric, content, recoveredFactor, hconvert,
+    hproduct, hsymmetric, hsymmetricPoly, hprimitive⟩
+
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was
 not omitted: that exact index array was executed and rejected.  This is the

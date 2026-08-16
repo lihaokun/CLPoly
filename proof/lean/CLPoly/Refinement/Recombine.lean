@@ -15533,6 +15533,18 @@ private theorem factorArrayProduct_finishZassenhaus
     next hdegree => rfl
   next hnonempty => rfl
 
+/-- The physical finishing block preserves result length or appends exactly
+one remaining positive-degree factor; sorting does not change length. -/
+theorem finishZassenhaus_size_le (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) :
+    (Generated.StrictRecombine.finishZassenhaus fStar result).size ≤
+      result.size + 1 := by
+  unfold Generated.StrictRecombine.finishZassenhaus
+  simp [Generated.StrictRecombine.sortFactorsByDegree]
+  split
+  next => split <;> simp
+  next => omega
+
 /-- A canonical sparse integer polynomial whose concrete front degree is zero
 contains exactly that one constant term. -/
 private theorem sparsePolyZZ_toPoly_eq_C_of_front_degree_zero
@@ -15725,6 +15737,66 @@ decreasing_by
   · exact Prod.Lex.left _ _
       (concreteZassenhausTermination.removal_decreases active candidate active'
         (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
+/-- The literal Zassenhaus fallback never returns more physical factors than
+the already accumulated results plus the current active lifted factors. -/
+theorem zassenhausLoop_result_size_le
+    (termination : Generated.StrictRecombine.ZassenhausTermination)
+    (modulus : ZZ) (active : Array SparsePolyZZ) (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) (subsetSize : Nat)
+    (hsubsetPositive : 0 < subsetSize) (hactivePositive : 0 < active.size)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.zassenhausLoop termination modulus active
+      fStar result subsetSize hsubsetPositive = .ok output) :
+    output.size ≤ result.size + active.size := by
+  rw [Generated.StrictRecombine.zassenhausLoop] at hrun
+  split at hrun
+  next hcontinue =>
+    let combinationTermination :=
+      termination.combinations active.size subsetSize
+    let initial := Generated.StrictRecombine.initialCombination subsetSize
+    let hinitial := termination.initial_valid active.size subsetSize (by omega)
+    cases hscan : Generated.StrictRecombine.scanZassenhausCombinations
+        combinationTermination fStar active modulus initial hinitial with
+    | error fault => simp [combinationTermination, initial, hinitial, hscan] at hrun
+    | ok scanResult =>
+      cases scanResult with
+      | exhausted =>
+        simp only [combinationTermination, initial, hinitial, hscan] at hrun
+        exact zassenhausLoop_result_size_le termination modulus active fStar
+          result (subsetSize + 1) (by omega) hactivePositive output hrun
+      | extracted factor quotient candidate candidateSize =>
+        simp only [combinationTermination, initial, hinitial, hscan] at hrun
+        cases hremove : Generated.StrictRecombine.removeCombination candidate
+            active with
+        | error fault =>
+          rw [hremove] at hrun
+          contradiction
+        | ok active' =>
+          rw [hremove] at hrun
+          have hremoveSize : active'.size + candidate.size = active.size := by
+            unfold Generated.StrictRecombine.removeCombination at hremove
+            exact removeCombinationLoop_size candidate candidate.size active
+              active' hremove
+          have hcandidatePositive : 0 < candidate.size := by
+            rw [candidateSize]
+            exact hsubsetPositive
+          have hactivePositive' : 0 < active'.size := by
+            rw [candidateSize] at hremoveSize
+            omega
+          have htail := zassenhausLoop_result_size_le termination modulus active'
+            quotient (result.push factor) 1 (by omega) hactivePositive' output
+            hrun
+          simp only [Array.size_push] at htail
+          omega
+  next hcontinue =>
+    have hout := Except.ok.inj hrun
+    subst output
+    exact (finishZassenhaus_size_le fStar result).trans (by omega)
+termination_by (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _ (by omega)
 
 /-- The complete source-shaped Zassenhaus outer loop preserves the live
 product up to a unit.  Successful extraction recursively installs the exact

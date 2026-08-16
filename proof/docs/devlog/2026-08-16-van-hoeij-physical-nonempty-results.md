@@ -245,3 +245,26 @@ round cannot increase `result.size + active.size`.
 - Next: lift this per-round conservation law through the lexicographically
   well-founded `vanHoeijLoop`, including the literal Zassenhaus fallback size
   bound.
+
+## Bound the literal Zassenhaus fallback output
+
+`finishZassenhaus_size_le` proves that the shared terminal block either keeps
+the physical result array or appends exactly one remaining positive-degree
+factor; the final merge sort preserves length.
+
+`zassenhausLoop_result_size_le` then follows the generated lexicographic
+Zassenhaus recursion.  Subset exhaustion only advances the bounded subset
+size.  A successful extraction uses the exact
+`removeCombinationLoop_size` equation, so removing a positive candidate pays
+for the one physical result push and leaves a positive active array under the
+source `2 * subsetSize ≤ active.size` guard.  At termination the remaining
+positive active slot pays for the optional final append.  Thus fallback output
+size is bounded by `result.size + active.size` without any semantic
+factorization assumption.
+
+- Termination measure: the generated pair
+  `(active.size, active.size + 1 - subsetSize)`.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: prove validation's source `remaining` guard leaves at least one active
+  index, then lift the common size budget through `vanHoeijLoop`.

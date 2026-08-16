@@ -291,3 +291,28 @@ well-founded van-Hoeij call, not an external termination or semantic oracle.
   surface.
 - Next: carry `result.size + active.size` through every constructor of the
   generated lexicographic `vanHoeijLoop` and its literal fallback.
+
+## Carry the physical factor budget through van Hoeij
+
+`vanHoeijLoop_finished_size_le` follows the complete generated lexicographic
+recursion with the invariant `result.size + active.size ≤ budget`.  A
+successful validation/removal round uses the exact conservation theorem and
+the newly proved active nonemptiness before taking the smaller-active
+recursive edge.  A precision retry preserves the same two physical arrays.
+The fallback branch executes the literal `zassenhausLoop`, uses its physical
+output bound, and accounts exactly for the subsequent source-order append.
+
+Specializing the invariant to the generated entry initialization proves
+`__vanhoeij_recombine_raw_ir_size_le`: every successful concrete C++
+recombination output has at most as many slots as the lifted Hensel array.
+This is the missing arithmetic fact needed to interpret the generated
+`__lll_factorize` result-count guard without assuming recombination
+correctness as an oracle.
+
+- Termination measure: the generated pair
+  `(active.size, precisionRank target initial maximum)`; no fuel is used.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: combine this upper bound with the literal `__lll_factorize` acceptance
+  guard and the Hensel cardinality certificate, then lift modular
+  irreducibility to the returned integer factors.

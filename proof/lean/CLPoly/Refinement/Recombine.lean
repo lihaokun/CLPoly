@@ -9669,6 +9669,16 @@ theorem appendFallback_refines (fallback result : Array SparsePolyZZ) :
       appendFallbackLoop_refines fallback 0 result
   · simp [factorArrayToL2]
 
+theorem appendFallback_size (fallback result output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.appendFallback fallback result =
+      .ok output) :
+    output.size = result.size + fallback.size := by
+  unfold Generated.StrictRecombine.appendFallback at hrun
+  rw [appendFallbackLoop_refines] at hrun
+  have hout := Except.ok.inj hrun
+  subst output
+  simp
+
 /-- Pure list meaning of the source reverse-erasure loop. -/
 def removeConsumedL2 (active : Array Int32) (consumed : Array Bool) :
     List Int32 :=
@@ -17536,6 +17546,191 @@ decreasing_by
   · exact Prod.Lex.right _
       (Generated.StrictRecombine.nextPrecision_retry_decreases state.target
         initial maximum _ hinitial (by assumption))
+
+/-- The complete generated van-Hoeij loop cannot create more physical output
+slots than are present in its accumulated-result/active-factor budget.  The
+proof follows the same lexicographic recursion as the source-shaped loop. -/
+theorem vanHoeijLoop_finished_size_le
+    (ops : Generated.StrictRecombine.VanHoeijRawOps)
+    (termination : Generated.StrictRecombine.VanHoeijTermination ops)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (initial maximum : Nat) (hinitial : 0 < initial)
+    (state : Generated.StrictRecombine.VanHoeijState)
+    (hstate : Generated.StrictRecombine.VanHoeijStateValid ops state)
+    (hactive : 0 < state.active.size) (budget : Nat)
+    (hbudget : state.result.size + state.active.size ≤ budget)
+    (output : SparsePolyZZ × Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.vanHoeijLoop ops termination lifted
+      modulus initial maximum hinitial state hstate = .ok output) :
+    (Generated.StrictRecombine.finishZassenhaus output.1 output.2).size ≤
+      budget := by
+  rw [Generated.StrictRecombine.vanHoeijLoop] at hrun
+  split at hrun
+  next hdone =>
+    have hout := Except.ok.inj hrun
+    subst output
+    exact (finishZassenhaus_size_le state.fStar state.result).trans (by omega)
+  next hdone =>
+    split at hrun
+    next fault hgather => contradiction
+    next activeLifted hgather =>
+      let hdimension : state.matrix.size =
+          activeLifted.size + state.currentColumns := by
+        rw [ops.gather_size state.active lifted activeLifted hgather]
+        exact hstate.dimension
+      split at hrun
+      next fault hprepare => contradiction
+      next prepared hprepare =>
+        let matrix' := prepared.1.1
+        let currentColumns' := prepared.1.2.1
+        let candidates := prepared.1.2.2
+        dsimp only at hrun
+        split at hrun
+        next fault hvalidate => contradiction
+        next fStar' result' consumed hvalidate =>
+          by_cases hfound : ∃ index, ∃ hindex : index < consumed.size,
+              consumed[index] = true
+          · rw [dif_pos hfound] at hrun
+            split at hrun
+            next fault hremove => contradiction
+            next activeNext hremove =>
+              split at hrun
+              next fault hreset => contradiction
+              next resetMatrix resetBound hreset =>
+                have hactiveSize : activeLifted.size = state.active.size :=
+                  ops.gather_size state.active lifted activeLifted hgather
+                have hremoveRaw :
+                    Generated.StrictRecombine.removeConsumed state.active
+                        consumed = .ok activeNext.1 := by
+                  unfold Generated.StrictRecombine.removeConsumedDecreasing at hremove
+                  split at hremove
+                  next fault hraw => contradiction
+                  next active' hraw =>
+                    have hvalue := Except.ok.inj hremove
+                    cases hvalue
+                    exact hraw
+                have hbudget' : result'.size + activeNext.1.size ≤ budget :=
+                  (validateRemove_result_active_size_le ops.validation
+                    state.active activeLifted modulus candidates state.fStar
+                    fStar' state.result result' consumed activeNext.1 hactiveSize
+                    hvalidate hremoveRaw).trans hbudget
+                have hactive' : 0 < activeNext.1.size :=
+                  validateRemove_active_nonempty ops.validation state.active
+                    activeLifted modulus candidates state.fStar fStar'
+                    state.result result' consumed activeNext.1 hactiveSize hactive
+                    hvalidate hremoveRaw
+                let nextState : Generated.StrictRecombine.VanHoeijState :=
+                  { active := activeNext.1, fStar := fStar', result := result',
+                    matrix := resetMatrix, currentColumns := 0,
+                    shortBound := resetBound, target := 0 }
+                have hnextValid :
+                    Generated.StrictRecombine.VanHoeijStateValid ops nextState :=
+                  ⟨(ops.reset_valid activeNext.1.size resetMatrix resetBound
+                      hreset).1,
+                    by simpa [nextState] using
+                      (ops.reset_valid activeNext.1.size resetMatrix resetBound
+                        hreset).2⟩
+                exact vanHoeijLoop_finished_size_le ops termination lifted
+                  modulus initial maximum hinitial nextState hnextValid
+                  (by simpa [nextState] using hactive') budget
+                  (by simpa [nextState] using hbudget') output hrun
+          · rw [dif_neg hfound] at hrun
+            split at hrun
+            next target' hprecision =>
+              let nextState : Generated.StrictRecombine.VanHoeijState :=
+                { active := state.active, fStar := state.fStar,
+                  result := state.result, matrix := matrix',
+                  currentColumns := currentColumns', shortBound := state.shortBound,
+                  target := target' }
+              have hnextValid :
+                  Generated.StrictRecombine.VanHoeijStateValid ops nextState :=
+                ⟨prepared.2.1, by
+                  have hactiveSize :=
+                    ops.gather_size state.active lifted activeLifted hgather
+                  dsimp [nextState]
+                  exact prepared.2.2.trans (by omega)⟩
+              exact vanHoeijLoop_finished_size_le ops termination lifted modulus
+                initial maximum hinitial nextState hnextValid
+                (by simpa [nextState] using hactive) budget
+                (by simpa [nextState] using hbudget) output hrun
+            next hprecision =>
+              split at hrun
+              next fault hfallback => contradiction
+              next fallback hfallback =>
+                split at hrun
+                next fault happend => contradiction
+                next appended happend =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  have hactiveLiftedSize :
+                      activeLifted.size = state.active.size :=
+                    ops.gather_size state.active lifted activeLifted hgather
+                  have hactiveLifted : 0 < activeLifted.size := by omega
+                  have hfallbackSize :
+                      fallback.size ≤ activeLifted.size := by
+                    unfold Generated.StrictRecombine.zassenhausRecombine at hfallback
+                    rw [if_neg (by omega)] at hfallback
+                    simpa using zassenhausLoop_result_size_le
+                      ops.zassenhausTermination modulus activeLifted state.fStar
+                      #[] 1 (by omega) hactiveLifted fallback hfallback
+                  have happendSize := appendFallback_size fallback state.result
+                    appended happend
+                  have happendedBudget : appended.size ≤ budget := by omega
+                  simpa [Generated.StrictRecombine.finishZassenhaus,
+                    Generated.StrictRecombine.sortFactorsByDegree] using
+                    happendedBudget
+termination_by
+  (state.active.size,
+    Generated.StrictRecombine.precisionRank state.target initial maximum)
+decreasing_by
+  · decreasing_tactic
+  · exact Prod.Lex.right _
+      (Generated.StrictRecombine.nextPrecision_retry_decreases state.target
+        initial maximum _ hinitial (by assumption))
+
+/-- The complete generated C++ recombination entry returns no more physical
+factors than the lifted array from which its active index set is initialized. -/
+theorem __vanhoeij_recombine_raw_ir_size_le
+    (ops : Generated.StrictRecombine.VanHoeijRawOps)
+    (termination : Generated.StrictRecombine.VanHoeijTermination ops)
+    (f : SparsePolyZZ) (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg)
+    (hlifted : 0 < lifted.size) (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir ops
+      termination f lifted modulus hdegree = .ok output) :
+    output.size ≤ lifted.size := by
+  rw [Generated.StrictRecombine.__vanhoeij_recombine_raw_ir] at hrun
+  dsimp only at hrun
+  split at hrun
+  next fault hreset => contradiction
+  next matrix bound hreset =>
+    split at hrun
+    next fault hloop => contradiction
+    next fStar result hloop =>
+      have hout := Except.ok.inj hrun
+      subst output
+      let active := (Array.range lifted.size).map
+        (fun index => index.toUInt32.toInt32)
+      let state : Generated.StrictRecombine.VanHoeijState :=
+        { active := active, fStar := f, result := #[], matrix := matrix,
+          currentColumns := 0, shortBound := bound, target := 0 }
+      have hactiveSize : active.size = lifted.size := by simp [active]
+      have hstate :
+          Generated.StrictRecombine.VanHoeijStateValid ops state :=
+        ⟨(ops.reset_valid lifted.size matrix bound hreset).1, by
+          dsimp [state, active]
+          rw [(ops.reset_valid lifted.size matrix bound hreset).2]
+          simp⟩
+      exact vanHoeijLoop_finished_size_le ops termination lifted modulus
+        (min (if 3 * lifted.size > (get_deg f).toNatClampNeg + 1 then 30 else 10)
+          (((get_deg f).toNatClampNeg + 1) / 2))
+        (((get_deg f).toNatClampNeg + 1) / 2)
+        (by
+          apply lt_min
+          · split <;> omega
+          · apply Nat.div_pos <;> omega)
+        state hstate (by simp [state, hactiveSize, hlifted]) lifted.size
+        (by simp [state, hactiveSize]) (fStar, result) hloop
 
 /-- Product refinement of the complete generated C++
 `__vanhoeij_recombine` entry.  Initialization, the lexicographically

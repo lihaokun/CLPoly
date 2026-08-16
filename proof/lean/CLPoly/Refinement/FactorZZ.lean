@@ -18,6 +18,31 @@ namespace Refinement
 
 namespace StrictFactorZZ
 
+/-- Below the signed 32-bit boundary, the exact C++ size conversion used by
+`__lll_factorize` reflects the natural-number strict comparison. -/
+theorem size_toUInt32_toInt32_lt_iff (left right : Nat)
+    (hleft : left < 2 ^ 31) (hright : right < 2 ^ 31) :
+    left.toUInt32.toInt32 < right.toUInt32.toInt32 ↔ left < right := by
+  rw [Int32.lt_iff_toInt_lt]
+  change (Int32.ofNat left).toInt < (Int32.ofNat right).toInt ↔ _
+  rw [Int32.toInt_ofNat_of_lt hleft, Int32.toInt_ofNat_of_lt hright]
+  omega
+
+/-- If the concrete recombination size is already known not to exceed the
+Hensel cardinality, failure of the literal signed C++ "fewer factors" test
+forces exact cardinality equality. -/
+theorem result_size_eq_of_not_machine_lt
+    (result : Array SparsePolyZZ) (factorCount : Nat)
+    (hfactorFits : factorCount < 2 ^ 31)
+    (hresultLe : result.size ≤ factorCount)
+    (hnot : ¬ result.size.toUInt32.toInt32 <
+      factorCount.toUInt32.toInt32) :
+    result.size = factorCount := by
+  have hresultFits : result.size < 2 ^ 31 := lt_of_le_of_lt hresultLe hfactorFits
+  rw [size_toUInt32_toInt32_lt_iff result.size factorCount hresultFits
+    hfactorFits] at hnot
+  omega
+
 open CLPoly.Math
 
 private theorem polynomial_eq_C_leadingCoeff_mul_of_associated_monic

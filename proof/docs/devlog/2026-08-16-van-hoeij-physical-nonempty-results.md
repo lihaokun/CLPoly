@@ -316,3 +316,19 @@ correctness as an oracle.
 - Next: combine this upper bound with the literal `__lll_factorize` acceptance
   guard and the Hensel cardinality certificate, then lift modular
   irreducibility to the returned integer factors.
+
+## Interpret the literal signed result-count guard
+
+`size_toUInt32_toInt32_lt_iff` proves that the exact C++ conversion
+`size_t → uint32_t → int32_t` reflects natural strict comparison below the
+signed 32-bit boundary.  Combined with the concrete recombination upper bound,
+`result_size_eq_of_not_machine_lt` shows that failure of the generated
+`result.size() < r` test means exact equality with the Hensel factor count.
+No mathematical comparison is substituted for the machine comparison.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: analyze the generated conjunction with `aH < aMig`; the equal-count
+  acceptance branch uses modular cardinality, while every full-precision path
+  must carry irreducibility through the actual van-Hoeij validation/fallback
+  execution.

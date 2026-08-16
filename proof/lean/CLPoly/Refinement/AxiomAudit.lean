@@ -333,3 +333,4 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.zassenhausRecombine_physicalFactorQuality
 #print axioms Refinement.StrictRecombine.concreteVanHoeijLoop_physicalFactorQuality
 #print axioms Refinement.StrictRecombine.__vanhoeij_recombine_raw_ir_physicalFactorQuality
+#print axioms Refinement.StrictFactorZZ.concreteVanHoeij_equal_cardinality_factorArrayIrreducible

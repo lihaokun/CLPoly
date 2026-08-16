@@ -1045,6 +1045,55 @@ theorem factorArrayIrreducible_of_hensel_cardinality
   exact factorArrayIrreducible_of_modular prime output hprimitive hleading
     hmodIrreducible
 
+/-- A full-cardinality result from the literal concrete van-Hoeij entry is an
+array of integer irreducibles.  Product, member quality, and cardinality all
+come from the same generated execution; the Hensel certificate supplies the
+modular atom product. -/
+theorem concreteVanHoeij_equal_cardinality_factorArrayIrreducible
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {source : SparsePolyZZ} {lifted output : Array SparsePolyZZ}
+    (productState : LiveHenselProduct prime exponent source lifted)
+    (hdegree : 2 ≤ (get_deg source).toNatClampNeg)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hliftedFits : lifted.size ≤ 2 ^ 31)
+    (hirreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (StrictHensel.toPolyMod prime lifted[index]))
+    (hlength : output.size = lifted.size)
+    (hrun : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination source lifted
+      ((prime ^ exponent : Nat) : ZZ) hdegree = .ok output) :
+    FactorArrayIrreducible output := by
+  have hmodulus : 0 < prime ^ exponent :=
+    pow_pos (Fact.out : Nat.Prime prime).pos exponent
+  have hdivides : prime ∣ prime ^ exponent :=
+    dvd_pow_self prime (Nat.ne_of_gt productState.exponentPositive)
+  have hquality :=
+    StrictRecombine.__vanhoeij_recombine_raw_ir_physicalFactorQuality
+      source lifted output (prime ^ exponent) prime hdegree hmodulus
+      (Fact.out : Nat.Prime prime).pos hdivides hcanonical hnonempty
+      hprimitive hleading hliftedFits hirreducible hrun
+  have hsourceProduct :=
+    StrictRecombine.__vanhoeij_recombine_raw_ir_product_associated
+      StrictRecombine.concreteVanHoeijRawOps
+      StrictRecombine.concreteVanHoeijTermination source lifted
+      (((prime ^ exponent : Nat) : ZZ)) hdegree hcanonical hprimitive output
+      hrun
+  have hsourceProduct' : Associated (SparsePolyZZ.toPoly source)
+      (output.toList.map SparsePolyZZ.toPoly).prod := by
+    simpa [StrictRecombine.factorArrayProduct] using hsourceProduct
+  have houtputPrimitive :
+      (output.toList.map SparsePolyZZ.toPoly).prod.IsPrimitive :=
+    Polynomial.isPrimitive_of_dvd hprimitive hsourceProduct'.symm.dvd
+  exact factorArrayIrreducible_of_hensel_cardinality productState
+    hsourceProduct' houtputPrimitive
+    (fun factor hfactor => (hquality factor hfactor).2.2)
+    (fun factor hfactor => (hquality factor hfactor).2.1)
+    hirreducible hlength
+
 /-- A concrete integer coefficient surviving reduction modulo the selected
 prime is a unit at every positive prime-power precision. -/
 theorem intCast_isUnit_primePower_of_ne_zero_prime

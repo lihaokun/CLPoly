@@ -20561,7 +20561,7 @@ theorem scanExtraction_removeCombination_preserves_mod_product
     exact hfactorCertificate.1.eq_zero_iff.mp hzero
   exact Associated.of_mul_left hcombined hfactorCertificate.1 hfactorNe
 
-private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
+noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
   Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod
 

@@ -332,3 +332,26 @@ No mathematical comparison is substituted for the machine comparison.
   acceptance branch uses modular cardinality, while every full-precision path
   must carry irreducibility through the actual van-Hoeij validation/fallback
   execution.
+
+## Classify the generated two-pass LLL control flow
+
+`__lll_factorize_raw_ir_low_precision_cases` unfolds the exact generated
+entry after naming the concrete heuristic, first Hensel, and first van-Hoeij
+results.  Under the literal low-precision condition `aH < aMig`, a successful
+return is now proved to be exactly one of two source paths:
+
+- the first result was accepted, in which case the signed count guard and the
+  physical recombination upper bound force equality with the Hensel count; or
+- the result is returned by the concrete second `henselLift(..., 0)` call and
+  its immediately following van-Hoeij call.
+
+`heuristic_starting_precision_first_le_second` separately follows every
+branch of the generated heuristic (including its floating calculation and
+overflow guard) and derives `aH ≤ aMig` from the literal final `min`.  Thus
+failure of `aH < aMig` identifies a first pass already at full precision.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: establish the full-precision irreducibility invariant for factors
+  physically appended by van-Hoeij validation, and combine it with the
+  already-certified Zassenhaus fallback.

@@ -208,6 +208,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictFactorZZ.factorArrayIrreducible_of_hensel_cardinality
 #print axioms Refinement.StrictFactorZZ.size_toUInt32_toInt32_lt_iff
 #print axioms Refinement.StrictFactorZZ.result_size_eq_of_not_machine_lt
+#print axioms Refinement.StrictFactorZZ.__lll_factorize_raw_ir_low_precision_cases
+#print axioms Refinement.StrictFactorZZ.heuristic_starting_precision_first_le_second
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

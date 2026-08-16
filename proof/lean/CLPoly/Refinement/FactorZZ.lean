@@ -43,6 +43,102 @@ theorem result_size_eq_of_not_machine_lt
     hfactorFits] at hnot
   omega
 
+/-- Exact control-flow classification of the low-precision branch of the
+generated C++ `__lll_factorize`.  If the first recombination is accepted, its
+physical result has the full Hensel cardinality.  Otherwise the returned array
+is produced by the literal second Hensel call with source argument zero and
+the immediately following recombination call. -/
+theorem __lll_factorize_raw_ir_low_precision_cases
+    (ops : Generated.StrictFactorZZ.FactorZZRawOps)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aH aMig : Int32) (liftedH : Array SparsePolyZZ) (mH : ZZ)
+    (result output : Array SparsePolyZZ)
+    (hheuristic :
+      Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir f
+        factors.size.toUInt32.toInt32 p = .ok (aH, aMig))
+    (hlift : ops.henselLift f factors p aH = .ok (liftedH, mH))
+    (hrecombine : ops.vanHoeijRecombine f liftedH mH = .ok result)
+    (hliftedSize : liftedH.size = factors.size)
+    (hresultLe : result.size ≤ liftedH.size)
+    (hfactorFits : factors.size < 2 ^ 31)
+    (hprecision : aH < aMig)
+    (hrun : Generated.StrictFactorZZ.__lll_factorize_raw_ir ops f factors p =
+      .ok output) :
+    (output = result ∧ result.size = factors.size) ∨
+      ∃ liftedMig mMig,
+        ops.henselLift f factors p 0 = .ok (liftedMig, mMig) ∧
+        ops.vanHoeijRecombine f liftedMig mMig = .ok output := by
+  unfold Generated.StrictFactorZZ.__lll_factorize_raw_ir at hrun
+  simp only [hheuristic, hlift, hrecombine] at hrun
+  by_cases hless : Int32.ofNat result.size < Int32.ofNat factors.size
+  · rw [if_pos (by simp [hless, hprecision])] at hrun
+    split at hrun
+    next fault hliftMig => contradiction
+    next liftedMig mMig hliftMig =>
+      cases hrecombineMig : ops.vanHoeijRecombine f liftedMig mMig with
+      | error fault => rw [hrecombineMig] at hrun; contradiction
+      | ok resultMig =>
+          rw [hrecombineMig] at hrun
+          have hout := Except.ok.inj hrun
+          subst resultMig
+          exact Or.inr ⟨liftedMig, mMig, hliftMig, hrecombineMig⟩
+  · rw [if_neg (by simp [hless])] at hrun
+    have hout := Except.ok.inj hrun
+    subst output
+    exact Or.inl ⟨rfl, result_size_eq_of_not_machine_lt result factors.size
+      hfactorFits (by omega) (by simpa using hless)⟩
+
+/-- The first precision returned by the exact generated heuristic is always
+bounded by its full Mignotte precision.  This follows from the literal final
+`min`; fault branches cannot produce a successful pair. -/
+theorem heuristic_starting_precision_first_le_second
+    (f : SparsePolyZZ) (r : Int32) (p : UInt64) (aH aMig : Int32)
+    (hrun : Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir
+      f r p = .ok (aH, aMig)) :
+    aH ≤ aMig := by
+  unfold Generated.StrictFactorZZ.__heuristic_starting_precision_raw_ir at hrun
+  split at hrun
+  next hp =>
+    split at hrun
+    next => contradiction
+    next leading hleading =>
+      split at hrun
+      next fault hbound => contradiction
+      next bound hbound =>
+        dsimp only at hrun
+        split at hrun
+        next hsign =>
+          split at hrun
+          next hfit =>
+            have hout := Except.ok.inj hrun
+            cases hout
+            change (if _ ≤ _ then _ else _) ≤ _
+            split
+            next => rw [Int32.le_iff_toInt_le]
+            next hnot =>
+              rw [Int32.le_iff_toInt_le]
+              by_contra hreverse
+              apply hnot
+              rw [Int32.le_iff_toInt_le]
+              omega
+          next hfit => contradiction
+        next hsign =>
+          split at hrun
+          next hfit =>
+            have hout := Except.ok.inj hrun
+            cases hout
+            change (if _ ≤ _ then _ else _) ≤ _
+            split
+            next => rw [Int32.le_iff_toInt_le]
+            next hnot =>
+              rw [Int32.le_iff_toInt_le]
+              by_contra hreverse
+              apply hnot
+              rw [Int32.le_iff_toInt_le]
+              omega
+          next hfit => contradiction
+  next hp => contradiction
+
 open CLPoly.Math
 
 private theorem polynomial_eq_C_leadingCoeff_mul_of_associated_monic

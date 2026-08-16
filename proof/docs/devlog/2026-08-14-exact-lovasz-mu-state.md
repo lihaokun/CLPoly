@@ -2563,3 +2563,20 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 `lake build CLPoly.Refinement.Hensel` completed successfully (3328 jobs).
 Next, monicity of the actual right-half product is established and this
 conversion theorem is threaded through the recursive builder certificate.
+
+## Prove monicity of the concrete builder interval product
+
+`henselFactorRangeProduct_monic` now proves that every half-open product used
+by the generated tree builder is monic whenever each concrete array element
+read in that interval is monic.
+
+The proof follows the same well-founded `stop - index` recursion as the
+builder's mathematical denotation, performs the actual bounded array read at
+each step, and composes `Polynomial.Monic.mul`.  The terminal interval is the
+literal product identity.  This supplies the missing premise for applying
+the generated `Zp`-to-`ZZ` physical-head theorem to each right-half product.
+
+No C++ files changed, so this step has no new C++ b2b change surface.
+The complete Hensel source file passed direct Lean checking.  Next, this
+interval result is attached to each successful raw builder store and carried
+in its recursive semantic certificate.

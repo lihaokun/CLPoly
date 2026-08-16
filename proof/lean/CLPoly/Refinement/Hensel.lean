@@ -10397,6 +10397,31 @@ noncomputable def henselFactorRangeProduct (p : Nat)
 termination_by index => stop - index
 decreasing_by simp_wf; omega
 
+/-- A half-open product of the actual factor array is monic when every
+factor read by that interval is monic. -/
+theorem henselFactorRangeProduct_monic
+    (p : Nat) (factors : Array SparsePolyZp) (start stop : Nat)
+    (hstop : stop ≤ factors.size)
+    (hmonic : ∀ index (hindex : index < factors.size),
+      start ≤ index → index < stop →
+      (CLPoly.Math.SparsePolyZp.toPoly p
+        (getElem factors index hindex)).Monic) :
+    (henselFactorRangeProduct p factors stop start).Monic := by
+  rw [henselFactorRangeProduct]
+  by_cases hmore : start < stop
+  · rw [if_pos hmore]
+    have hstart : start < factors.size := lt_of_lt_of_le hmore hstop
+    rw [getElem!_pos factors start hstart]
+    exact (hmonic start hstart (by omega) hmore).mul
+      (henselFactorRangeProduct_monic p factors (start + 1) stop hstop
+        (by
+          intro index hindex hstartIndex hindexStop
+          exact hmonic index hindex (by omega) hindexStop))
+  · rw [if_neg hmore]
+    exact Polynomial.monic_one
+termination_by stop - start
+decreasing_by simp_wf; omega
+
 /-- Ordered list denoted by the same half-open factor interval as
 `henselFactorRangeProduct`.  This retains the source array order and is used
 to state the pointwise leaf-origin theorem; it does not predict any lifted

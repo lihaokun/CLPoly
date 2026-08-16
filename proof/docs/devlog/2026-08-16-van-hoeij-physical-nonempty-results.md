@@ -355,3 +355,43 @@ failure of `aH < aMig` identifies a first pass already at full precision.
 - Next: establish the full-precision irreducibility invariant for factors
   physically appended by van-Hoeij validation, and combine it with the
   already-certified Zassenhaus fallback.
+
+## Preserve the literal LLL basis transform end to end
+
+`LLLTransformRel initial matrix transform` records the exact integer matrix
+equation `matrix = transform * initial` on the full physical square arrays.
+The proof starts from the generated diagonal initializer: at scale one its
+transform is the identity matrix.  It then follows every mutation performed
+by the generated C++ lowering:
+
+- `subtractMatrixRows_preserves_transform_rel` identifies synchronized basis
+  and transform row subtraction with left multiplication by the same integer
+  transvection;
+- `sizeReduceAt_preserves_transform_rel` and
+  `extraSizeReduceLoop_preserves_transform_rel` carry that equation through
+  the zero-rounding branch and the exact descending recursive loop;
+- `swapMatrixRows_pair_preserves_transform_rel` proves that the two literal
+  sequential row-swap calls preserve the equation;
+- `lllStep_preserves_transform_rel` covers both the successful Lovasz branch
+  and the swap branch, including all physically executed Gram--Schmidt update
+  loops;
+- `concreteLLLMainLoop_preserves_transform_rel` uses the existing determinant
+  and index rank of the genuine well-founded generated loop; and
+- `concreteLLLReduce_transform_rel` follows initialization, the entire main
+  loop, and short-row collection to the actual generated `__lll_reduce`
+  return value.
+
+Consequently the candidate-column partition now receives a transform that is
+proved to encode the returned lattice basis, rather than an unrelated array
+whose dimensions merely happen to agree.  No fuel, partial definition,
+existence witness, semantic LLL oracle, `sorry`, or custom axiom is used.
+
+- Termination measure: the existing concrete LLL determinant/index rank for
+  the main loop, plus literal decreasing natural indices for size reduction;
+  no fuel is used.
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: combine the transform equation with the short-row bound and the CLD
+  lattice construction to prove that the generated candidate equivalence
+  classes cannot merge distinct integer irreducible factors at sufficient
+  precision.

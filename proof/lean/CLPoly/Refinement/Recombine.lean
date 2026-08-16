@@ -10243,6 +10243,101 @@ theorem cldPolys_size_of_success
   simpa using cldPolysLoop_size_of_success ops fStar activeFactors modulus 0
     #[] output hrun
 
+/-- A successful `true` result from the literal generated column comparator
+means that every physically selected short row contains equal entries in the
+two candidate columns.  Bounds checks are part of the generated execution and
+are therefore recovered as conclusions rather than assumed. -/
+theorem candidateColumnsEqual_true_sound
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (left right index : Nat)
+    (hrun : Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left right index = .ok true) :
+    ∀ position, index ≤ position → position < shortRows.size →
+      let row := shortRows[position]!
+      row < transform.size ∧ left < transform[row]!.size ∧
+        right < transform[row]!.size ∧
+        (transform[row]!)[left]! = (transform[row]!)[right]! := by
+  induction hmeasure : shortRows.size - index using Nat.strong_induction_on
+      generalizing index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.candidateColumnsEqual] at hrun
+      split at hrun
+      next hindex =>
+        dsimp only at hrun
+        split at hrun
+        next hrow =>
+          split at hrun
+          next hleft =>
+            split at hrun
+            next hright =>
+              split at hrun
+              next hequal =>
+                have htail := ih (shortRows.size - (index + 1)) (by omega)
+                  (index + 1) hrun rfl
+                intro position hposition hpositionSize
+                by_cases hpositionEq : position = index
+                · subst position
+                  simpa [getElem!_pos shortRows index hindex,
+                    getElem!_pos transform shortRows[index] hrow,
+                    getElem!_pos transform[shortRows[index]] left hleft,
+                    getElem!_pos transform[shortRows[index]] right hright] using
+                    (show shortRows[index] < transform.size ∧
+                      left < transform[shortRows[index]].size ∧
+                      right < transform[shortRows[index]].size ∧
+                      transform[shortRows[index]][left] =
+                        transform[shortRows[index]][right] from
+                      ⟨hrow, hleft, hright, hequal⟩)
+                · exact htail position (by omega) hpositionSize
+              next hequal => simp at hrun
+            next hright => contradiction
+          next hleft => contradiction
+        next hrow => contradiction
+      next hindex =>
+        intro position hposition hpositionSize
+        omega
+
+theorem candidateColumnsEqual_true_complete
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (left right index : Nat)
+    (hcolumns : ∀ position, index ≤ position → position < shortRows.size →
+      let row := shortRows[position]!
+      row < transform.size ∧ left < transform[row]!.size ∧
+        right < transform[row]!.size ∧
+        (transform[row]!)[left]! = (transform[row]!)[right]!) :
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left right index = .ok true := by
+  induction hmeasure : shortRows.size - index using Nat.strong_induction_on
+      generalizing index with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.candidateColumnsEqual]
+      by_cases hindex : index < shortRows.size
+      · rw [dif_pos hindex]
+        rcases hcolumns index (by omega) hindex with
+          ⟨hrow, hleft, hright, hequalBang⟩
+        have hrow' : shortRows[index] < transform.size := by
+          simpa [getElem!_pos shortRows index hindex] using hrow
+        have hleft' : left < transform[shortRows[index]].size := by
+          simpa [getElem!_pos shortRows index hindex,
+            getElem!_pos transform shortRows[index] hrow'] using hleft
+        have hright' : right < transform[shortRows[index]].size := by
+          simpa [getElem!_pos shortRows index hindex,
+            getElem!_pos transform shortRows[index] hrow'] using hright
+        rw [dif_pos hrow', dif_pos hleft', dif_pos hright']
+        have hequal :
+            transform[shortRows[index]][left] =
+              transform[shortRows[index]][right] := by
+          simpa [getElem!_pos shortRows index hindex,
+            getElem!_pos transform shortRows[index] hrow',
+            getElem!_pos transform[shortRows[index]] left hleft',
+            getElem!_pos transform[shortRows[index]] right hright'] using
+            hequalBang
+        rw [if_pos hequal]
+        apply ih (shortRows.size - (index + 1)) (by omega) (index + 1)
+        · intro position hposition hpositionSize
+          exact hcolumns position (by omega) hpositionSize
+        · rfl
+      · rw [dif_neg hindex]
+
 /-- The generated class collector only updates existing result slots, so its
 physical outer array size is invariant. -/
 theorem collectCandidateClasses_size

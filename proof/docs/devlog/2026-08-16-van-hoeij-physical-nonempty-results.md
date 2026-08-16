@@ -506,3 +506,25 @@ custom axiom.
 - Next: combine the full matrix data invariant with `cldPolys_toPolyMod`,
   symmetric coefficient bounds, `concreteLLLReduce_transform_rel`, and the
   short-row filter to obtain the candidate-partition separation theorem.
+
+## Identify generated candidate-column equality
+
+The physical comparator used to form the candidate partition now has an exact
+logical characterization:
+
+- `candidateColumnsEqual_true_sound` follows every generated bounds check and
+  recursive selected-row access, proving that a successful `true` result means
+  the two transform columns agree on every physical short-row index; and
+- `candidateColumnsEqual_true_complete` proves the converse, including that
+  the generated traversal executes successfully when all selected physical
+  rows and columns are valid and equal.
+
+Both directions recurse on the literal remaining short-row suffix
+`shortRows.size - index`.  No fuel, abstract equivalence oracle, `sorry`, or
+custom axiom is used.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: lift this exact comparator meaning through class assignment and the
+  outer candidate-column partition, then use the CLD/LLL separation result to
+  show that each produced class corresponds to one integer factor block.

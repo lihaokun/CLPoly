@@ -12194,6 +12194,59 @@ theorem multiplyNormalizeModRaw_correct
     simpa [Refinement.StrictHensel.toPolyMod] using
       congrArg (Polynomial.map (Int.castRingHom (ZMod modulus))) hmul
 
+/-- When the generated modular division reports zero remainder against an
+integer monic divisor, its physically returned quotient is the reduction of
+the mathematical `divByMonic` quotient.  Cancellation uses monicity after
+mapping; no division oracle is substituted for the generated run. -/
+theorem generatedModularQuotient_eq_divByMonic
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f divisor quotient remainder : SparsePolyZZ) (modulus : Nat)
+    (hdivisorSize : 0 < divisor.size)
+    (hdivisorDegree : divisor[0]!.1.deg < 2 ^ 63)
+    (hdivisorHead : StrictHensel.HeadDominates divisor)
+    (hfBound : StrictHensel.DegreesBound f)
+    (hinvert : (ZZ.invert 0 divisor[0]!.2 (modulus : Int)).1 = true)
+    (hrun : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f divisor (modulus : Int) = .ok (quotient, remainder))
+    (hremainder : remainder.isEmpty = true)
+    (hmonic : (SparsePolyZZ.toPoly divisor).Monic)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣ SparsePolyZZ.toPoly f) :
+    StrictHensel.toPolyMod modulus quotient =
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+        (SparsePolyZZ.toPoly f /ₘ SparsePolyZZ.toPoly divisor) := by
+  have hdivision := StrictHensel.__upoly_divmod_mod_raw_ir_refines_of_run
+    termination f divisor quotient remainder modulus hdivisorSize
+    hdivisorDegree hdivisorHead hfBound hinvert hrun
+  have hremainderEmpty : remainder = #[] := Array.isEmpty_iff.mp hremainder
+  subst remainder
+  have hquotientProduct :
+      StrictHensel.toPolyMod modulus quotient *
+          StrictHensel.toPolyMod modulus divisor =
+        StrictHensel.toPolyMod modulus f := by
+    simpa using hdivision
+  have hmodZero : SparsePolyZZ.toPoly f %ₘ SparsePolyZZ.toPoly divisor = 0 :=
+    (Polynomial.modByMonic_eq_zero_iff_dvd hmonic).2 hdivides
+  have hfactorization : SparsePolyZZ.toPoly f =
+      (SparsePolyZZ.toPoly f /ₘ SparsePolyZZ.toPoly divisor) *
+        SparsePolyZZ.toPoly divisor := by
+    have hdecomposition := Polynomial.modByMonic_add_div
+      (SparsePolyZZ.toPoly f) (SparsePolyZZ.toPoly divisor)
+    rw [hmodZero, zero_add, mul_comm] at hdecomposition
+    exact hdecomposition.symm
+  have hmapped := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod modulus))) hfactorization
+  have hspecProduct :
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+          (SparsePolyZZ.toPoly f /ₘ SparsePolyZZ.toPoly divisor) *
+        StrictHensel.toPolyMod modulus divisor =
+      StrictHensel.toPolyMod modulus f := by
+    simpa [StrictHensel.toPolyMod] using hmapped.symm
+  have hmappedMonic :
+      (Polynomial.map (Int.castRingHom (ZMod modulus))
+        (SparsePolyZZ.toPoly divisor)).Monic := hmonic.map _
+  exact hmappedMonic.isRegular.right
+    (hquotientProduct.trans hspecProduct.symm)
+
 theorem multiplyNormalizeModRaw_correct_of_dvd
     (left right : SparsePolyZZ) (modulus base : Nat)
     (output : SparsePolyZZ) (hmodulus : 0 < modulus) (hbase : 0 < base)
@@ -12865,6 +12918,196 @@ theorem symmetricModRaw_toPolyMod (input output : SparsePolyZZ)
   rw [dif_pos (by exact_mod_cast hmodulus)] at hrun
   simpa [Refinement.StrictHensel.toPolyMod_eq_termsToPolyMod] using
     symmetricModLoop_toPolyMod input modulus hmodulus 0 #[] output hrun
+
+/-- One physically executed `__cld_polys` element denotes the modular image
+of the L2 coefficient-logarithmic derivative.  Every intermediate array is
+fixed by the supplied generated run equations. -/
+theorem generatedCldElement_toPolyMod
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (f divisor quotient remainder derivativeRaw derivativeMod product cld :
+      SparsePolyZZ)
+    (modulus : Nat) (hmodulus : 0 < modulus)
+    (hdivisorSize : 0 < divisor.size)
+    (hdivisorDegree : divisor[0]!.1.deg < 2 ^ 63)
+    (hdivisorHead : StrictHensel.HeadDominates divisor)
+    (hfBound : StrictHensel.DegreesBound f)
+    (hinvert : (ZZ.invert 0 divisor[0]!.2 (modulus : Int)).1 = true)
+    (hdivision : Generated.StrictHensel.__upoly_divmod_mod_raw_ir termination
+      f divisor (modulus : Int) = .ok (quotient, remainder))
+    (hremainder : remainder.isEmpty = true)
+    (hderivative : Generated.StrictRecombine.derivativeZZRaw divisor =
+      .ok derivativeRaw)
+    (hmod : Generated.StrictRecombine.modCoeffLoop derivativeRaw
+      (modulus : Int) 0 #[] = .ok derivativeMod)
+    (hproduct : Generated.StrictRecombine.multiplyNormalizeModRaw quotient
+      derivativeMod (modulus : Int) = .ok product)
+    (hsymmetric : Generated.StrictRecombine.symmetricModRaw product
+      (modulus : Int) = .ok cld)
+    (hmonic : (SparsePolyZZ.toPoly divisor).Monic)
+    (hdivides : SparsePolyZZ.toPoly divisor ∣ SparsePolyZZ.toPoly f) :
+    StrictHensel.toPolyMod modulus cld =
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+        (cldPoly (SparsePolyZZ.toPoly f) (SparsePolyZZ.toPoly divisor)) := by
+  have hquotient := generatedModularQuotient_eq_divByMonic termination f
+    divisor quotient remainder modulus hdivisorSize hdivisorDegree
+    hdivisorHead hfBound hinvert hdivision hremainder hmonic hdivides
+  have hderivativeSemantic := derivativeZZRaw_toPoly divisor derivativeRaw
+    hderivative
+  have hderivativeMod := modCoeffLoop_toPolyMod derivativeRaw modulus hmodulus
+    0 #[] derivativeMod hmod
+  have hderivativeMod' : StrictHensel.toPolyMod modulus derivativeMod =
+      Polynomial.map (Int.castRingHom (ZMod modulus))
+        (Polynomial.derivative (SparsePolyZZ.toPoly divisor)) := by
+    calc
+      StrictHensel.toPolyMod modulus derivativeMod =
+          StrictHensel.toPolyMod modulus derivativeRaw := by
+        simpa [StrictHensel.toPolyMod_eq_termsToPolyMod] using hderivativeMod
+      _ = Polynomial.map (Int.castRingHom (ZMod modulus))
+          (Polynomial.derivative (SparsePolyZZ.toPoly divisor)) := by
+        simpa [StrictHensel.toPolyMod, hderivativeSemantic]
+  have hproductSemantic := multiplyNormalizeModRaw_correct quotient
+    derivativeMod modulus product hmodulus hproduct
+  have hsymmetricSemantic := symmetricModRaw_toPolyMod product cld modulus
+    hmodulus hsymmetric
+  rw [hsymmetricSemantic, hproductSemantic, hquotient, hderivativeMod']
+  simp [cldPoly, Polynomial.map_mul]
+
+/-- The complete generated CLD outer loop returns one semantically correct
+physical CLD polynomial for every active lifted factor, in the same array
+position. -/
+theorem cldPolysLoop_toPolyMod
+    (ops : Generated.StrictRecombine.CldRawOps)
+    (f : SparsePolyZZ) (active : Array SparsePolyZZ) (modulus : Nat)
+    (hmodulus : 0 < modulus) (hfBound : StrictHensel.DegreesBound f)
+    (hsize : ∀ index (hindex : index < active.size),
+      0 < active[index].size)
+    (hdegree : ∀ index (hindex : index < active.size),
+      active[index][0]!.1.deg < 2 ^ 63)
+    (hhead : ∀ index (hindex : index < active.size),
+      StrictHensel.HeadDominates active[index])
+    (hinvert : ∀ index (hindex : index < active.size),
+      (ZZ.invert 0 active[index][0]!.2 (modulus : Int)).1 = true)
+    (hmonic : ∀ index (hindex : index < active.size),
+      (SparsePolyZZ.toPoly active[index]).Monic)
+    (hdivides : ∀ index (hindex : index < active.size),
+      SparsePolyZZ.toPoly active[index] ∣ SparsePolyZZ.toPoly f)
+    (index : Nat) (result output : Array SparsePolyZZ)
+    (hindexLe : index ≤ active.size) (hresultSize : result.size = index)
+    (hresult : ∀ position (hposition : position < index),
+      StrictHensel.toPolyMod modulus result[position]! =
+        Polynomial.map (Int.castRingHom (ZMod modulus))
+          (cldPoly (SparsePolyZZ.toPoly f)
+            (SparsePolyZZ.toPoly active[position]!)))
+    (hrun : Generated.StrictRecombine.cldPolysLoop ops f active
+      (modulus : Int) index result = .ok output) :
+    output.size = active.size ∧
+      ∀ position (hposition : position < active.size),
+        StrictHensel.toPolyMod modulus output[position]! =
+          Polynomial.map (Int.castRingHom (ZMod modulus))
+            (cldPoly (SparsePolyZZ.toPoly f)
+              (SparsePolyZZ.toPoly active[position]!)) := by
+  induction hmeasure : active.size - index using Nat.strong_induction_on
+      generalizing index result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.cldPolysLoop] at hrun
+      split at hrun
+      next hindex =>
+        cases hdivision : Generated.StrictHensel.__upoly_divmod_mod_raw_ir
+            ops.divmodTermination f active[index] (modulus : Int) with
+        | error fault => simp [hdivision] at hrun
+        | ok division =>
+          rcases division with ⟨quotient, remainder⟩
+          simp only [hdivision] at hrun
+          split at hrun
+          next hremainder =>
+            cases hderivative : Generated.StrictRecombine.derivativeZZRaw
+                active[index] with
+            | error fault => simp [hderivative] at hrun
+            | ok derivativeRaw =>
+              simp only [hderivative] at hrun
+              cases hmod : Generated.StrictRecombine.modCoeffLoop derivativeRaw
+                  (modulus : Int) 0 #[] with
+              | error fault => simp [hmod] at hrun
+              | ok derivativeMod =>
+                simp only [hmod] at hrun
+                cases hproduct :
+                    Generated.StrictRecombine.multiplyNormalizeModRaw quotient
+                      derivativeMod (modulus : Int) with
+                | error fault => simp [hproduct] at hrun
+                | ok product =>
+                  simp only [hproduct] at hrun
+                  cases hsymmetric : Generated.StrictRecombine.symmetricModRaw
+                      product (modulus : Int) with
+                  | error fault => simp [hsymmetric] at hrun
+                  | ok cld =>
+                    simp only [hsymmetric] at hrun
+                    have hcld := generatedCldElement_toPolyMod
+                      ops.divmodTermination f active[index] quotient remainder
+                      derivativeRaw derivativeMod product cld modulus hmodulus
+                      (hsize index hindex) (hdegree index hindex)
+                      (hhead index hindex) hfBound (hinvert index hindex)
+                      hdivision hremainder hderivative hmod hproduct hsymmetric
+                      (hmonic index hindex) (hdivides index hindex)
+                    have hnextResult : ∀ position
+                        (hposition : position < index + 1),
+                        StrictHensel.toPolyMod modulus
+                            (result.push cld)[position]! =
+                          Polynomial.map (Int.castRingHom (ZMod modulus))
+                            (cldPoly (SparsePolyZZ.toPoly f)
+                              (SparsePolyZZ.toPoly active[position]!)) := by
+                      intro position hposition
+                      by_cases hbefore : position < index
+                      · rw [getElem!_pos (result.push cld) position (by
+                            simp [hresultSize]; omega)]
+                        rw [Array.getElem_push_lt (by
+                          simpa [hresultSize] using hbefore)]
+                        rw [← getElem!_pos result position (by
+                          simpa [hresultSize] using hbefore)]
+                        exact hresult position hbefore
+                      · have hpositionEq : position = index := by omega
+                        subst position
+                        rw [getElem!_pos (result.push cld) index (by
+                          simp [hresultSize])]
+                        simpa [Array.getElem_push, hresultSize,
+                          getElem!_pos active index hindex] using hcld
+                    exact ih (active.size - (index + 1)) (by omega)
+                      (index + 1) (result.push cld) output (by omega)
+                      (by simp [hresultSize]) hnextResult hrun rfl
+          next hremainder => contradiction
+      next hindex =>
+        have hout := Except.ok.inj hrun
+        subst output
+        refine ⟨by omega, ?_⟩
+        intro position hposition
+        exact hresult position (by omega)
+
+theorem cldPolys_toPolyMod
+    (ops : Generated.StrictRecombine.CldRawOps)
+    (f : SparsePolyZZ) (active output : Array SparsePolyZZ) (modulus : Nat)
+    (hmodulus : 0 < modulus) (hfBound : StrictHensel.DegreesBound f)
+    (hsize : ∀ index (hindex : index < active.size), 0 < active[index].size)
+    (hdegree : ∀ index (hindex : index < active.size),
+      active[index][0]!.1.deg < 2 ^ 63)
+    (hhead : ∀ index (hindex : index < active.size),
+      StrictHensel.HeadDominates active[index])
+    (hinvert : ∀ index (hindex : index < active.size),
+      (ZZ.invert 0 active[index][0]!.2 (modulus : Int)).1 = true)
+    (hmonic : ∀ index (hindex : index < active.size),
+      (SparsePolyZZ.toPoly active[index]).Monic)
+    (hdivides : ∀ index (hindex : index < active.size),
+      SparsePolyZZ.toPoly active[index] ∣ SparsePolyZZ.toPoly f)
+    (hrun : Generated.StrictRecombine.cldPolys ops f active (modulus : Int) =
+      .ok output) :
+    output.size = active.size ∧
+      ∀ index (hindex : index < active.size),
+        StrictHensel.toPolyMod modulus output[index]! =
+          Polynomial.map (Int.castRingHom (ZMod modulus))
+            (cldPoly (SparsePolyZZ.toPoly f)
+              (SparsePolyZZ.toPoly active[index]!)) := by
+  unfold Generated.StrictRecombine.cldPolys at hrun
+  exact cldPolysLoop_toPolyMod ops f active modulus hmodulus hfBound hsize
+    hdegree hhead hinvert hmonic hdivides 0 #[] output (by omega) (by simp)
+    (by simp) hrun
 
 theorem symmetricModRaw_coefficients_bounded
     (input output : SparsePolyZZ) (modulus : Nat) (hmodulus : 0 < modulus)

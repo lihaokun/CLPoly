@@ -420,3 +420,36 @@ is introduced.
 - Next: combine generated modular division, derivative, modular
   multiplication, and symmetric recovery into a pointwise semantic theorem
   for every physical element returned by `cldPolys`.
+
+## Refine the generated CLD polynomial array
+
+The complete physical CLD construction is now related to the mathematical
+logarithmic-derivative data used by the van Hoeij argument.  In particular:
+
+- `generatedModularQuotient_eq_divByMonic` starts from the successful return
+  of generated modular sparse division, uses its physically empty remainder,
+  and identifies the quotient with monic polynomial division after reduction
+  modulo the requested modulus;
+- `generatedCldElement_toPolyMod` follows the exact generated sequence of
+  modular division, sparse differentiation, coefficient-wise reduction,
+  modular multiplication, and symmetric coefficient recovery, proving that
+  the returned sparse value represents the corresponding mathematical CLD
+  polynomial modulo the modulus;
+- `cldPolysLoop_toPolyMod` follows every recursive push performed by the
+  generated array loop while maintaining the physical position-to-factor
+  correspondence; and
+- `cldPolys_toPolyMod` exposes the entry-point result: its output has exactly
+  the active-factor cardinality and every physical array element denotes the
+  matching mathematical CLD polynomial modulo the modulus.
+
+This closes the semantic gap between the generated C++ CLD arithmetic and
+the polynomial objects that will populate the lattice.  The recursive proof
+uses the same well-founded remaining-active-array suffix as the generated
+loop.  It introduces no fuel, partial definition, existence witness,
+semantic oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: prove that the generated CLD data-row and matrix builders store these
+  exact coefficients, then combine that matrix semantics with the concrete
+  LLL transform equation and short-row bound.

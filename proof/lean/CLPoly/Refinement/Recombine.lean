@@ -10614,6 +10614,203 @@ theorem assignCandidateClass_preserves_some
         subst output
         exact hmember
 
+theorem assignCandidateClass_other_member_origin
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount assignedClass right : Nat)
+    (classes output : Array (Option Nat))
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount assignedClass right classes = .ok output)
+    (column existingClass : Nat) (hcolumn : column < output.size)
+    (hmember : output[column]! = some existingClass)
+    (hother : existingClass ≠ assignedClass) :
+    classes[column]! = some existingClass := by
+  induction hmeasure : factorCount - right using Nat.strong_induction_on
+      generalizing right classes output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.assignCandidateClass] at hrun
+      split at hrun
+      next hright =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+              classes output hrun hcolumn hmember rfl
+          next hnone =>
+            cases hequal : Generated.StrictRecombine.candidateColumnsEqual
+                transform shortRows representative right 0 with
+            | error fault => simp [hequal] at hrun
+            | ok equal =>
+                simp only [hequal] at hrun
+                by_cases hequalTrue : equal = true
+                · subst equal
+                  have htail := ih (factorCount - (right + 1)) (by omega)
+                    (right + 1) (classes.set right (some assignedClass)) output
+                    hrun hcolumn hmember rfl
+                  have hclassesSize := assignCandidateClass_size transform
+                    shortRows representative factorCount assignedClass
+                    (right + 1) (classes.set right (some assignedClass)) output
+                    hrun
+                  have hcolumnSet : column <
+                      (classes.set right (some assignedClass)).size := by omega
+                  have hcolumnClasses : column < classes.size := by
+                    simpa only [Array.size_set] using hcolumnSet
+                  by_cases hcolumnEq : column = right
+                  · subst column
+                    rw [getElem!_pos _ right (by simpa using hclass),
+                      Array.getElem_set_self] at htail
+                    exact (hother (Option.some.inj htail.symm)).elim
+                  · rw [getElem!_pos _ column (by simpa using hcolumnClasses),
+                      Array.getElem_set_ne hclass hcolumnClasses
+                        (Ne.symm hcolumnEq),
+                      ← getElem!_pos classes column hcolumnClasses] at htail
+                    exact htail
+                · have hequalFalse := Bool.eq_false_of_not_eq_true hequalTrue
+                  rw [hequalFalse] at hrun
+                  exact ih (factorCount - (right + 1)) (by omega) (right + 1)
+                    classes output hrun hcolumn hmember rfl
+        next hclass => contradiction
+      next hright =>
+        have hout := Except.ok.inj hrun
+        subst output
+        exact hmember
+
+def CandidateClassesPairwise
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (classes : Array (Option Nat)) : Prop :=
+  ∀ left right classId,
+    left < classes.size → right < classes.size →
+    classes[left]! = some classId → classes[right]! = some classId →
+    Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+      left right 0 = .ok true
+
+def CandidateClassIdsBound (classCount : Nat)
+    (classes : Array (Option Nat)) : Prop :=
+  ∀ column classId, column < classes.size →
+    classes[column]! = some classId → classId < classCount
+
+theorem assignCandidateClass_ids_bound
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount assignedClass right : Nat)
+    (classes output : Array (Option Nat))
+    (hbound : CandidateClassIdsBound (assignedClass + 1) classes)
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount assignedClass right classes = .ok output) :
+    CandidateClassIdsBound (assignedClass + 1) output := by
+  intro column classId hcolumn hmember
+  by_cases heq : classId = assignedClass
+  · omega
+  · have hold := assignCandidateClass_other_member_origin transform shortRows
+      representative factorCount assignedClass right classes output hrun
+      column classId hcolumn hmember heq
+    have hsize := assignCandidateClass_size transform shortRows representative
+      factorCount assignedClass right classes output hrun
+    exact hbound column classId (by omega) hold
+
+theorem assignCandidateClass_preserves_pairwise
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (representative factorCount assignedClass right : Nat)
+    (classes output : Array (Option Nat))
+    (hpairwise : CandidateClassesPairwise transform shortRows classes)
+    (hrepresentative : CandidateClassRepresentativeSound transform shortRows
+      representative assignedClass classes)
+    (hrun : Generated.StrictRecombine.assignCandidateClass transform shortRows
+      representative factorCount assignedClass right classes = .ok output) :
+    CandidateClassesPairwise transform shortRows output := by
+  have hsize := assignCandidateClass_size transform shortRows representative
+    factorCount assignedClass right classes output hrun
+  have hrepresentativeOut :=
+    assignCandidateClass_preserves_representative_sound transform shortRows
+      representative factorCount assignedClass right classes output
+      hrepresentative hrun
+  intro left targetRight classId hleft hright hleftClass hrightClass
+  by_cases hclassEq : classId = assignedClass
+  · subst classId
+    have hrepLeft := hrepresentativeOut left hleft hleftClass
+    have hrepRight := hrepresentativeOut targetRight hright hrightClass
+    exact candidateColumnsEqual_trans transform shortRows left representative
+      targetRight (candidateColumnsEqual_symm transform shortRows representative left
+        hrepLeft) hrepRight
+  · have hleftOld := assignCandidateClass_other_member_origin transform
+      shortRows representative factorCount assignedClass right classes output
+      hrun left classId hleft hleftClass hclassEq
+    have hrightOld := assignCandidateClass_other_member_origin transform
+      shortRows representative factorCount assignedClass right classes output
+      hrun targetRight classId hright hrightClass hclassEq
+    exact hpairwise left targetRight classId (by omega) (by omega) hleftOld
+      hrightOld
+
+theorem seedCandidateClass_invariants
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount column classCount : Nat)
+    (classes : Array (Option Nat))
+    (hvalid : CandidateColumnsValid transform shortRows factorCount)
+    (hsize : classes.size = factorCount) (hcolumn : column < factorCount)
+    (hbound : CandidateClassIdsBound classCount classes)
+    (hpairwise : CandidateClassesPairwise transform shortRows classes) :
+    let seeded := classes.set column (some classCount) (by omega)
+    CandidateClassIdsBound (classCount + 1) seeded ∧
+      CandidateClassesPairwise transform shortRows seeded ∧
+      CandidateClassRepresentativeSound transform shortRows column classCount
+        seeded := by
+  let hcolumnClasses : column < classes.size := by omega
+  let seeded := classes.set column (some classCount) hcolumnClasses
+  have horigin : ∀ position classId, position < seeded.size →
+      seeded[position]! = some classId →
+      (position = column ∧ classId = classCount) ∨
+        (position ≠ column ∧ classes[position]! = some classId) := by
+    intro position classId hposition hmember
+    by_cases heq : position = column
+    · subst position
+      left
+      refine ⟨rfl, ?_⟩
+      simp only [seeded] at hmember
+      rw [getElem!_pos _ column (by simpa using hcolumnClasses),
+        Array.getElem_set_self] at hmember
+      exact Option.some.inj hmember.symm
+    · right
+      refine ⟨heq, ?_⟩
+      have hpositionClasses : position < classes.size := by
+        simpa [seeded] using hposition
+      simp only [seeded] at hmember
+      rw [getElem!_pos _ position (by simpa using hpositionClasses),
+        Array.getElem_set_ne hcolumnClasses hpositionClasses (Ne.symm heq),
+        ← getElem!_pos classes position hpositionClasses] at hmember
+      exact hmember
+  refine ⟨?_, ?_, ?_⟩
+  · intro position classId hposition hmember
+    rcases horigin position classId hposition hmember with hnew | hold
+    · omega
+    · exact Nat.lt.step (hbound position classId (by
+        simpa [seeded] using hposition) hold.2)
+  · intro left right classId hleft hright hleftMember hrightMember
+    rcases horigin left classId hleft hleftMember with hleftNew | hleftOld
+    · rcases horigin right classId hright hrightMember with
+        hrightNew | hrightOld
+      · simpa [hleftNew.1, hrightNew.1] using
+          candidateColumnsEqual_refl transform shortRows factorCount column
+            hvalid hcolumn
+      · have := hbound right classCount (by
+            simpa [seeded] using hright) (by simpa [hleftNew.2] using
+              hrightOld.2)
+        omega
+    · rcases horigin right classId hright hrightMember with
+        hrightNew | hrightOld
+      · have := hbound left classCount (by
+            simpa [seeded] using hleft) (by simpa [hrightNew.2] using
+              hleftOld.2)
+        omega
+      · exact hpairwise left right classId (by simpa [seeded] using hleft)
+          (by simpa [seeded] using hright) hleftOld.2 hrightOld.2
+  · intro position hposition hmember
+    rcases horigin position classCount hposition hmember with hnew | hold
+    · simpa [hnew.1] using
+        candidateColumnsEqual_refl transform shortRows factorCount column
+          hvalid hcolumn
+    · have := hbound position classCount (by
+          simpa [seeded] using hposition) hold.2
+      omega
+
 /-- The generated outer partition covers every physical factor column.  The
 proof maintains the literal processed-prefix invariant and uses the fact that
 the inner assignment loop never overwrites an existing class identifier. -/
@@ -10706,6 +10903,92 @@ theorem partitionCandidateColumns_all_assigned
         subst outputClasses
         intro position hpositionFactor hpositionSize
         exact hprefix position (by omega) hpositionSize
+
+theorem partitionCandidateColumns_preserves_pairwise
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount column classCount : Nat)
+    (classes outputClasses : Array (Option Nat)) (outputCount : Nat)
+    (hvalid : CandidateColumnsValid transform shortRows factorCount)
+    (hcolumn : column ≤ factorCount) (hsize : classes.size = factorCount)
+    (hbound : CandidateClassIdsBound classCount classes)
+    (hpairwise : CandidateClassesPairwise transform shortRows classes)
+    (hrun : Generated.StrictRecombine.partitionCandidateColumns transform
+      shortRows factorCount column classCount classes =
+        .ok (outputClasses, outputCount)) :
+    CandidateClassesPairwise transform shortRows outputClasses := by
+  induction hmeasure : factorCount - column using Nat.strong_induction_on
+      generalizing column classCount classes outputClasses outputCount with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.partitionCandidateColumns] at hrun
+      split at hrun
+      next hnext =>
+        split at hrun
+        next hclass =>
+          split at hrun
+          next existing =>
+            exact ih (factorCount - (column + 1)) (by omega) (column + 1)
+              classCount classes outputClasses outputCount (by omega) hsize
+              hbound hpairwise hrun rfl
+          next hnone =>
+            let seeded := classes.set column (some classCount)
+            have hseed := seedCandidateClass_invariants transform shortRows
+              factorCount column classCount classes hvalid hsize hnext hbound
+              hpairwise
+            cases hassign : Generated.StrictRecombine.assignCandidateClass
+                transform shortRows column factorCount classCount (column + 1)
+                seeded with
+            | error fault => simp [seeded, hassign] at hrun
+            | ok assigned =>
+                simp only [seeded, hassign] at hrun
+                have hassignSize := assignCandidateClass_size transform
+                  shortRows column factorCount classCount (column + 1)
+                  seeded assigned hassign
+                have hassignedBound := assignCandidateClass_ids_bound transform
+                  shortRows column factorCount classCount (column + 1)
+                  seeded assigned hseed.1 hassign
+                have hassignedPairwise :=
+                  assignCandidateClass_preserves_pairwise transform shortRows
+                    column factorCount classCount (column + 1) seeded assigned
+                    hseed.2.1 hseed.2.2 hassign
+                exact ih (factorCount - (column + 1)) (by omega) (column + 1)
+                  (classCount + 1) assigned outputClasses outputCount (by omega)
+                  (hassignSize.trans ((by simp [seeded]) :
+                    seeded.size = classes.size) |>.trans hsize) hassignedBound
+                  hassignedPairwise hrun rfl
+        next hclass => contradiction
+      next hnext =>
+        have hout := Except.ok.inj hrun
+        injection hout with hclasses hcount
+        subst outputClasses
+        exact hpairwise
+
+theorem partitionCandidateColumns_from_empty_pairwise
+    (transform : Generated.StrictRecombine.LLLMatrix)
+    (shortRows : Array Nat) (factorCount : Nat)
+    (outputClasses : Array (Option Nat)) (outputCount : Nat)
+    (hvalid : CandidateColumnsValid transform shortRows factorCount)
+    (hrun : Generated.StrictRecombine.partitionCandidateColumns transform
+      shortRows factorCount 0 0 (Array.replicate factorCount none) =
+        .ok (outputClasses, outputCount)) :
+    CandidateClassesPairwise transform shortRows outputClasses := by
+  apply partitionCandidateColumns_preserves_pairwise transform shortRows
+    factorCount 0 0 (Array.replicate factorCount none) outputClasses
+    outputCount hvalid (by omega) (by simp)
+  · intro column classId hcolumn hmember
+    have hnone : (Array.replicate factorCount (none : Option Nat))[column]! =
+        none := by
+      rw [getElem!_pos _ column hcolumn]
+      simp
+    rw [hnone] at hmember
+    contradiction
+  · intro left right classId hleft hright hleftMember hrightMember
+    have hnone : (Array.replicate factorCount (none : Option Nat))[left]! =
+        none := by
+      rw [getElem!_pos _ left hleft]
+      simp
+    rw [hnone] at hleftMember
+    contradiction
+  · exact hrun
 
 theorem partitionCandidateColumns_size
     (transform : Generated.StrictRecombine.LLLMatrix)
@@ -11044,6 +11327,45 @@ theorem extractCandidates_members_sound
           output hrun classId value hmember with
         ⟨source, hsource, hsourceClass, hvalue⟩
       exact ⟨source, by omega, hvalue⟩
+
+theorem extractCandidates_class_members_equal
+    (shortRows : Array Nat)
+    (transform : Generated.StrictRecombine.LLLMatrix) (factorCount : Nat)
+    (output : Array (Array Int32)) (hnonempty : shortRows.isEmpty = false)
+    (hvalid : CandidateColumnsValid transform shortRows factorCount)
+    (hrun : Generated.StrictRecombine.extractCandidates shortRows transform
+      factorCount = .ok output)
+    (classId : Nat) (leftValue rightValue : Int32)
+    (hleftMember : CandidateMember output classId leftValue)
+    (hrightMember : CandidateMember output classId rightValue) :
+    ∃ left right, left < factorCount ∧ right < factorCount ∧
+      leftValue = left.toUInt32.toInt32 ∧
+      rightValue = right.toUInt32.toInt32 ∧
+      Generated.StrictRecombine.candidateColumnsEqual transform shortRows
+        left right 0 = .ok true := by
+  simp only [Generated.StrictRecombine.extractCandidates, hnonempty,
+    Bool.false_eq_true, ↓reduceIte] at hrun
+  cases hpartition : Generated.StrictRecombine.partitionCandidateColumns
+      transform shortRows factorCount 0 0
+        (Array.replicate factorCount none) with
+  | error fault =>
+      rw [hpartition] at hrun
+      contradiction
+  | ok partition =>
+      rcases partition with ⟨classes, classCount⟩
+      rw [hpartition] at hrun
+      have hclassesSize := (partitionCandidateColumns_from_empty_all_assigned
+        transform shortRows factorCount classes classCount hpartition).1
+      have hpairwise := partitionCandidateColumns_from_empty_pairwise transform
+        shortRows factorCount classes classCount hvalid hpartition
+      rcases collectCandidateClasses_from_empty_member_source classes classCount
+          output hrun classId leftValue hleftMember with
+        ⟨left, hleft, hleftClass, hleftValue⟩
+      rcases collectCandidateClasses_from_empty_member_source classes classCount
+          output hrun classId rightValue hrightMember with
+        ⟨right, hright, hrightClass, hrightValue⟩
+      refine ⟨left, right, by omega, by omega, hleftValue, hrightValue, ?_⟩
+      exact hpairwise left right classId hleft hright hleftClass hrightClass
 
 /-- During the generated outer partition loop, at most one new class is
 created per unprocessed physical column. -/

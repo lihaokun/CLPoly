@@ -239,7 +239,13 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.assignCandidateClass_size
 #print axioms Refinement.StrictRecombine.assignCandidateClass_member_provenance
 #print axioms Refinement.StrictRecombine.assignCandidateClass_preserves_some
+#print axioms Refinement.StrictRecombine.assignCandidateClass_other_member_origin
+#print axioms Refinement.StrictRecombine.assignCandidateClass_ids_bound
+#print axioms Refinement.StrictRecombine.assignCandidateClass_preserves_pairwise
+#print axioms Refinement.StrictRecombine.seedCandidateClass_invariants
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_all_assigned
+#print axioms Refinement.StrictRecombine.partitionCandidateColumns_preserves_pairwise
+#print axioms Refinement.StrictRecombine.partitionCandidateColumns_from_empty_pairwise
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_size
 #print axioms Refinement.StrictRecombine.partitionCandidateColumns_from_empty_all_assigned
 #print axioms Refinement.StrictRecombine.collectCandidateClasses_preserves_member
@@ -249,6 +255,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.collectCandidateClasses_member_provenance
 #print axioms Refinement.StrictRecombine.collectCandidateClasses_from_empty_member_source
 #print axioms Refinement.StrictRecombine.extractCandidates_members_sound
+#print axioms Refinement.StrictRecombine.extractCandidates_class_members_equal
 #print axioms Refinement.StrictRecombine.sparsePolyZZ_toPoly_degree_eq_head
 #print axioms Refinement.StrictRecombine.removeCombinationLoop_sublist
 #print axioms Refinement.StrictRecombine.removeCombination_sublist

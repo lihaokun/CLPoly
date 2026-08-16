@@ -659,3 +659,36 @@ custom axiom.
 - Next: use these laws with class-member provenance to prove pairwise equality
   for every generated candidate class, then connect that fact to CLD/LLL
   separation.
+
+## Prove generated candidate classes are pairwise equal on short rows
+
+The complete physical partition and collection pipeline now carries the
+generated comparator certificate through to returned candidate members:
+
+- `assignCandidateClass_other_member_origin` proves the inner loop cannot
+  create a member of any class other than the class currently being assigned;
+- class-id bounds, representative soundness, and pairwise comparator equality
+  are established for the literal fresh-class `Array.set` operation and
+  preserved through `assignCandidateClass`;
+- `partitionCandidateColumns_preserves_pairwise` carries these invariants
+  through the occupied-column and fresh-class branches of the generated outer
+  loop;
+- `partitionCandidateColumns_from_empty_pairwise` specializes them to the
+  actual replicated-`none` initial array; and
+- `extractCandidates_class_members_equal` traces any two physical members of
+  one returned candidate array back to real source columns below
+  `factorCount`, recovers their exact `Int32` values, and proves that the
+  generated `candidateColumnsEqual` execution for those source columns
+  returns `.ok true`.
+
+Thus returned candidate classes are no longer justified merely by coverage or
+membership bounds: their defining equality on every concrete selected short
+row is proved end to end.  All loops use their generated decreasing suffix
+measures; no fuel, partial definition, partition/equivalence oracle, `sorry`,
+or custom axiom is used.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: derive `CandidateColumnsValid` from the concrete LLL return and short
+  row collector, then combine pairwise transform-column equality with the CLD
+  lattice semantics and sufficient-precision separation theorem.

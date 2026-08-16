@@ -11229,6 +11229,35 @@ theorem henselTreeStoreNodeRawIR_canonical
   exact ⟨henselTreeZpToZZIR_canonical p g hgCanonical,
     henselTreeZpToZZIR_canonical p h hhCanonical⟩
 
+/-- The actual six-write builder store exposes both canonicality and the
+literal coefficient-one head of its converted right interval product. -/
+theorem henselTreeStoreNodeRawIR_canonical_oneHead
+    (p : Nat) [Fact (Nat.Prime p)] (nodes : Array HenselNode) (index : Nat)
+    (g h s t : SparsePolyZp) (start stop : Nat)
+    (hindex : index < nodes.size)
+    (hgCanonical : CLPoly.Math.SparsePolyZp.Canonical p g)
+    (hhCanonical : CLPoly.Math.SparsePolyZp.Canonical p h)
+    (hhNonempty : 0 < h.size)
+    (hhMonic : (CLPoly.Math.SparsePolyZp.toPoly p h).Monic) :
+    ∃ output,
+      Generated.StrictHensel.henselTreeStoreNodeRawIR nodes index g h s t
+          start stop = .ok output ∧
+      output.size = nodes.size ∧
+      ∃ houtput : index < output.size,
+        HenselNodeCanonical (getElem output index houtput) ∧
+        HasPhysicalOneHead (getElem output index houtput).h := by
+  rcases henselTreeStoreNodeRawIR_refines nodes index g h s t start stop
+      hindex with
+    ⟨output, hrun, hsize, houtput, houtputG, houtputH, _⟩
+  refine ⟨output, hrun, hsize, houtput, ?_, ?_⟩
+  · unfold HenselNodeCanonical
+    rw [houtputG, houtputH]
+    exact ⟨henselTreeZpToZZIR_canonical p g hgCanonical,
+      henselTreeZpToZZIR_canonical p h hhCanonical⟩
+  · rw [houtputH]
+    exact henselTreeZpToZZIR_hasPhysicalOneHead_of_monic p h hhCanonical
+      hhNonempty hhMonic
+
 /-- Storing the two concrete range products and the concrete EEA result
 establishes the node's exact gcd semantics. -/
 theorem henselTreeStoreNodeRawIR_refines_gcd
@@ -11363,6 +11392,12 @@ theorem HenselNodeCanonical.of_algebraEq
     HenselNodeCanonical target := by
   rcases heq with ⟨hg, hh, _, _⟩
   simpa [HenselNodeCanonical, hg, hh] using hsource
+
+theorem HasPhysicalOneHead.of_algebraEq
+    {source target : HenselNode} (hsource : HasPhysicalOneHead source.h)
+    (heq : HenselTreeNodeAlgebraEq target source) :
+    HasPhysicalOneHead target.h := by
+  simpa [heq.2.1] using hsource
 
 theorem HenselTreeArrayFrame.canonical_of_size_eq
     {before after : Array HenselNode} {current : Nat}

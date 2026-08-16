@@ -2580,3 +2580,22 @@ No C++ files changed, so this step has no new C++ b2b change surface.
 The complete Hensel source file passed direct Lean checking.  Next, this
 interval result is attached to each successful raw builder store and carried
 in its recursive semantic certificate.
+
+## Expose the physical monic head at the concrete builder store
+
+`henselTreeStoreNodeRawIR_canonical_oneHead` now extracts two facts from the
+same successful execution of the generated six-write tree-node store: the
+stored `g`/`h` payload is canonical, and the converted right interval product
+has a literal `(degree, 1)` array head.  The latter is obtained from the
+actual `henselTreeZpToZZIR` output equality, not from polynomial extensionality
+or a replacement conversion.
+
+`HasPhysicalOneHead.of_algebraEq` transports this representation fact only
+across the builder's proven algebraic frame.  Consequently later writes of
+left/right child indices cannot silently discard it, while arbitrary changes
+to `g` or `h` remain impossible to justify through this lemma.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+complete Hensel source passed direct Lean checking.  Next, the store result is
+installed in `HenselTreeSemanticBuildCertificate` and recursively propagated
+to every concrete topology node.

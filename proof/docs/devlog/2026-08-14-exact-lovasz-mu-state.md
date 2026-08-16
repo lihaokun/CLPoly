@@ -2672,3 +2672,24 @@ No C++ files changed, so this step has no new C++ b2b change surface.  Direct
 checking of the complete Hensel source and the Pass 9 generated-file freshness
 check passed.  Next, the builder-wide property is propagated through the
 quadratic lift and exact leaf extraction.
+
+## Propagate physical heads through the concrete quadratic lift
+
+`HenselLiftEntryCorrect` now retains `HenselArrayHOneHead liftedNodes` for the
+exact array produced by `henselLiftLoop`.  The full raw entry obtains this fact
+from `HenselLiftLoopCorrect.arrayHOneHead`, using primality to discharge
+`2 ≤ p` and the builder-wide property proved for the actual initial tree.
+Thus the invariant crosses every real quadratic Hensel iteration before the
+source extraction loop runs; it is not reconstructed from the final semantic
+product and does not prescribe an abstract lifted array.
+
+All consumers of the entry certificate were updated to retain the same hidden
+execution witnesses.  The public `__hensel_lift_upoly_raw_ir_refines` theorem,
+already covered by `AxiomAudit.lean`, constructs the strengthened certificate
+from the generated well-founded L1 run.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Direct
+checking of the complete Hensel source passed.  Next, the concrete extraction
+branches transport the right-leaf physical heads to every output position
+except the distinguished first factor, whose head is repaired by the real
+normalization branch.

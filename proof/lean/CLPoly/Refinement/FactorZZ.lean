@@ -378,6 +378,7 @@ theorem smaller_active_candidate_of_reducible_primitive_factor
         (StrictHensel.toPolyMod base)).prod)) :
     ∃ inner : Array Nat,
       StrictRecombine.LegalCombination active.size inner.size inner ∧
+      0 < inner.size ∧
       inner.size < outer.size ∧
       left.IsPrimitive ∧
       (left.leadingCoeff : ZMod base) ≠ 0 ∧
@@ -399,7 +400,15 @@ theorem smaller_active_candidate_of_reducible_primitive_factor
       (right.map (Int.castRingHom (ZMod base))) hmapped hleftMapNonunit
       hrightMapNonunit hassociated with
     ⟨inner, hinner, hsmall, hinnerAssociated⟩
-  exact ⟨inner, hinner, hsmall, hleftPrimitive, hleftLeading,
+  have hpositive : 0 < inner.size := by
+    by_contra hnot
+    have hempty : inner = #[] := Array.size_eq_zero_iff.mp
+      (Nat.eq_zero_of_not_pos hnot)
+    subst inner
+    apply hleftMapNonunit
+    simpa [StrictRecombine.selectSourceIndices] using
+      hinnerAssociated.isUnit_iff.mpr isUnit_one
+  exact ⟨inner, hinner, hpositive, hsmall, hleftPrimitive, hleftLeading,
     hinnerAssociated⟩
 
 /-- The sparse factor array returned by a genuinely refined successful prime
@@ -1488,6 +1497,42 @@ theorem LiveHenselProduct.selectedCongruent
     hproductLifted hproductDivisor hbaseA hbaseB' hcop' hleadingEqual
     hleadingCoprime
   simpa [modulus, liftedScaled, divisorScaled] using hunique.2
+
+/-- The quotient installed by a successful literal attempt remains squarefree
+at the selected prime whenever the current source is squarefree there.  The
+divisibility witness is obtained from the attempt's actual integer extraction
+equation. -/
+theorem zassenhausAttempt_extracted_quotient_squarefree
+    (prime : Nat) [Fact (Nat.Prime prime)]
+    (source factor quotient : SparsePolyZZ)
+    (active : Array SparsePolyZZ) (modulus : ZZ) (candidate : Array Nat)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (hrun : Generated.StrictRecombine.zassenhausAttempt source active modulus
+      candidate = .ok (.extracted factor quotient)) :
+    Squarefree (Polynomial.map (Int.castRingHom (ZMod prime))
+      (SparsePolyZZ.toPoly quotient)) := by
+  rcases StrictRecombine.zassenhausAttempt_extracted_unit_scalar source factor
+      quotient active modulus candidate hprimitive hrun with
+    ⟨scalar, _hscalar, hextraction⟩
+  have hmapped := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod prime))) hextraction
+  simp only [Polynomial.map_mul, Polynomial.map_C] at hmapped
+  have hscalarCast : (Int.castRingHom (ZMod prime)) scalar =
+      (scalar : ZMod prime) := rfl
+  rw [hscalarCast] at hmapped
+  have hdivides : Polynomial.map (Int.castRingHom (ZMod prime))
+      (SparsePolyZZ.toPoly quotient) ∣
+      Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source) := by
+    refine ⟨Polynomial.C (scalar : ZMod prime) *
+      Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly factor), ?_⟩
+    rw [hmapped]
+    ring
+  exact hsquarefree.squarefree_of_dvd hdivides
 
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/

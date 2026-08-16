@@ -3486,3 +3486,20 @@ no reference to the original Hensel array or a semantic lift oracle remains.
 - Next: prove squarefreeness is preserved by the actual extracted quotient,
   then combine this congruence with the physical rejection history to prove
   every returned factor irreducible.
+
+## Preserve squarefreeness through the literal extraction equation
+
+`zassenhausAttempt_extracted_quotient_squarefree` maps the actual integer
+equation returned by a successful `zassenhausAttempt` to the selected prime,
+constructs the quotient's concrete divisibility witness, and inherits
+squarefreeness from the current source.  In addition, the smaller-candidate
+constructor now records that its physical index array is nonempty; emptiness
+would make its selected product one and contradict the nonunit modular factor
+obtained from the hypothetical integer factorization.  These are the final
+recursive-state facts needed by the smaller-scan rejection contradiction.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: package the contradiction as irreducibility of the factor returned by
+  the real successful scan, and thread it with live-state preservation through
+  the generated outer recursion.

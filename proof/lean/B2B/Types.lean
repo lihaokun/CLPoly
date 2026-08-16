@@ -58,6 +58,13 @@ def encodeInt64 (v : Int64) : Json := Json.mkObj [("type", "Int64"), ("val", v.t
 def encodeUInt64 (v : UInt64) : Json :=
   Json.mkObj [("type", "UInt64"), ("val", Json.str (toString v.toNat))]
 
+def parseBool (j : Json) : Except String Bool := do
+  let v ← checkType j "Bool"
+  v.getBool?
+
+def encodeBool (value : Bool) : Json :=
+  Json.mkObj [("type", "Bool"), ("val", Json.bool value)]
+
 -- ---- ZZ (= Int) ----
 
 def parseZZ (j : Json) : Except String Int := do

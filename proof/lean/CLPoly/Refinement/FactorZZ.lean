@@ -65,9 +65,11 @@ theorem __lll_factorize_raw_ir_low_precision_cases
     (hrun : Generated.StrictFactorZZ.__lll_factorize_raw_ir ops f factors p =
       .ok output) :
     (output = result ∧ result.size = factors.size) ∨
-      ∃ liftedMig mMig,
+      ∃ liftedMig mMig resultMig,
         ops.henselLift f factors p 0 = .ok (liftedMig, mMig) ∧
-        ops.vanHoeijRecombine f liftedMig mMig = .ok output := by
+        ops.vanHoeijRecombine f liftedMig mMig = .ok resultMig ∧
+        (output = resultMig ∨
+          ops.zassenhausRecombine f liftedMig mMig = .ok output) := by
   unfold Generated.StrictFactorZZ.__lll_factorize_raw_ir at hrun
   simp only [hheuristic, hlift, hrecombine] at hrun
   by_cases hless : Int32.ofNat result.size < Int32.ofNat factors.size
@@ -79,10 +81,27 @@ theorem __lll_factorize_raw_ir_low_precision_cases
       | error fault => rw [hrecombineMig] at hrun; contradiction
       | ok resultMig =>
           rw [hrecombineMig] at hrun
-          have hout := Except.ok.inj hrun
-          subst resultMig
-          exact Or.inr ⟨liftedMig, mMig, hliftMig, hrecombineMig⟩
+          change (if Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+              resultMig.size factors.size true then
+                ops.zassenhausRecombine f liftedMig mMig
+              else .ok resultMig) = .ok output at hrun
+          by_cases hsafety :
+              Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+                resultMig.size factors.size true = true
+          · rw [if_pos hsafety] at hrun
+            exact Or.inr ⟨liftedMig, mMig, resultMig, hliftMig,
+              hrecombineMig, Or.inr hrun⟩
+          · rw [if_neg hsafety] at hrun
+            have hout := Except.ok.inj hrun
+            subst output
+            exact Or.inr ⟨liftedMig, mMig, resultMig, hliftMig,
+              hrecombineMig, Or.inl rfl⟩
   · rw [if_neg (by simp [hless])] at hrun
+    have hsafety : Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+        result.size factors.size (aMig ≤ aH) = false := by
+      simp [Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir,
+        Int32.not_le.mpr hprecision]
+    rw [if_neg (by simpa using hsafety)] at hrun
     have hout := Except.ok.inj hrun
     subst output
     exact Or.inl ⟨rfl, result_size_eq_of_not_machine_lt result factors.size

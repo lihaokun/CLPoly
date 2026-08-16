@@ -15,6 +15,13 @@ structure FactorZZRawOps where
     RawExec (Array SparsePolyZZ × ZZ)
   vanHoeijRecombine : SparsePolyZZ → Array SparsePolyZZ → ZZ →
     RawExec (Array SparsePolyZZ)
+  zassenhausRecombine : SparsePolyZZ → Array SparsePolyZZ → ZZ →
+    RawExec (Array SparsePolyZZ)
+
+/-- Exact safety-net decision shared with the C++ top-level controller. -/
+def __needs_zassenhaus_safety_net_ir (resultCount modularFactorCount : Nat)
+    (atFullPrecision : Bool) : Bool :=
+  atFullPrecision && resultCount < modularFactorCount
 
 /-- Exact source power loop from `__heuristic_starting_precision`.  The C++
 caller supplies a prime, hence `p ≥ 2`; making that source precondition
@@ -85,9 +92,18 @@ def __lll_factorize_raw_ir (ops : FactorZZRawOps) (f : SparsePolyZZ)
           match ops.henselLift f factors p 0 with
           | .error fault => .error fault
           | .ok (liftedMig, mMig) =>
-            ops.vanHoeijRecombine f liftedMig mMig
+            match ops.vanHoeijRecombine f liftedMig mMig with
+            | .error fault => .error fault
+            | .ok resultMig =>
+              if __needs_zassenhaus_safety_net_ir resultMig.size factors.size
+                  true then
+                ops.zassenhausRecombine f liftedMig mMig
+              else .ok resultMig
         else
-          .ok result
+          if __needs_zassenhaus_safety_net_ir result.size factors.size
+              (aMig ≤ aH) then
+            ops.zassenhausRecombine f liftedH mH
+          else .ok result
 
 /-- Exact source-shaped lowering of C++
 `__factor_squarefree_primitive_ZZ`: select a prime, return the input on the

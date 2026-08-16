@@ -84,6 +84,18 @@ json serialize_BoolZZ(bool ok, const ZZ& z) {
     return {{"type","BoolZZ"}, {"val", json::array({ ok, os.str() })}};
 }
 
+bool parse_Bool(const json& j) {
+    _check_type(j, "Bool");
+    const auto& value = j.at("val");
+    if (!value.is_boolean())
+        throw std::runtime_error("Bool val: expected boolean");
+    return value.get<bool>();
+}
+
+json serialize_Bool(bool value) {
+    return json{{"type", "Bool"}, {"val", value}};
+}
+
 // ---- SparsePolyZp ----
 
 upolynomial_<Zp> parse_SparsePolyZp(const json& j) {

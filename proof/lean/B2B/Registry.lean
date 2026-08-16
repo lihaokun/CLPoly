@@ -6,6 +6,7 @@
 import Lean.Data.Json
 import B2B.Types
 import CLPoly.Generated.Corpus
+import CLPoly.Generated.StrictFactorZZ
 import CLPoly.Model
 
 open Lean
@@ -15,6 +16,13 @@ namespace B2B
 -- args 是 Json.arr，dispatch 已校验
 def dispatch (fn : String) (args : Array Json) : Except String Json := do
   match fn with
+  | "__needs_zassenhaus_safety_net" =>
+    let resultCount ← parseUInt64 args[0]!
+    let modularCount ← parseUInt64 args[1]!
+    let atFullPrecision ← parseBool args[2]!
+    return encodeBool
+      (Generated.StrictFactorZZ.__needs_zassenhaus_safety_net_ir
+        resultCount.toNat modularCount.toNat atFullPrecision)
   | "__make_zp" =>
     let val ← parseInt64 args[0]!
     let p   ← parseUInt64 args[1]!

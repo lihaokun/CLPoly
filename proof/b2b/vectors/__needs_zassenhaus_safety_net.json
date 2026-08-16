@@ -1,0 +1,37 @@
+{
+  "fn": "__needs_zassenhaus_safety_net",
+  "cases": [
+    {
+      "name": "reduced_at_full_precision",
+      "args": [
+        {"type": "UInt64", "val": "2"},
+        {"type": "UInt64", "val": "3"},
+        {"type": "Bool", "val": true}
+      ]
+    },
+    {
+      "name": "reduced_below_full_precision",
+      "args": [
+        {"type": "UInt64", "val": "2"},
+        {"type": "UInt64", "val": "3"},
+        {"type": "Bool", "val": false}
+      ]
+    },
+    {
+      "name": "full_cardinality_at_full_precision",
+      "args": [
+        {"type": "UInt64", "val": "3"},
+        {"type": "UInt64", "val": "3"},
+        {"type": "Bool", "val": true}
+      ]
+    },
+    {
+      "name": "empty_result_at_full_precision",
+      "args": [
+        {"type": "UInt64", "val": "0"},
+        {"type": "UInt64", "val": "7"},
+        {"type": "Bool", "val": true}
+      ]
+    }
+  ]
+}

@@ -41,6 +41,13 @@ int main() {
             CHECK(parse_UInt64(j) == v, "UInt64 " + std::to_string(v));
         }
     }
+    // Bool
+    {
+        for (bool v : {false, true}) {
+            auto j = serialize_Bool(v);
+            CHECK(parse_Bool(j) == v, std::string("Bool ") + (v ? "true" : "false"));
+        }
+    }
     // ZZ — small + large
     {
         std::vector<ZZ> zs;

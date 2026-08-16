@@ -6,6 +6,7 @@
 #include "../types/b2b_types.hh"
 
 #include "clpoly/polynomial_factorize_zp.hh"
+#include "clpoly/polynomial_factorize_univar.hh"
 #include "clpoly/polynomial.hh"
 #include <cstring>
 #include <gmp.h>
@@ -21,6 +22,14 @@ json dispatch(const std::string& fn, const json& args) {
     }
 
     // === 函数 dispatch ===
+    if (fn == "__needs_zassenhaus_safety_net") {
+        uint64_t result_count = parse_UInt64(args.at(0));
+        uint64_t modular_count = parse_UInt64(args.at(1));
+        bool at_full_precision = parse_Bool(args.at(2));
+        return serialize_Bool(clpoly::__needs_zassenhaus_safety_net(
+            result_count, modular_count, at_full_precision));
+    }
+
     if (fn == "__make_zp") {
         int64_t  val = parse_Int64(args.at(0));
         uint64_t p   = parse_UInt64(args.at(1));

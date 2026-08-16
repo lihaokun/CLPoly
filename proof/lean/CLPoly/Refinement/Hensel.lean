@@ -6421,6 +6421,32 @@ def HenselFactorArrayOneHeadFrom (lower : Nat)
   ∀ index (hlower : lower ≤ index) (hindex : index < factors.size),
     HasPhysicalOneHead factors[index]
 
+/-- Appending preserves the distinguished-first-factor convention.  The new
+factor only needs a physical one-head when the existing prefix is nonempty,
+because an append to the empty prefix occupies the exempt index zero. -/
+theorem HenselFactorArrayOneHeadFrom.push
+    {factors : Array SparsePolyZZ} {factor : SparsePolyZZ}
+    (hfactors : HenselFactorArrayOneHeadFrom 1 factors)
+    (hfactor : 0 < factors.size → HasPhysicalOneHead factor) :
+    HenselFactorArrayOneHeadFrom 1 (factors.push factor) := by
+  intro index hlower hindex
+  by_cases hold : index < factors.size
+  · simpa [Array.getElem_push, hold] using hfactors index hlower hold
+  · have heq : index = factors.size := by
+      simp at hindex
+      omega
+    subst index
+    simpa using hfactor (by omega)
+
+/-- Prefix state at the source entry of an interval extraction.  At interval
+zero the prefix may still be empty; every positive interval starts after at
+least one already-emitted factor. -/
+def HenselExtractPrefixReady (start : Nat)
+    (factors : Array SparsePolyZZ) : Prop :=
+  HenselFactorArrayOneHeadFrom 1 factors ∧
+  (start = 0 → factors.size = 0) ∧
+  (0 < start → 0 < factors.size)
+
 theorem HenselFactorArrayCanonical.push
     {factors : Array SparsePolyZZ} {factor : SparsePolyZZ}
     (hfactors : HenselFactorArrayCanonical factors)
@@ -6481,6 +6507,31 @@ theorem HenselExtractCorrect.outputCanonical
   | branch index left right nodes input afterLeft output node hnode hleftRun
       hleftCorrect hrightRun hrightCorrect leftIH rightIH =>
       exact rightIH hnodes (leftIH hnodes hinput)
+
+/-- Every successful execution of the generated extraction traversal appends
+at least one concrete factor. -/
+theorem HenselExtractCorrect.size_lt
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode} {input output : Array SparsePolyZZ}
+    (hcorrect : HenselExtractCorrect tree nodes input output) :
+    input.size < output.size := by
+  induction hcorrect with
+  | leaf index nodes input output node hnode houtput =>
+      subst output
+      simp
+  | left index left nodes input afterLeft output node hnode hleftRun
+      hleftCorrect houtput ih =>
+      subst output
+      simp
+      omega
+  | right index right nodes input afterLeft output node hnode hafterLeft
+      hrightRun hrightCorrect ih =>
+      subst afterLeft
+      simp at ih ⊢
+      omega
+  | branch index left right nodes input afterLeft output node hnode hleftRun
+      hleftCorrect hrightRun hrightCorrect leftIH rightIH =>
+      omega
 
 /-- Pure denotation of the exact leaf order used by the generated extraction
 walk.  It reads the same node `g`/`h` fields selected by the source branches;
@@ -12421,6 +12472,46 @@ theorem HenselLiftLoopCorrect.physicalHeads
         hfCanonical hfHead
       have hnextM : 2 ≤ m * m := by nlinarith
       exact ih hnextHeads hnextM
+
+/-- Every factor denoted by a positive-start interval has a literal
+coefficient-one head.  This folds the exact source extraction order over the
+physical node certificate. -/
+theorem HenselTreePhysicalHeads.extractedFactors_forall_of_pos
+    {start stop : Nat} {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode}
+    (hcertificate : HenselTreePhysicalHeads start stop tree nodes)
+    (hstart : 0 < start) (hinterval : start ≤ stop) :
+    (henselExtractedFactors tree nodes).Forall HasPhysicalOneHead := by
+  induction hcertificate with
+  | cert start stop root left right nodes value hnode hGOneHead hHOneHead
+      hleft hright leftIH rightIH =>
+      have hrootBound : root < nodes.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hnode
+        contradiction
+      have hrootEq : nodes[root]! = value := by
+        have heq : nodes[root] = value :=
+          Option.some.inj
+            ((Array.getElem?_eq_getElem hrootBound).symm.trans hnode)
+        simpa [getElem!_def, Array.getElem?_eq_getElem hrootBound] using heq
+      have hstartMid : start ≤ (start + stop) / 2 := by omega
+      have hmidStop : (start + stop) / 2 ≤ stop := by omega
+      rw [henselExtractedFactors.eq_def]
+      cases left with
+      | none =>
+          cases right with
+          | none =>
+              simp [hrootEq, hGOneHead hstart, hHOneHead]
+          | some rightTree =>
+              have hrightAll := rightIH rightTree rfl (by omega) hmidStop
+              simp [hrootEq, hGOneHead hstart, hrightAll]
+      | some leftTree =>
+          have hleftAll := leftIH leftTree rfl hstart hstartMid
+          cases right with
+          | none => simp [hrootEq, hleftAll, hHOneHead]
+          | some rightTree =>
+              have hrightAll := rightIH rightTree rfl (by omega) hmidStop
+              simp [hleftAll, hrightAll]
 
 theorem HenselTreeSemanticBuildCertificate.lower_mono
     {p lower lower' start stop : Nat} [Fact (Nat.Prime p)]

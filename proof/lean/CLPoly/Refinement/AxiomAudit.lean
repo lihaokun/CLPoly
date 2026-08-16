@@ -67,6 +67,9 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.physicalHeads_leaf
 #print axioms Refinement.StrictHensel.HenselLiftRecursiveCorrect.physicalHeads
 #print axioms Refinement.StrictHensel.HenselLiftLoopCorrect.physicalHeads
+#print axioms Refinement.StrictHensel.HenselFactorArrayOneHeadFrom.push
+#print axioms Refinement.StrictHensel.HenselExtractCorrect.size_lt
+#print axioms Refinement.StrictHensel.HenselTreePhysicalHeads.extractedFactors_forall_of_pos
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.of_preservesFrom
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.oneHead_of_mem
 #print axioms Refinement.StrictHensel.henselTreeBuildTopology_indices_complete

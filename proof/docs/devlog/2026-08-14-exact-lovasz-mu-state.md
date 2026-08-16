@@ -2860,3 +2860,23 @@ the same concrete input polynomial `f` in every generated call.
 so this step has no new C++ b2b change surface.  Next, exact source-order
 extraction converts the final interval certificate into a factor-array tail
 certificate for the real normalization block.
+
+## Establish the positive-interval extraction invariant
+
+The real extraction traversal now exposes two concrete array facts needed at
+the distinguished-first-factor boundary.  `HenselExtractCorrect.size_lt`
+proves that every executed subtree appends at least one actual factor.
+`HenselFactorArrayOneHeadFrom.push` proves that an append needs a one-head only
+when the existing prefix is nonempty, because index zero is deliberately
+exempt.
+
+`HenselTreePhysicalHeads.extractedFactors_forall_of_pos` folds the exact
+source-order `henselExtractedFactors` denotation.  For every interval with
+positive start, every emitted `g` or `h` has a literal coefficient-one head.
+The proof reads the concrete node lookup and follows the actual optional-child
+branches; it does not infer representation monicity from modular semantics.
+
+`lake build CLPoly.Refinement.Hensel` passes (3328 jobs).  No C++ files changed,
+so this step has no new C++ b2b change surface.  Next, recursion down the exact
+generated left spine will show that only the first emitted factor may be
+non-monic; all remaining factors feed the existing normalization theorem.

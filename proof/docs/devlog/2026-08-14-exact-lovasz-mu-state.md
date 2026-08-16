@@ -2973,3 +2973,23 @@ so this step has no new C++ regression or b2b change surface.  Next, the legal
 candidate indices will be partitioned from their concrete output list and the
 two product decompositions will instantiate Hensel uniqueness at this exact
 prime power.
+
+## Partition the actual selected Hensel factors from their physical complement
+
+`removeCombinationLoop_product_partition` follows the generated reverse-erase
+recursion itself.  At every source step it proves that all earlier strictly
+ordered candidate positions still name the same physical array occurrences,
+then applies the commutative product identity for the exact erased position.
+The resulting equality says that the selected prefix product times the
+returned-array product is literally the input-array product.
+
+`removeCombination_product_partition` specializes this invariant to a full
+`LegalCombination` and the generated `removeCombination` entry.  Consequently
+the complement needed by Hensel uniqueness is now the exact array returned by
+the C++ removal path, rather than an existential or value-based list.  This is
+occurrence-sensitive even when two lifted factors have equal values.
+
+`lake build CLPoly.Refinement.Recombine` passes.  No C++ files changed, so this
+step has no new C++ regression or b2b change surface.  Next, the selected and
+physical-complement products will be mapped at the certified prime power and
+compared to the genuine integer divisor decomposition via `hensel_unique`.

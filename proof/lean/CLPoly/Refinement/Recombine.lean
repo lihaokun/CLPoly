@@ -2945,6 +2945,167 @@ theorem removeCombination_strict (candidate : Array Nat)
     output hrun
   omega
 
+private theorem selectSourceIndices_eraseIdx_of_lt {α : Type*} [Inhabited α]
+    (source : List α) (indices : List Nat) (erased : Nat)
+    (hlt : ∀ index ∈ indices, index < erased) :
+    selectSourceIndices (source.eraseIdx erased) indices =
+      selectSourceIndices source indices := by
+  unfold selectSourceIndices
+  apply List.map_congr_left
+  intro index hindex
+  simp [List.getElem!_eq_getElem?_getD, List.getElem?_eraseIdx,
+    hlt index hindex]
+
+/-- The literal reverse-erasure loop partitions the physical active array:
+the occurrence-sensitive product named by the still-live candidate prefix,
+times the product of the returned array, is exactly the input product.  The
+proof follows every generated erase and uses strict candidate ordering to
+show that deleting a later position leaves all earlier selected positions
+unchanged. -/
+theorem removeCombinationLoop_product_partition (candidate : Array Nat)
+    (remaining : Nat) (active output : Array SparsePolyZZ)
+    (hremaining : remaining ≤ candidate.size)
+    (hgaps : ∀ left right (hleft : left < remaining)
+      (hright : right < remaining), left < right →
+        candidate[left] < candidate[right])
+    (hbound : ∀ position (hposition : position < remaining),
+      candidate[position] < active.size)
+    (hrun : Generated.StrictRecombine.removeCombinationLoop candidate remaining
+      active = .ok output) :
+    ((selectSourceIndices active.toList
+        (candidate.toList.take remaining)).map SparsePolyZZ.toPoly).prod *
+      (output.toList.map SparsePolyZZ.toPoly).prod =
+        (active.toList.map SparsePolyZZ.toPoly).prod := by
+  induction remaining generalizing active output with
+  | zero =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      have hout := Except.ok.inj hrun
+      subst output
+      simp [selectSourceIndices]
+  | succ remaining ih =>
+      rw [Generated.StrictRecombine.removeCombinationLoop] at hrun
+      split at hrun
+      next hcand =>
+        dsimp at hrun
+        split at hrun
+        next hactive =>
+          let erased := active.eraseIdxIfInBounds candidate[remaining]
+          have hcurrent : candidate[remaining] < active.size :=
+            hbound remaining (by omega)
+          have hlower : ∀ position (hposition : position < remaining),
+              candidate[position] < candidate[remaining] := by
+            intro position hposition
+            exact hgaps position remaining (by omega) (by omega) hposition
+          have herasedSize : erased.size + 1 = active.size := by
+            have : 0 < active.size := by omega
+            simp only [erased, Array.size_eraseIdxIfInBounds, if_pos hcurrent]
+            exact Nat.sub_add_cancel (by omega)
+          have hbound' : ∀ position (hposition : position < remaining),
+              candidate[position] < erased.size := by
+            intro position hposition
+            have := hlower position hposition
+            omega
+          have hgaps' : ∀ left right (hleft : left < remaining)
+              (hright : right < remaining), left < right →
+                candidate[left] < candidate[right] := by
+            intro left right hleft hright hlt
+            exact hgaps left right (by omega) (by omega) hlt
+          have hih := ih erased output (by omega) hgaps' hbound' hrun
+          have hselectErase :
+              selectSourceIndices erased.toList
+                  (candidate.toList.take remaining) =
+                selectSourceIndices active.toList
+                  (candidate.toList.take remaining) := by
+            rw [Array.toList_eraseIdxIfInBounds]
+            apply selectSourceIndices_eraseIdx_of_lt
+            intro index hindex
+            rcases List.mem_iff_getElem.mp hindex with
+              ⟨position, hposition, hindexEq⟩
+            have hpositionLt : position < remaining := by
+              simpa only [List.length_take, Array.length_toList,
+                Nat.min_eq_left (show remaining ≤ candidate.size by omega)]
+                using hposition
+            have hcandidatePos : candidate[position] = index := by
+              rw [← Array.getElem_toList (by omega)]
+              rw [List.getElem_take] at hindexEq
+              exact hindexEq
+            rw [← hcandidatePos]
+            exact hlower position hpositionLt
+          rw [hselectErase] at hih
+          have htake : candidate.toList.take (remaining + 1) =
+              candidate.toList.take remaining ++ [candidate[remaining]] := by
+            rw [← List.take_append_getElem (l := candidate.toList)
+              (i := remaining) (by simpa using hcand)]
+            simp [Array.getElem_toList hcand]
+          rw [htake]
+          simp only [selectSourceIndices, List.map_append, List.map_singleton,
+            List.prod_append, List.prod_singleton]
+          have hselectedIndex : active.toList[candidate[remaining]]! =
+              active[candidate[remaining]] := by
+            rw [getElem!_pos _ _ (by simpa using hcurrent),
+              Array.getElem_toList hcurrent]
+          rw [hselectedIndex]
+          have heraseProd : SparsePolyZZ.toPoly active[candidate[remaining]] *
+                ((erased.toList.map SparsePolyZZ.toPoly).prod) =
+              (active.toList.map SparsePolyZZ.toPoly).prod := by
+            rw [Array.toList_eraseIdxIfInBounds]
+            have hmapBound : candidate[remaining] <
+                (active.toList.map SparsePolyZZ.toPoly).length := by
+              simpa only [List.length_map, Array.length_toList] using hcurrent
+            have hmapIndex :
+                (active.toList.map SparsePolyZZ.toPoly)[candidate[remaining]]'hmapBound =
+                  SparsePolyZZ.toPoly active[candidate[remaining]] := by
+              simp [List.getElem_map, Array.getElem_toList hcurrent]
+            have hprod := List.CommMonoid.mul_prod_eraseIdx
+              (l := active.toList.map SparsePolyZZ.toPoly)
+              (i := candidate[remaining]) (by
+                simp only [List.length_map, Array.length_toList]
+                exact hcurrent)
+            rw [hmapIndex] at hprod
+            simpa [List.eraseIdx_map] using hprod
+          calc
+            _ = SparsePolyZZ.toPoly active[candidate[remaining]] *
+                (((selectSourceIndices active.toList
+                    (candidate.toList.take remaining)).map
+                      SparsePolyZZ.toPoly).prod *
+                    (output.toList.map SparsePolyZZ.toPoly).prod) := by
+                  ac_rfl
+            _ = SparsePolyZZ.toPoly active[candidate[remaining]] *
+                (erased.toList.map SparsePolyZZ.toPoly).prod := by rw [hih]
+            _ = _ := heraseProd
+        next hactive => contradiction
+      next hcand => contradiction
+
+/-- Full-array form for the generated successful-candidate removal.  This is
+the concrete selected/complement factorization consumed by Hensel uniqueness;
+the complement is the actual array returned by C++, not an existential list. -/
+theorem removeCombination_product_partition (candidate : Array Nat)
+    (active output : Array SparsePolyZZ)
+    (hlegal : LegalCombination active.size candidate.size candidate)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    ((selectSourceIndices active.toList candidate.toList).map
+        SparsePolyZZ.toPoly).prod *
+      (output.toList.map SparsePolyZZ.toPoly).prod =
+        (active.toList.map SparsePolyZZ.toPoly).prod := by
+  unfold Generated.StrictRecombine.removeCombination at hrun
+  have hgaps : ∀ left right (hleft : left < candidate.size)
+      (hright : right < candidate.size), left < right →
+        candidate[left] < candidate[right] := by
+    intro left right hleft hright hlt
+    have hgap := hlegal.2.1 left right hleft hright hlt
+    rw [getElem!_pos candidate left hleft,
+      getElem!_pos candidate right hright] at hgap
+    omega
+  have hpartition := removeCombinationLoop_product_partition candidate
+    candidate.size active output (Nat.le_refl _) hgaps
+    (fun position hposition => by
+      simpa [getElem!_pos candidate position hposition] using
+        hlegal.2.2 position hposition) hrun
+  rw [show candidate.size = candidate.toList.length by simp,
+    List.take_length] at hpartition
+  exact hpartition
+
 private theorem mem_toList_of_mem_eraseIdxIfInBounds_toList
     {α : Type*} (value : α) (active : Array α) (index : Nat)
     (hmember : value ∈ (active.eraseIdxIfInBounds index).toList) :

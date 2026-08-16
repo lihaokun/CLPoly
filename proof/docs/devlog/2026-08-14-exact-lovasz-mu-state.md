@@ -1970,6 +1970,24 @@ primitive-content certificate through its actual sparse operations.
 
 No C++ files changed, so this step has no new C++ b2b change surface.
 
+## Live-state Zassenhaus candidate execution
+
+- Added `zassenhausCandidate_executes_through_primitive_of_live`, separating
+  the literal generated candidate execution from the initial Hensel-array
+  specialization.
+- The theorem executes the generated checked `Nat -> Int32` conversion, the
+  actual `trialProductLoop`, `symmetricModRaw`, and `primitiveRaw`.  Its inputs
+  are current-state algebraic facts: the physical selected product congruence
+  at the live modulus and the strict coefficient bound needed for unique
+  symmetric recovery.
+- This removes the previous architectural restriction that candidate recovery
+  could only be invoked on the original `output.1` returned by Hensel.  The
+  remaining proof obligation is to preserve and instantiate those concrete
+  congruence and precision facts after each real Zassenhaus extraction; they
+  are not accepted as a final recombination oracle.
+- Verification: `lake env lean CLPoly/Refinement/FactorZZ.lean` succeeds.
+- C++ changes: none, so this step has no new C++ b2b change surface.
+
 Verification: `lake env lean CLPoly/Refinement/Recombine.lean` and
 `lake build CLPoly.Refinement.Recombine CLPoly.Pipeline.L1` pass with no error
 or `sorry` warning.  The axiom audit reports only `propext`,

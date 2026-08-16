@@ -2693,3 +2693,23 @@ checking of the complete Hensel source passed.  Next, the concrete extraction
 branches transport the right-leaf physical heads to every output position
 except the distinguished first factor, whose head is repaired by the real
 normalization branch.
+
+## Make the concrete normalized Hensel output head physically one
+
+`HenselFactorArrayOneHeadFrom` records representation-level monicity by exact
+array position.  `HenselNormalizeCorrect.outputOneHead` proves that the real
+final normalization block turns a tail-monic input array into an all-monic
+output array.  The empty and already-one branches follow the generated front
+lookups directly.  In the normalized branch, the proof unfolds the successful
+concrete `ZZ.invert`, derives the integer congruence for the returned inverse,
+proves the actual floor remainder of the scaled head is exactly one, and then
+follows the generated map/filter traversal with `modCoeffOutput_maps_head`.
+Every nonzero position is preserved through the literal `set! 0` write.
+
+This closes the final-normalization side of exact Hensel monicity.  It does not
+assume that extraction emits only node `h` fields: the generated traversal also
+emits leaf `g` fields, so the next step carries a conditional physical-head
+invariant for `g` whenever the node's concrete `leaf_start` is positive.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  The
+complete Hensel source passed direct Lean checking.

@@ -1750,6 +1750,22 @@ theorem modCoeffOutput_preserves_head
   rw [hremainder]
   simp [hcoefficient]
 
+/-- The generated reduction/filter traversal maps a concrete input head to
+its concrete floor remainder and retains it when that remainder is nonzero. -/
+theorem modCoeffOutput_maps_head
+    (input : SparsePolyZZ) (modulus : Int) (head : UMonomial)
+    (coefficient reduced : Int) (tail : List (UMonomial × Int))
+    (hinput : input.toList = (head, coefficient) :: tail)
+    (hremainder : ZZ.fdiv_r coefficient coefficient modulus = reduced)
+    (hnonzero : reduced ≠ 0) :
+    ∃ suffix,
+      (Generated.StrictHensel.modCoeffOutput input modulus).toList =
+        (head, reduced) :: suffix := by
+  rw [Generated.StrictHensel.modCoeffOutput, Array.toList_filterMap, hinput]
+  simp only [List.filterMap_cons]
+  rw [hremainder]
+  simp [hnonzero]
+
 /-- In particular, reduction modulo a positive modulus greater than one
 physically retains a leading coefficient equal to one. -/
 theorem modCoeffOutput_preserves_one_head
@@ -6150,6 +6166,14 @@ def HenselFactorArrayCanonical (factors : Array SparsePolyZZ) : Prop :=
   ∀ factor ∈ factors.toList,
     StrictPolynomialMod.SparsePolyZZCanonical factor
 
+/-- Representation-level monicity of every concrete factor cell at or after
+`lower`.  This positional form matches the source extraction order and makes
+the distinguished first-factor normalization explicit. -/
+def HenselFactorArrayOneHeadFrom (lower : Nat)
+    (factors : Array SparsePolyZZ) : Prop :=
+  ∀ index (hlower : lower ≤ index) (hindex : index < factors.size),
+    HasPhysicalOneHead factors[index]
+
 theorem HenselFactorArrayCanonical.push
     {factors : Array SparsePolyZZ} {factor : SparsePolyZZ}
     (hfactors : HenselFactorArrayCanonical factors)
@@ -6661,6 +6685,115 @@ inductive HenselNormalizeCorrect
       (hnormalized : Generated.StrictHensel.__upoly_mod_coeff_raw_ir scaled m =
         .ok normalized) :
       HenselNormalizeCorrect result m (result.set! 0 normalized)
+
+private theorem hasPhysicalOneHead_of_first_lookup
+    (factor : SparsePolyZZ) (leading : UMonomial × Int)
+    (hfirst : factor[0]? = some leading) (hone : leading.2 = 1) :
+    HasPhysicalOneHead factor := by
+  have hhead : factor.toList.head? = some leading := by
+    rw [List.head?_eq_getElem?, Array.getElem?_toList]
+    exact hfirst
+  rcases List.head?_eq_some_iff.mp hhead with ⟨tail, htail⟩
+  rcases leading with ⟨degree, coefficient⟩
+  simp only [Prod.snd] at hone
+  subst coefficient
+  exact ⟨degree, tail, htail⟩
+
+/-- The exact final normalization branch makes the distinguished first
+factor physically monic and leaves every already-monic later cell unchanged.
+The normalized case follows the concrete `invert`, coefficient map, and
+floor-remainder/filter execution rather than a semantic scaling oracle. -/
+theorem HenselNormalizeCorrect.outputOneHead
+    {m : Nat} {before after : Array SparsePolyZZ}
+    (hcorrect : HenselNormalizeCorrect before (m : Int) after)
+    (hm : 1 < m)
+    (htail : HenselFactorArrayOneHeadFrom 1 before) :
+    HenselFactorArrayOneHeadFrom 0 after := by
+  cases hcorrect with
+  | empty hresult =>
+      intro index hlower hindex
+      have hzero : 0 < before.size := lt_of_le_of_lt (Nat.zero_le index) hindex
+      rw [Array.getElem?_eq_getElem hzero] at hresult
+      contradiction
+  | alreadyOne first leading hresult hfirst hone =>
+      intro index hlower hindex
+      by_cases hindexZero : index = 0
+      · subst index
+        have hcoefficient : leading.2 = 1 := by
+          simpa using hone
+        have hfirstHead := hasPhysicalOneHead_of_first_lookup first leading
+          hfirst hcoefficient
+        have hfirstGet : before[0] = first :=
+          Option.some.inj
+            ((Array.getElem?_eq_getElem hindex).symm.trans hresult)
+        simpa [hfirstGet] using hfirstHead
+      · exact htail index (by omega) hindex
+  | normalized first leading inverse scaled normalized hresult hfirst hnotOne
+      hinverse hscaled hnormalized =>
+      have hzero : 0 < before.size := by
+        by_contra hnot
+        rw [Array.getElem?_eq_none (by omega)] at hresult
+        contradiction
+      have hfirstGet : before[0] = first :=
+        Option.some.inj ((Array.getElem?_eq_getElem hzero).symm.trans hresult)
+      have hhead : first.toList.head? = some leading := by
+        rw [List.head?_eq_getElem?, Array.getElem?_toList]
+        exact hfirst
+      rcases List.head?_eq_some_iff.mp hhead with ⟨firstTail, hfirstList⟩
+      have hscaledList : scaled.toList =
+          (leading.1, leading.2 * inverse) ::
+            firstTail.map (fun term => (term.1, term.2 * inverse)) := by
+        rw [hscaled, Generated.StrictHensel.scaleCoeffs,
+          Array.toList_map, hfirstList]
+        rfl
+      have hinverseSuccess :
+          (ZZ.invert 0 leading.2 (m : Int)).1 = true := by
+        rw [hinverse]
+      have hinverseM :
+          (leading.2 : ZMod m) * (inverse : ZMod m) = 1 := by
+        simpa [hinverse] using
+          (CLPoly.Math.ZZ.invert_success_mul_eq_one leading.2 m
+            hinverseSuccess)
+      have hcast : ((leading.2 * inverse : Int) : ZMod m) =
+          ((1 : Int) : ZMod m) := by
+        simpa only [Int.cast_mul, Int.cast_one] using hinverseM
+      rw [ZMod.intCast_eq_intCast_iff] at hcast
+      have hdvd : (m : Int) ∣ leading.2 * inverse - 1 := by
+        have : (m : Int) ∣ 1 - leading.2 * inverse :=
+          Int.modEq_iff_dvd.mp hcast
+        simpa only [neg_sub] using dvd_neg.mpr this
+      have hemod : (leading.2 * inverse) % (m : Int) =
+          (1 : Int) % (m : Int) := by
+        rw [Int.emod_eq_emod_iff_emod_sub_eq_zero]
+        exact Int.emod_eq_zero_of_dvd hdvd
+      have hremainder : ZZ.fdiv_r (leading.2 * inverse)
+          (leading.2 * inverse) (m : Int) = 1 := by
+        unfold ZZ.fdiv_r
+        rw [Int.fmod_eq_emod_of_nonneg _ (by omega), hemod,
+          Int.emod_eq_of_lt (by omega) (by omega)]
+      have hnormalizedEq : normalized =
+          Generated.StrictHensel.modCoeffOutput scaled (m : Int) := by
+        simpa only [Generated.StrictHensel.__upoly_mod_coeff_raw_ir,
+          Except.ok.injEq] using hnormalized.symm
+      have hnormalizedHead : HasPhysicalOneHead normalized := by
+        rcases modCoeffOutput_maps_head scaled (m : Int) leading.1
+            (leading.2 * inverse) 1 _ hscaledList hremainder (by norm_num) with
+          ⟨suffix, hsuffix⟩
+        exact ⟨leading.1, suffix, by simpa [hnormalizedEq] using hsuffix⟩
+      intro index hlower hindex
+      have hindexBefore : index < before.size := by simpa using hindex
+      by_cases hindexZero : index = 0
+      · subst index
+        simpa [Array.set!, hzero] using hnormalizedHead
+      · change HasPhysicalOneHead
+          (before.setIfInBounds 0 normalized)[index]
+        have hget : (before.setIfInBounds 0 normalized)[index] =
+            before[index] := by
+          simpa [Ne.symm hindexZero] using
+            (@Array.getElem_setIfInBounds _ before 0 normalized index
+              hindexBefore)
+        rw [hget]
+        exact htail index (by omega) hindexBefore
 
 /-- Pointwise semantic effect of the final source normalization: each output
 factor differs from the corresponding input by a unit scalar modulo `p`. -/

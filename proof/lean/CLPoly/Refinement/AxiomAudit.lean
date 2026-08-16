@@ -38,6 +38,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.pairVecAddLoop_preserves_left_head
 #print axioms Refinement.StrictHensel.scaleCoeffs_degrees_below
 #print axioms Refinement.StrictHensel.modCoeffOutput_preserves_one_head
+#print axioms Refinement.StrictHensel.modCoeffOutput_maps_head
 #print axioms Refinement.StrictHensel.henselHCorrection_preserves_one_head
 #print axioms Refinement.StrictHensel.get_deg_toInt_eq_head
 #print axioms Refinement.StrictHensel.divmodLoop_remainder_degreesBound
@@ -65,6 +66,7 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.extractedFactors_product
 #print axioms Refinement.StrictHensel.HenselTreeSemanticBuildCertificate.liftLoop_extractedFactors_product
 #print axioms Refinement.StrictHensel.HenselNormalizeCorrect.product_eq_unit_mul
+#print axioms Refinement.StrictHensel.HenselNormalizeCorrect.outputOneHead
 #print axioms Refinement.StrictHensel.HenselAdjustFirstFactorCorrect.product_eq
 #print axioms Refinement.StrictHensel.HenselLiftEntryCorrect.preNormalizationProduct
 #print axioms Refinement.StrictFactorZZ.selectionAdjustedFactors_product_eq_source

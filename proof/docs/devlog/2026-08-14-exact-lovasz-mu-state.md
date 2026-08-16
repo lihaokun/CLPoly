@@ -3587,3 +3587,26 @@ the source execution.
 - Next: invoke this package in the extraction arm of the generated
   `zassenhausLoop` recursion; the exhaustion arm extends the literal scan
   history.
+
+## Execute the complete outer loop to a certified physical terminal state
+
+`ZassenhausTerminalCertificate` exposes the exact active array, current source,
+accumulated result array, and subset size passed to the literal
+`finishZassenhaus` call, together with all live algebraic, representation,
+precision, squarefree, exhaustion-history, and accumulated-irreducibility
+invariants.
+
+`zassenhausLoop_live_terminal` follows the generated outer recursion with its
+unchanged lexicographic well-founded measure.  An exhausted physical scan is
+inserted into the literal history before advancing the subset size.  A
+successful physical scan invokes `scanExtraction_liveStep`, executes the
+returned removal, pushes that exact irreducible factor, resets the history at
+one, and recurses on the exact primitive quotient and remaining array.  The
+stopping branch returns the source `finishZassenhaus` value and packages that
+same physical state.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: prove the positive-degree terminal source irreducible from its stopped
+  condition and recorded physical scan history, then discharge
+  `FactorArrayIrreducible.finishZassenhaus`.

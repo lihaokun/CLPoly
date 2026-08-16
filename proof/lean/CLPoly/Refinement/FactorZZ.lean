@@ -3854,6 +3854,134 @@ theorem scanExtraction_liveStep
     hfactorQuotient.2.2, hquotientNonempty, hquotientLeading, hactiveNext,
     hproductNext, hprecisionNext, hsquarefreeNext⟩
 
+/-- Concrete terminal state reached by the generated Zassenhaus outer loop.
+It exposes the exact physical state on which `finishZassenhaus` was called. -/
+structure ZassenhausTerminalCertificate (prime exponent : Nat)
+    (output : Array SparsePolyZZ) : Type where
+  active : Array SparsePolyZZ
+  source : SparsePolyZZ
+  result : Array SparsePolyZZ
+  subsetSize : Nat
+  output_eq : output =
+    Generated.StrictRecombine.finishZassenhaus source result
+  stopped : ¬(2 * subsetSize ≤ active.size)
+  subsetPositive : 0 < subsetSize
+  canonical : StrictPolynomialMod.SparsePolyZZCanonical source
+  nonempty : 0 < source.size
+  primitive : (SparsePolyZZ.toPoly source).IsPrimitive
+  leading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0
+  squarefree : Squarefree
+    (Polynomial.map (Int.castRingHom (ZMod prime))
+      (SparsePolyZZ.toPoly source))
+  activeState : StrictRecombine.LiveActiveFactors prime active
+  productState : LiveHenselProduct prime exponent source active
+  precision : LiveRecoveryPrecision (prime ^ exponent) source
+  resultIrreducible : FactorArrayIrreducible result
+  history : StrictRecombine.SmallerZassenhausScansExhausted source active
+    (((prime ^ exponent : Nat) : ZZ)) subsetSize
+
+/-- Execute the complete generated outer loop to its literal terminal state
+while threading every live invariant and the physical exhaustion history. -/
+theorem zassenhausLoop_live_terminal
+    (prime exponent : Nat) [Fact (Nat.Prime prime)]
+    (active : Array SparsePolyZZ) (source : SparsePolyZZ)
+    (result : Array SparsePolyZZ) (subsetSize : Nat)
+    (hsubsetPositive : 0 < subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hsquarefree : Squarefree
+      (Polynomial.map (Int.castRingHom (ZMod prime))
+        (SparsePolyZZ.toPoly source)))
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (productState : LiveHenselProduct prime exponent source active)
+    (precision : LiveRecoveryPrecision (prime ^ exponent) source)
+    (resultIrreducible : FactorArrayIrreducible result)
+    (history : StrictRecombine.SmallerZassenhausScansExhausted source active
+      (((prime ^ exponent : Nat) : ZZ)) subsetSize) :
+    ∃ output,
+      Generated.StrictRecombine.zassenhausLoop
+        StrictRecombine.concreteZassenhausTermination
+        (((prime ^ exponent : Nat) : ZZ)) active source result subsetSize
+        hsubsetPositive = .ok output ∧
+      Nonempty (ZassenhausTerminalCertificate prime exponent output) := by
+  rw [Generated.StrictRecombine.zassenhausLoop]
+  split
+  next hcontinue =>
+    let initial := Generated.StrictRecombine.initialCombination subsetSize
+    have hfits : subsetSize ≤ active.size := by omega
+    let hinitial :=
+      StrictRecombine.concreteZassenhausTermination.initial_valid
+        active.size subsetSize hfits
+    rcases StrictRecombine.scanZassenhausCombinations_complete source active
+        (prime ^ exponent) prime initial
+        (pow_pos (Fact.out : Nat.Prime prime).pos exponent)
+        (Fact.out : Nat.Prime prime).pos
+        (dvd_pow_self prime (Nat.ne_of_gt productState.exponentPositive))
+        hcanonical hnonempty hsubsetPositive activeState.fitsInt32
+        (by
+          have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head
+            source hcanonical hnonempty
+          simpa [getElem!_pos source 0 hnonempty] using (hhead ▸ hleading))
+        activeState.irreducible hinitial with ⟨scanResult, hscan⟩
+    cases scanResult with
+    | exhausted =>
+        simp only [StrictRecombine.concreteZassenhausTermination, initial,
+          hinitial, hscan]
+        have hcurrent : StrictRecombine.FixedSizeScanExhausted source active
+            (((prime ^ exponent : Nat) : ZZ)) subsetSize :=
+          ⟨hfits, hscan⟩
+        exact zassenhausLoop_live_terminal prime exponent active source result
+          (subsetSize + 1) (by omega) hcanonical hnonempty hprimitive hleading
+          hsquarefree activeState productState precision resultIrreducible
+          (history.succ hcurrent)
+    | extracted factor quotient candidate candidateSize =>
+        simp only [StrictRecombine.concreteZassenhausTermination, initial,
+          hinitial, hscan]
+        rcases scanExtraction_liveStep prime exponent subsetSize source factor
+            quotient active candidate candidateSize productState activeState
+            precision history hsubsetPositive hfits hcanonical hnonempty
+            hprimitive hsquarefree hleading hscan with
+          ⟨remaining, hremove, hfactorIrreducible, hquotientCanonical,
+            hquotientPrimitive, hquotientNonempty, hquotientLeading,
+            hactiveNext, hproductNext, hprecisionNext, hsquarefreeNext⟩
+        rw [hremove]
+        exact zassenhausLoop_live_terminal prime exponent remaining quotient
+          (result.push factor) 1 (by omega) hquotientCanonical
+          hquotientNonempty hquotientPrimitive hquotientLeading
+          hsquarefreeNext hactiveNext hproductNext hprecisionNext
+          (resultIrreducible.push hfactorIrreducible)
+          (StrictRecombine.SmallerZassenhausScansExhausted.one quotient
+            remaining (((prime ^ exponent : Nat) : ZZ)))
+  next hcontinue =>
+    refine ⟨Generated.StrictRecombine.finishZassenhaus source result, rfl, ?_⟩
+    exact ⟨{
+      active := active
+      source := source
+      result := result
+      subsetSize := subsetSize
+      output_eq := rfl
+      stopped := hcontinue
+      subsetPositive := hsubsetPositive
+      canonical := hcanonical
+      nonempty := hnonempty
+      primitive := hprimitive
+      leading := hleading
+      squarefree := hsquarefree
+      activeState := activeState
+      productState := productState
+      precision := precision
+      resultIrreducible := resultIrreducible
+      history := history }⟩
+termination_by (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (StrictRecombine.concreteZassenhausTermination.removal_decreases active
+        candidate remaining (by rw [candidateSize]; exact hsubsetPositive)
+        hremove)
+
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source
 execution theorems above, including exact long division and quotient

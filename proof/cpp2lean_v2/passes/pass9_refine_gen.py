@@ -526,7 +526,8 @@ theorem {theorem_name}
         0 factors.size tree output ∧
       StrictHensel.HenselTreeNodeInitialInvariant this._p.toNat factors
         0 factors.size (getElem output 0 hroot) ∧
-      StrictHensel.HenselArrayCanonical output := by
+      StrictHensel.HenselArrayCanonical output ∧
+      StrictHensel.HenselArrayHOneHead output := by
   exact {proof_theorem} this hcfg h2p hp2 mulProvider factors hfactors
     hfactorsNonempty hfactorsMonicAfterZero hpairwise htwo hfitsInt32
 """

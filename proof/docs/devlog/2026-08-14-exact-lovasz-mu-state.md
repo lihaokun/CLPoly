@@ -2646,3 +2646,29 @@ No C++ files changed, so this step has no new C++ b2b change surface.  The
 complete Hensel source passed direct Lean checking.  Next, topology coverage
 turns these per-node certificates into `HenselArrayHOneHead` for the exact
 builder output.
+
+## Cover the full concrete builder array with physical heads
+
+`HenselTreeSemanticBuildCertificate.oneHead_of_mem` follows the exact
+left/right certificate structure and proves that every index enumerated by
+the source topology has a successful concrete array lookup carrying its
+stored `HasPhysicalOneHead` fact.
+
+`henselTreeBuildTopology_indices_complete` is the converse of the existing
+boundedness theorem.  By well-founded recursion on `stop - start`, it proves
+that the source preorder topology contains every index in the contiguous
+allocation block `[root, root + internalNodeCount)`.  Its four cases match
+the actual left/right allocation branches and use their exact count offsets.
+
+The root builder contract combines completeness, the recursively proved
+lookup facts, and the exact output-size equation to return
+`HenselArrayHOneHead output`.  Pass 9 now generates this strengthened public
+contract.  While synchronizing the template, the older generator drift that
+would have reintroduced an abstract `DivmodTermination` argument was removed:
+the generated step, recursive lift, and full Hensel entry continue to use the
+proved `concreteDivmodTermination` implementation.
+
+No C++ files changed, so this step has no new C++ b2b change surface.  Direct
+checking of the complete Hensel source and the Pass 9 generated-file freshness
+check passed.  Next, the builder-wide property is propagated through the
+quadratic lift and exact leaf extraction.

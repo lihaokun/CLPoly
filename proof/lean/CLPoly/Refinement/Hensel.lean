@@ -10834,6 +10834,78 @@ theorem henselTreeBuildTopology_indices_nodup_bounded
 termination_by stop - start
 decreasing_by all_goals omega
 
+/-- Conversely, every index in the exact contiguous allocation block appears
+in the source-derived preorder topology. -/
+theorem henselTreeBuildTopology_indices_complete
+    (start stop root : Nat) (hlength : 2 ≤ stop - start) :
+    ∀ index, root ≤ index →
+      index < root + henselTreeInternalNodeCount start stop →
+      index ∈ henselLiftTreeIndices
+        (henselTreeBuildTopology start stop root) := by
+  let mid := (start + stop) / 2
+  have hcount := henselTreeInternalNodeCount_eq start stop hlength
+  have hstartMid :=
+    Generated.StrictHensel.henselTreeMidpoint_gt_start start stop hlength
+  have hmidStop :=
+    Generated.StrictHensel.henselTreeMidpoint_lt_stop start stop hlength
+  by_cases hleft : 2 ≤ mid - start
+  · have hleftIH := henselTreeBuildTopology_indices_complete start mid
+      (root + 1) hleft
+    by_cases hright : 2 ≤ stop - mid
+    · have hrightIH := henselTreeBuildTopology_indices_complete mid stop
+        (root + 1 + henselTreeInternalNodeCount start mid) hright
+      intro index hlower hupper
+      rw [hcount] at hupper
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftIH hrightIH hcount hupper ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices,
+        List.mem_cons, List.mem_append]
+      by_cases hroot : index = root
+      · exact Or.inl (Or.inl hroot)
+      ·
+        by_cases hleftIndex :
+            index < root + 1 + henselTreeInternalNodeCount start mid
+        · exact Or.inl (Or.inr (hleftIH index (by omega) hleftIndex))
+        · have hrightUpper : index <
+              root + 1 + henselTreeInternalNodeCount start mid +
+                henselTreeInternalNodeCount mid stop := by
+              simpa [Nat.add_assoc] using hupper
+          exact Or.inr (hrightIH index (Nat.le_of_not_gt hleftIndex)
+            hrightUpper)
+    · have hrightCount : henselTreeInternalNodeCount mid stop = 0 := by
+        rw [henselTreeInternalNodeCount, dif_neg hright]
+      intro index hlower hupper
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftIH hrightCount hcount hupper ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices,
+        List.mem_cons]
+      by_cases hroot : index = root
+      · exact Or.inl hroot
+      · exact Or.inr (hleftIH index (by omega) (by omega))
+  · have hleftCount : henselTreeInternalNodeCount start mid = 0 := by
+      rw [henselTreeInternalNodeCount, dif_neg hleft]
+    by_cases hright : 2 ≤ stop - mid
+    · have hrightIH := henselTreeBuildTopology_indices_complete mid stop
+        (root + 1 + henselTreeInternalNodeCount start mid) hright
+      intro index hlower hupper
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hrightIH hleftCount hcount hupper ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices,
+        List.mem_cons]
+      by_cases hroot : index = root
+      · exact Or.inl hroot
+      · exact Or.inr (hrightIH index (by omega) (by omega))
+    · have hrightCount : henselTreeInternalNodeCount mid stop = 0 := by
+        rw [henselTreeInternalNodeCount, dif_neg hright]
+      intro index hlower hupper
+      rw [henselTreeBuildTopology]
+      dsimp [mid] at hleft hright hleftCount hrightCount hcount hupper ⊢
+      simp only [hleft, hright, ↓reduceIte, henselLiftTreeIndices,
+        List.mem_singleton]
+      omega
+termination_by stop - start
+decreasing_by all_goals omega
+
 theorem nat_toUInt32_toInt32_toInt_eq (n : Nat) (hbound : n < 2 ^ 31) :
     n.toUInt32.toInt32.toInt = (n : Int) := by
   change (Int32.ofNat n).toInt = (n : Int)
@@ -11618,6 +11690,52 @@ theorem HenselTreeSemanticBuildCertificate.lower_mono
       exact .node start stop index left right nodes value (by omega) hnode
         hinvariant hOneHead (fun child hchild => leftIH child hchild)
         (fun child hchild => rightIH child hchild)
+
+/-- Every index enumerated by the exact source-derived topology has a
+concrete array lookup whose stored right factor has physical coefficient-one
+head. -/
+theorem HenselTreeSemanticBuildCertificate.oneHead_of_mem
+    {p lower start stop : Nat} [Fact (Nat.Prime p)]
+    {factors : Array SparsePolyZp}
+    {tree : Generated.StrictHensel.HenselLiftTree}
+    {nodes : Array HenselNode}
+    (hcertificate : HenselTreeSemanticBuildCertificate p factors lower
+      start stop tree nodes) (index : Nat)
+    (hmem : index ∈ henselLiftTreeIndices tree) :
+    ∃ value, nodes[index]? = some value ∧ HasPhysicalOneHead value.h := by
+  induction hcertificate with
+  | node start stop root left right nodes value hlower hnode hinvariant
+      hOneHead hleftCertificate hrightCertificate leftIH rightIH =>
+      cases left with
+      | none =>
+          cases right with
+          | none =>
+              simp only [henselLiftTreeIndices, List.mem_singleton] at hmem
+              subst index
+              exact ⟨value, hnode, hOneHead⟩
+          | some rightTree =>
+              simp only [henselLiftTreeIndices, List.mem_cons] at hmem
+              rcases hmem with hroot | hright
+              · subst index
+                exact ⟨value, hnode, hOneHead⟩
+              · exact rightIH rightTree rfl hright
+      | some leftTree =>
+          cases right with
+          | none =>
+              simp only [henselLiftTreeIndices, List.mem_cons] at hmem
+              rcases hmem with hroot | hleft
+              · subst index
+                exact ⟨value, hnode, hOneHead⟩
+              · exact leftIH leftTree rfl hleft
+          | some rightTree =>
+              simp only [henselLiftTreeIndices, List.mem_cons,
+                List.mem_append] at hmem
+              rcases hmem with hleftSide | hright
+              · rcases hleftSide with hroot | hleft
+                · subst index
+                  exact ⟨value, hnode, hOneHead⟩
+                · exact leftIH leftTree rfl hleft
+              · exact rightIH rightTree rfl hright
 
 theorem henselFactorRangeProduct_singleton
     (p : Nat) (factors : Array SparsePolyZp) (start stop : Nat)
@@ -12821,7 +12939,8 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
         0 factors.size tree output ∧
       HenselTreeNodeInitialInvariant this._p.toNat factors 0 factors.size
         (getElem output 0 hroot) ∧
-      HenselArrayCanonical output := by
+      HenselArrayCanonical output ∧
+      HenselArrayHOneHead output := by
   dsimp only
   rcases strictHenselTreeBuildRecursiveRawIR_succeeds this hcfg h2p hp2
       mulProvider factors hfactors hfactorsNonempty hfactorsMonicAfterZero
@@ -12844,8 +12963,25 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
   have hcoprime := henselFactorRangeProducts_isCoprime this._p.toNat factors
     hpairwise 0 (factors.size / 2) factors.size (by omega) (by omega) (by simp)
   have hroot : 0 < output.size := by simpa using hframe.1
+  have houtputSizeCount : output.size =
+      henselTreeInternalNodeCount 0 factors.size := by
+    have hsizeTopology : output.size =
+        (henselTreeBuildTopology 0 factors.size 0).nodeCount := by
+      rw [htopologyCount, hcount]
+      simpa using hsizeExact
+    exact hsizeTopology.trans htopologyCount
+  have hbuilderOneHead : HenselArrayHOneHead output := by
+    intro index hindex
+    have hmem := henselTreeBuildTopology_indices_complete 0 factors.size 0
+      (by simpa using htwo) index (by omega) (by
+        simpa [houtputSizeCount] using hindex)
+    rcases hsemanticCertificate.oneHead_of_mem index hmem with
+      ⟨value, hlookup, hOneHead⟩
+    rw [Array.getElem?_eq_getElem hindex] at hlookup
+    injection hlookup with heq
+    simpa [heq] using hOneHead
   refine ⟨output, ?_, hroot, ?_, by simp, ?_, ?_, hextract,
-    hsemanticCertificate, ?_, hbuilderCanonical⟩
+    hsemanticCertificate, ?_, hbuilderCanonical, hbuilderOneHead⟩
   · simpa [Generated.StrictHensel.__hensel_tree_build_raw_ir, htwo] using hrun
   · rw [htopologyCount, hcount]
     simpa using hsizeExact
@@ -13140,7 +13276,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
       (by rw [hadjustSize]; exact hinvariant.topologyFits) with
     ⟨nodes, hnodesRun, hroot, hsize, hrootIndex, hleft, hright,
       hextractInvariant, hsemanticInvariant, hrootInvariant,
-      hnodesCanonical⟩
+      hnodesCanonical, hnodesOneHead⟩
   have htreeEq : Generated.StrictHensel.henselTreeBuildTopologyRawIR
       0 factors.size 0 = tree := henselTreeBuildTopologyRawIR_eq 0 factors.size 0
   have hsemanticInvariant' :

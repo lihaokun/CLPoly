@@ -3331,6 +3331,47 @@ structure LiveActiveFactors (base : Nat) (active : Array SparsePolyZZ) : Prop wh
   irreducible : ∀ index (hindex : index < active.size),
     Irreducible (Refinement.StrictHensel.toPolyMod base active[index])
 
+/-- Every physical occurrence-sensitive selection from a live active array is
+monic at any observation modulus. -/
+theorem LiveActiveFactors.selectedToPolyModMonic
+    {base modulus : Nat} {active : Array SparsePolyZZ}
+    (state : LiveActiveFactors base active) (candidate : Array Nat)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size) :
+    ((selectSourceIndices active.toList candidate.toList).map
+      (Refinement.StrictHensel.toPolyMod modulus)).prod.Monic := by
+  let selected := (selectSourceIndices active.toList candidate.toList).map
+    (Refinement.StrictHensel.toPolyMod modulus)
+  have hall : ∀ mapped ∈ selected, mapped.Monic := by
+    intro mapped hmapped
+    rcases List.mem_map.mp hmapped with ⟨factor, hfactor, rfl⟩
+    unfold selectSourceIndices at hfactor
+    rcases List.mem_map.mp hfactor with ⟨index, hindex, rfl⟩
+    rcases List.mem_iff_getElem.mp hindex with
+      ⟨position, hposition, hindexEq⟩
+    have hpositionArray : position < candidate.size := by simpa using hposition
+    have hactive := hbound position hpositionArray
+    have hselected : candidate[position] = index := by
+      rw [← Array.getElem_toList hpositionArray]
+      exact hindexEq
+    rw [← hselected, getElem!_pos active.toList candidate[position]
+      (by simpa using hactive), Array.getElem_toList hactive]
+    simpa [Refinement.StrictHensel.toPolyMod] using
+      (state.monic candidate[position] hactive).map
+        (Int.castRingHom (ZMod modulus))
+  change selected.prod.Monic
+  have prodMonic : ∀ list : List (Polynomial (ZMod modulus)),
+      (∀ polynomial ∈ list, polynomial.Monic) → list.prod.Monic := by
+    intro list hlist
+    induction list with
+    | nil => simp
+    | cons head tail ih =>
+        rw [List.prod_cons]
+        exact (hlist head (List.mem_cons_self)).mul
+          (ih (fun polynomial hpolynomial =>
+            hlist polynomial (List.mem_cons_of_mem head hpolynomial)))
+  exact prodMonic selected hall
+
 /-- The literal reverse erasure used after an extraction preserves every
 field of `LiveActiveFactors`; the size bound follows from the exact generated
 array-size equation. -/
@@ -13340,6 +13381,66 @@ theorem zassenhausAttempt_extracted_factor_mod_eq_selected
     simp [Refinement.StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
   rw [hsymmetricMod, htrial, hinitial] at hprimitiveMod'
   exact hprimitiveMod'.symm
+
+/-- The same physical primitive-content scalar certifies a successful
+candidate simultaneously at two divisors of the actual Hensel modulus.  Both
+equations are derived from one execution trace, so their existential witnesses
+cannot drift apart. -/
+theorem zassenhausAttempt_extracted_factor_mod_eq_selected_pair
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base₁ base₂ : Nat)
+    (candidate : Array Nat)
+    (hmodulus : 0 < modulus) (hbase₁ : 0 < base₁) (hbase₂ : 0 < base₂)
+    (hdivides₁ : base₁ ∣ modulus) (hdivides₂ : base₂ ∣ modulus)
+    (hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt fStar activeLifted
+      (modulus : ZZ) candidate =
+        .ok (.extracted factor quotientPrimitive)) :
+    ∃ content : Int,
+      (Polynomial.C (content : ZMod base₁) *
+          Refinement.StrictHensel.toPolyMod base₁ factor =
+        Polynomial.C (fStar[0]!.2 : ZMod base₁) *
+          ((selectSourceIndices activeLifted.toList candidate.toList).map
+            (Refinement.StrictHensel.toPolyMod base₁)).prod) ∧
+      (Polynomial.C (content : ZMod base₂) *
+          Refinement.StrictHensel.toPolyMod base₂ factor =
+        Polynomial.C (fStar[0]!.2 : ZMod base₂) *
+          ((selectSourceIndices activeLifted.toList candidate.toList).map
+            (Refinement.StrictHensel.toPolyMod base₂)).prod) := by
+  rcases zassenhausAttempt_extracted_candidate_trace fStar factor
+      quotientPrimitive activeLifted (modulus : ZZ) candidate hrun with
+    ⟨candidate32, product, symmetric, content, hconvert, hproduct,
+      hsymmetric, hprimitive⟩
+  have equation (base : Nat) (hbase : 0 < base)
+      (hdivides : base ∣ modulus) :
+      Polynomial.C (content : ZMod base) *
+          Refinement.StrictHensel.toPolyMod base factor =
+        Polynomial.C (fStar[0]!.2 : ZMod base) *
+          ((selectSourceIndices activeLifted.toList candidate.toList).map
+            (Refinement.StrictHensel.toPolyMod base)).prod := by
+    have htrial := trialProductLoop_source_indices_refines_of_dvd modulus base
+      hmodulus hbase hdivides candidate activeLifted candidate32
+      #[(⟨0⟩, fStar[0]!.2)] product hbound hactiveFits hconvert hproduct
+    have hsymmetricMod := symmetricModRaw_toPolyMod_of_dvd product symmetric
+      modulus base hmodulus hbase hdivides hsymmetric
+    have hprimitivePoly := primitiveRaw_toPoly symmetric factor content
+      hprimitive
+    have hprimitiveMod :=
+      congrArg (Polynomial.map (Int.castRingHom (ZMod base))) hprimitivePoly
+    have hprimitiveMod' : Refinement.StrictHensel.toPolyMod base symmetric =
+        Polynomial.C (content : ZMod base) *
+          Refinement.StrictHensel.toPolyMod base factor := by
+      simpa [Refinement.StrictHensel.toPolyMod] using hprimitiveMod
+    have hinitial : Refinement.StrictHensel.toPolyMod base
+        #[(⟨0⟩, fStar[0]!.2)] =
+          Polynomial.C (fStar[0]!.2 : ZMod base) := by
+      simp [Refinement.StrictHensel.toPolyMod, SparsePolyZZ.toPoly]
+    rw [hsymmetricMod, htrial, hinitial] at hprimitiveMod'
+    exact hprimitiveMod'.symm
+  exact ⟨content, equation base₁ hbase₁ hdivides₁,
+    equation base₂ hbase₂ hdivides₂⟩
 
 private theorem selectedSourceProduct_ne_zero_of_irreducible
     (base : Nat) [Fact (Nat.Prime base)]

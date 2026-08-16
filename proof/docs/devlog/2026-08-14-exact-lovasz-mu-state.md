@@ -3418,3 +3418,35 @@ integer divisor and its exact modular association certificate.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：用 live `p^k`/precision certificate 执行这个 smaller candidate 的
   两个 prune、trial、symmetric、primitive 和 exact-division 路径
+
+## Preserve the full Hensel product after a literal extraction
+
+`zassenhausAttempt_extracted_factor_mod_eq_selected_pair` replays one successful
+physical `zassenhausAttempt` trace at both the full Hensel modulus `p^k` and the
+selected prime `p`.  It recovers one and the same integer primitive-content
+scalar, rather than choosing unrelated modular witnesses, and proves the exact
+equation between the returned factor and the occurrence-sensitive selected
+Hensel cells at both precisions.
+
+`LiveActiveFactors.selectedToPolyModMonic` proves that every legal physical
+selection remains monic at an arbitrary observation modulus.  Consequently the
+selected product has a unit leading coefficient and can be cancelled in the
+prime-power polynomial ring without assuming that `ZMod (p^k)` is a field.
+
+`zassenhausAttempt_extracted_content_units` then proves the shared content is a
+unit both modulo `p` and modulo `p^k`: nonvanishing follows from the real source
+head and the monic selected product at `p`, and the prime-power result follows
+from the same integer content.  Finally `LiveHenselProduct.extract` composes the
+literal exact-division/primitive-normalization equation, the literal
+`removeCombination` partition, and both live product equations.  It cancels the
+actual selected product and constructs fresh unit product certificates for the
+returned primitive quotient and physically retained active array at both
+precisions.  Thus a successful generated outer-loop extraction preserves the
+full Hensel state required by subsequent real candidate executions.
+
+- C++ changes: none, so this step has no new C++ regression or b2b change
+  surface.
+- Next: lift this preservation theorem through the returned fixed-size scan and
+  thread it through the generated Zassenhaus outer recursion; use the recorded
+  smaller-scan rejection history to prove every physically pushed factor
+  irreducible.

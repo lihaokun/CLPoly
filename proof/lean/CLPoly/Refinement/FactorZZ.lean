@@ -948,6 +948,206 @@ theorem mapped_leadingCoeff_isUnit_primePower
   rw [Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero _ hcoefficientNe]
   exact hcoefficientUnit
 
+/-- The primitive content computed by one successful physical attempt is a
+unit both at the selected prime and at full Hensel precision.  The same
+integer content and both exact candidate equations come from one execution
+trace. -/
+theorem zassenhausAttempt_extracted_content_units
+    (prime exponent : Nat) [Fact (Nat.Prime prime)]
+    (source factor quotient : SparsePolyZZ)
+    (active : Array SparsePolyZZ) (candidate : Array Nat)
+    (hactive : StrictRecombine.LiveActiveFactors prime active)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hexponent : 0 < exponent)
+    (hrun : Generated.StrictRecombine.zassenhausAttempt source active
+      ((prime ^ exponent : Nat) : ZZ) candidate =
+        .ok (.extracted factor quotient)) :
+    ∃ content : Int,
+      (Polynomial.C (content : ZMod (prime ^ exponent)) *
+          StrictHensel.toPolyMod (prime ^ exponent) factor =
+        Polynomial.C (source[0]!.2 : ZMod (prime ^ exponent)) *
+          ((StrictRecombine.selectSourceIndices active.toList
+            candidate.toList).map
+              (StrictHensel.toPolyMod (prime ^ exponent))).prod) ∧
+      (Polynomial.C (content : ZMod prime) *
+          StrictHensel.toPolyMod prime factor =
+        Polynomial.C (source[0]!.2 : ZMod prime) *
+          ((StrictRecombine.selectSourceIndices active.toList
+            candidate.toList).map
+              (StrictHensel.toPolyMod prime)).prod) ∧
+      IsUnit (content : ZMod (prime ^ exponent)) ∧
+      IsUnit (content : ZMod prime) := by
+  let modulus := prime ^ exponent
+  have hmodulus : 0 < modulus :=
+    pow_pos (Fact.out : Nat.Prime prime).pos exponent
+  have hprime : 0 < prime := (Fact.out : Nat.Prime prime).pos
+  have hdivides : prime ∣ modulus :=
+    dvd_pow_self prime (Nat.ne_of_gt hexponent)
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  rcases StrictRecombine.zassenhausAttempt_extracted_factor_mod_eq_selected_pair
+      source factor quotient active modulus modulus prime candidate hmodulus
+      hmodulus hprime (dvd_refl modulus) hdivides hbound hactive.fitsInt32
+      (by simpa [modulus] using hrun) with
+    ⟨content, hlargeEquation, hprimeEquation⟩
+  have hfront : (source[0]!.2 : ZMod prime) ≠ 0 := by
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source
+      hcanonical hnonempty
+    simpa [getElem!_pos source 0 hnonempty] using (hhead ▸ hleading)
+  have hselectedMonic := hactive.selectedToPolyModMonic candidate hbound
+    (modulus := prime)
+  have hselectedNe := hselectedMonic.ne_zero
+  have hrhsNe : Polynomial.C (source[0]!.2 : ZMod prime) *
+      ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+        (StrictHensel.toPolyMod prime)).prod ≠ 0 :=
+    mul_ne_zero (Polynomial.C_ne_zero.mpr hfront) hselectedNe
+  have hcontentPrimeNe : (content : ZMod prime) ≠ 0 := by
+    intro hzero
+    apply hrhsNe
+    rw [← hprimeEquation]
+    simp [hzero]
+  have hcontentPrimeUnit : IsUnit (content : ZMod prime) :=
+    isUnit_iff_ne_zero.mpr hcontentPrimeNe
+  have hcontentLargeUnit : IsUnit (content : ZMod modulus) :=
+    intCast_isUnit_primePower_of_ne_zero_prime prime exponent content
+      hcontentPrimeNe
+  exact ⟨content, by simpa [modulus] using hlargeEquation, hprimeEquation,
+    by simpa [modulus] using hcontentLargeUnit, hcontentPrimeUnit⟩
+
+/-- A successful literal attempt followed by the literal physical removal
+preserves the full live Hensel product state for the primitive quotient that
+the generated outer loop installs. -/
+theorem LiveHenselProduct.extract
+    {prime exponent : Nat} [Fact (Nat.Prime prime)]
+    {source factor quotient : SparsePolyZZ}
+    {active remaining : Array SparsePolyZZ} {candidate : Array Nat}
+    (state : LiveHenselProduct prime exponent source active)
+    (activeState : StrictRecombine.LiveActiveFactors prime active)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical source)
+    (hnonempty : 0 < source.size)
+    (hprimitive : (SparsePolyZZ.toPoly source).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly source).leadingCoeff : ZMod prime) ≠ 0)
+    (hlegal : StrictRecombine.LegalCombination active.size candidate.size
+      candidate)
+    (hattempt : Generated.StrictRecombine.zassenhausAttempt source active
+      ((prime ^ exponent : Nat) : ZZ) candidate =
+        .ok (.extracted factor quotient))
+    (hremove : Generated.StrictRecombine.removeCombination candidate active =
+      .ok remaining) :
+    LiveHenselProduct prime exponent quotient remaining := by
+  let modulus := prime ^ exponent
+  have hmodulus : 0 < modulus :=
+    pow_pos (Fact.out : Nat.Prime prime).pos exponent
+  have hprime : 0 < prime := (Fact.out : Nat.Prime prime).pos
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < active.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  have hlegalSize : StrictRecombine.LegalCombination active.size
+      candidate.size candidate := hlegal
+  rcases state.certificate with
+    ⟨scaleLarge, scalePrime, hscaleLarge, hscalePrime,
+      hproductLarge, hproductPrime⟩
+  rcases zassenhausAttempt_extracted_content_units prime exponent source factor
+      quotient active candidate activeState hcanonical hnonempty hleading
+      hlegal state.exponentPositive hattempt with
+    ⟨content, hfactorLarge, hfactorPrime, hcontentLarge, hcontentPrime⟩
+  rcases StrictRecombine.zassenhausAttempt_extracted_unit_scalar source factor
+      quotient active ((modulus : Nat) : ZZ) candidate hprimitive
+      (by simpa [modulus] using hattempt) with
+    ⟨scalar, hscalar, hextraction⟩
+  have hscalarLarge : IsUnit (scalar : ZMod modulus) :=
+    hscalar.map (Int.castRingHom (ZMod modulus))
+  have hscalarPrime : IsUnit (scalar : ZMod prime) :=
+    hscalar.map (Int.castRingHom (ZMod prime))
+  have hextractionLarge : StrictHensel.toPolyMod modulus source =
+      Polynomial.C (scalar : ZMod modulus) *
+        (StrictHensel.toPolyMod modulus factor *
+          StrictHensel.toPolyMod modulus quotient) := by
+    simpa [StrictHensel.toPolyMod, Polynomial.map_mul, Polynomial.map_C] using
+      congrArg (Polynomial.map (Int.castRingHom (ZMod modulus))) hextraction
+  have hextractionPrime : StrictHensel.toPolyMod prime source =
+      Polynomial.C (scalar : ZMod prime) *
+        (StrictHensel.toPolyMod prime factor *
+          StrictHensel.toPolyMod prime quotient) := by
+    simpa [StrictHensel.toPolyMod, Polynomial.map_mul, Polynomial.map_C] using
+      congrArg (Polynomial.map (Int.castRingHom (ZMod prime))) hextraction
+  have hpartitionLarge :=
+    StrictRecombine.removeCombination_toPolyMod_product_partition modulus
+      candidate active remaining hlegalSize hremove
+  have hpartitionPrime :=
+    StrictRecombine.removeCombination_toPolyMod_product_partition prime
+      candidate active remaining hlegalSize hremove
+  let selectedLarge :=
+    ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      (StrictHensel.toPolyMod modulus)).prod
+  let selectedPrime :=
+    ((StrictRecombine.selectSourceIndices active.toList candidate.toList).map
+      (StrictHensel.toPolyMod prime)).prod
+  let remainingLarge :=
+    (remaining.toList.map (StrictHensel.toPolyMod modulus)).prod
+  let remainingPrime :=
+    (remaining.toList.map (StrictHensel.toPolyMod prime)).prod
+  have hactiveLarge : selectedLarge * remainingLarge =
+      Polynomial.C scaleLarge * StrictHensel.toPolyMod modulus source := by
+    rw [hpartitionLarge]
+    exact hproductLarge
+  have hactivePrime : selectedPrime * remainingPrime =
+      Polynomial.C scalePrime * StrictHensel.toPolyMod prime source := by
+    rw [hpartitionPrime]
+    exact hproductPrime
+  have hselectedLargeMonic := activeState.selectedToPolyModMonic candidate
+    hbound (modulus := modulus)
+  have hselectedPrimeMonic := activeState.selectedToPolyModMonic candidate
+    hbound (modulus := prime)
+  have hselectedLargeLeading : IsUnit selectedLarge.leadingCoeff := by
+    rw [hselectedLargeMonic.leadingCoeff]
+    exact isUnit_one
+  have hselectedPrimeLeading : IsUnit selectedPrime.leadingCoeff := by
+    rw [hselectedPrimeMonic.leadingCoeff]
+    exact isUnit_one
+  have hfrontPrime : (source[0]!.2 : ZMod prime) ≠ 0 := by
+    have hhead := StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head source
+      hcanonical hnonempty
+    simpa [getElem!_pos source 0 hnonempty] using (hhead ▸ hleading)
+  have hfrontPrimeUnit : IsUnit (source[0]!.2 : ZMod prime) :=
+    isUnit_iff_ne_zero.mpr hfrontPrime
+  have hfrontLargeUnit : IsUnit (source[0]!.2 : ZMod modulus) := by
+    simpa [modulus] using
+      intCast_isUnit_primePower_of_ne_zero_prime prime exponent source[0]!.2
+        hfrontPrime
+  rcases remaining_product_eq_unit_mul_quotient_cancel_selected
+      selectedLarge remainingLarge (StrictHensel.toPolyMod modulus source)
+      (StrictHensel.toPolyMod modulus factor)
+      (StrictHensel.toPolyMod modulus quotient) scaleLarge
+      (source[0]!.2 : ZMod modulus) (content : ZMod modulus)
+      (scalar : ZMod modulus) hscaleLarge hfrontLargeUnit hcontentLarge
+      hscalarLarge hselectedLargeLeading hactiveLarge hextractionLarge
+      hfactorLarge with
+    ⟨nextScaleLarge, hnextScaleLarge, hnextProductLarge⟩
+  rcases remaining_product_eq_unit_mul_quotient_cancel_selected
+      selectedPrime remainingPrime (StrictHensel.toPolyMod prime source)
+      (StrictHensel.toPolyMod prime factor)
+      (StrictHensel.toPolyMod prime quotient) scalePrime
+      (source[0]!.2 : ZMod prime) (content : ZMod prime)
+      (scalar : ZMod prime) hscalePrime hfrontPrimeUnit hcontentPrime
+      hscalarPrime hselectedPrimeLeading hactivePrime hextractionPrime
+      hfactorPrime with
+    ⟨nextScalePrime, hnextScalePrime, hnextProductPrime⟩
+  exact {
+    exponentPositive := state.exponentPositive
+    certificate := ⟨nextScaleLarge, nextScalePrime, hnextScaleLarge,
+      hnextScalePrime, by simpa [remainingLarge] using hnextProductLarge,
+      by simpa [remainingPrime] using hnextProductPrime⟩ }
+
 /-- The normalized factors returned by the literal Hensel entry initialize a
 `LiveHenselProduct` at the exact prime power returned by that execution. -/
 theorem selectionHenselFactors_liveProduct

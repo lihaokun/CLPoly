@@ -14181,6 +14181,104 @@ theorem scanZassenhausCombinations_extracted_mod_certificate
             rw [hmeasure] at hdecrease
             exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
 
+/-- The modular product invariant is preserved by the exact successful scan
+and removal executions used by the generated outer loop.  The proof cancels
+the physically returned nonzero factor from the mapped integer extraction
+equation and the occurrence-sensitive selected/complement partition. -/
+theorem scanExtraction_removeCombination_preserves_mod_product
+    {count : Nat}
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted active' : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)] (candidate : Array Nat)
+    (candidateSize : candidate.size = count)
+    (hfits : count ≤ activeLifted.size)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (hlive : Associated
+      (Polynomial.map (Int.castRingHom (ZMod base))
+        (SparsePolyZZ.toPoly fStar))
+      ((activeLifted.toList.map
+        (Refinement.StrictHensel.toPolyMod base)).prod))
+    (hscan : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination activeLifted.size count)
+      fStar activeLifted (modulus : ZZ)
+      (Generated.StrictRecombine.initialCombination count)
+      (initialCombination_legal activeLifted.size count hfits) = .ok
+        (.extracted factor quotientPrimitive candidate candidateSize))
+    (hremove : Generated.StrictRecombine.removeCombination candidate
+      activeLifted = .ok active') :
+    Associated
+      (Polynomial.map (Int.castRingHom (ZMod base))
+        (SparsePolyZZ.toPoly quotientPrimitive))
+      ((active'.toList.map
+        (Refinement.StrictHensel.toPolyMod base)).prod) := by
+  let initial := Generated.StrictRecombine.initialCombination count
+  let hinitial := initialCombination_legal activeLifted.size count hfits
+  have hlegal : LegalCombination activeLifted.size count candidate :=
+    concreteScan_extracted_legal fStar factor quotientPrimitive activeLifted
+      (modulus : ZZ) candidate candidateSize hfits hscan
+  have hlegalSize : LegalCombination activeLifted.size candidate.size
+      candidate := by simpa [candidateSize] using hlegal
+  have hfactorCertificate :=
+    scanZassenhausCombinations_extracted_mod_certificate fStar factor
+      quotientPrimitive activeLifted modulus base initial candidate
+      candidateSize hmodulus hbase hdivides hactiveFits hcanonical hnonempty
+      hprimitive hleading hirreducible hinitial hscan
+  rcases scanZassenhausCombinations_extracted_unit_scalar
+      (concreteCombinationTermination activeLifted.size count) fStar factor
+      quotientPrimitive activeLifted (modulus : ZZ) initial candidate
+      candidateSize hprimitive hinitial hscan with
+    ⟨scalar, hscalar, hextraction⟩
+  have hmappedExtraction := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod base))) hextraction
+  simp only [Polynomial.map_mul, Polynomial.map_C] at hmappedExtraction
+  have hscalarMod : IsUnit (scalar : ZMod base) :=
+    hscalar.map (Int.castRingHom (ZMod base))
+  have hconstantUnit : IsUnit
+      (Polynomial.C (scalar : ZMod base)) :=
+    Polynomial.isUnit_C.mpr hscalarMod
+  have hsourceExtraction : Associated
+      (Polynomial.map (Int.castRingHom (ZMod base))
+        (SparsePolyZZ.toPoly fStar))
+      (Refinement.StrictHensel.toPolyMod base factor *
+        Polynomial.map (Int.castRingHom (ZMod base))
+          (SparsePolyZZ.toPoly quotientPrimitive)) := by
+    have hwithConstant := Associated.of_eq hmappedExtraction
+    exact hwithConstant.trans
+      ((associated_isUnit_mul_left_iff hconstantUnit).mpr (Associated.refl _))
+  have hpartition := removeCombination_toPolyMod_product_partition base
+    candidate activeLifted active' hlegalSize hremove
+  have hcombined : Associated
+      (Refinement.StrictHensel.toPolyMod base factor *
+        Polynomial.map (Int.castRingHom (ZMod base))
+          (SparsePolyZZ.toPoly quotientPrimitive))
+      (((selectSourceIndices activeLifted.toList candidate.toList).map
+          (Refinement.StrictHensel.toPolyMod base)).prod *
+        (active'.toList.map
+          (Refinement.StrictHensel.toPolyMod base)).prod) :=
+    hsourceExtraction.symm.trans
+      (hlive.trans (Associated.of_eq hpartition.symm))
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < activeLifted.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegalSize.2.2 position hposition
+  have hselectedNe := selectedSourceProduct_ne_zero_of_irreducible base
+    activeLifted candidate hbound hirreducible
+  have hfactorNe : Refinement.StrictHensel.toPolyMod base factor ≠ 0 := by
+    intro hzero
+    apply hselectedNe
+    exact hfactorCertificate.1.eq_zero_iff.mp hzero
+  exact Associated.of_mul_left hcombined hfactorCertificate.1 hfactorNe
+
 private noncomputable def factorArrayProduct (factors : Array SparsePolyZZ) :
   Polynomial Int :=
   (factors.toList.map SparsePolyZZ.toPoly).prod

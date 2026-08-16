@@ -3267,3 +3267,19 @@ the current array and real divisibility, not from a factorization oracle.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：证明 scan extraction + physical removal 保持 live modular-product
   invariant，然后用 exhausted histories 排除被提取因子的所有真因子
+
+## Preserve the live modular product through physical extraction
+
+`scanExtraction_removeCombination_preserves_mod_product` composes three facts
+from one concrete execution: the integer equation returned by exact division
+and primitive normalization, the successful scan's association with its exact
+selected Hensel occurrences, and `removeCombination`'s physical
+selected/complement partition.  After mapping the integer equation modulo the
+selected prime, the primitive scalar is proved to remain a unit and the
+selected modular product is proved nonzero from its actual irreducible cells.
+Cancellation in `ZMod p[x]` then yields that the returned quotient is
+associated with the product of the physically retained active array.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：携带该 invariant 与逐层 fixed-size exhaustion history，证明真实
+  extraction 的 factor 不存在非 unit 真因子

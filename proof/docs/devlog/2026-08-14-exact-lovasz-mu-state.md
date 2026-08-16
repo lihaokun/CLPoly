@@ -3146,3 +3146,27 @@ a semantic representative.
 - C++ 变化：无，因此本次无新的 C++ b2b 变更面
 - 下一步：证明该 primitive result 整除当前 `fStar`，执行 exact division 与
   quotient primitive normalization，从而关闭完整 `.extracted` 分支
+
+## Extract the genuine divisor through the literal attempt
+
+`primitiveRaw_factor_dvd_scaled_primitive_divisor` closes the integer
+divisibility gap without postulating a trial-division result.  The physical
+primitive execution equation and the recovered equality
+`symmetric = C(quotient.lc) * divisor` are mapped to `QQ[x]`; both proved
+nonzero constants are units there.  The returned primitive factor is therefore
+associated to the genuine divisor over `QQ[x]`, and Gauss's lemma transports
+the divisibility back to `ZZ[x]`.
+
+`zassenhausAttempt_extracts_hensel_divisor_candidate` now executes the complete
+source attempt.  It instantiates the already proved literal leading and
+constant prune acceptances, runs checked conversion/product/symmetric/primitive,
+uses the new Gauss bridge to invoke the well-founded
+`exactDivmodRaw_complete_of_dvd`, proves the physical remainder is `#[]`, and
+runs `primitiveRaw` on the actual quotient.  Unfolding the generated function
+then yields an explicit `.ok (.extracted recoveredFactor recoveredQuotient)`.
+No success result, factor array, quotient, or remainder is supplied by an
+operation record or semantic oracle.
+
+- C++ 变化：无，因此本次无新的 C++ b2b 变更面
+- 下一步：把本次成功提取提升到固定大小组合扫描，并维持更新后的
+  `fStar`/active 数组不变量，闭合外层 Zassenhaus 重组

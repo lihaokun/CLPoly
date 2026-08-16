@@ -1582,6 +1582,7 @@ theorem zassenhausCandidate_executes_through_primitive
       Generated.StrictRecombine.symmetricModRaw product output.2 = .ok symmetric ∧
       SparsePolyZZ.toPoly symmetric =
         Polynomial.C quotient.leadingCoeff * divisor ∧
+      StrictPolynomialMod.SparsePolyZZCanonical symmetric ∧
       Generated.StrictRecombine.primitiveRaw symmetric =
         .ok (content, recoveredFactor) := by
   have hbound : ∀ position (hposition : position < candidate.size),
@@ -1703,7 +1704,191 @@ theorem zassenhausCandidate_executes_through_primitive
   rcases StrictRecombine.primitiveRaw_complete symmetric hsymmetricCanonical with
     ⟨content, recoveredFactor, hprimitive⟩
   exact ⟨candidate32, product, symmetric, content, recoveredFactor, hconvert,
-    hproduct, hsymmetric, hsymmetricPoly, hprimitive⟩
+    hproduct, hsymmetric, hsymmetricPoly, hsymmetricCanonical, hprimitive⟩
+
+/-- A primitive factor physically returned from a nonzero scalar multiple of
+a primitive integer divisor divides that divisor over `ℤ[x]`.  The proof maps
+the concrete `primitiveRaw` equation to `ℚ[x]`, cancels only proved nonzero
+constant units there, and applies Gauss's lemma in the reverse direction. -/
+theorem primitiveRaw_factor_dvd_scaled_primitive_divisor
+    (symmetric recoveredFactor : SparsePolyZZ) (content : Int)
+    (divisor quotient : Polynomial Int)
+    (hsymmetric : SparsePolyZZ.toPoly symmetric =
+      Polynomial.C quotient.leadingCoeff * divisor)
+    (hsymmetricCanonical :
+      StrictPolynomialMod.SparsePolyZZCanonical symmetric)
+    (hprimitive : Generated.StrictRecombine.primitiveRaw symmetric =
+      .ok (content, recoveredFactor))
+    (hdivisorPrimitive : divisor.IsPrimitive)
+    (hdivisorNe : divisor ≠ 0) (hquotientNe : quotient ≠ 0) :
+    SparsePolyZZ.toPoly recoveredFactor ∣ divisor := by
+  have hquotientLeadingNe : quotient.leadingCoeff ≠ 0 :=
+    Polynomial.leadingCoeff_ne_zero.mpr hquotientNe
+  have hscaledNe : Polynomial.C quotient.leadingCoeff * divisor ≠ 0 :=
+    mul_ne_zero (Polynomial.C_ne_zero.mpr hquotientLeadingNe) hdivisorNe
+  have hsymmetricNe : SparsePolyZZ.toPoly symmetric ≠ 0 := by
+    rw [hsymmetric]
+    exact hscaledNe
+  have hsymmetricNonempty : 0 < symmetric.size := by
+    by_contra hnot
+    have hzero : symmetric.size = 0 := Nat.eq_zero_of_not_pos hnot
+    have hempty : symmetric = #[] := Array.size_eq_zero_iff.mp hzero
+    apply hsymmetricNe
+    simp [hempty, SparsePolyZZ.toPoly]
+  have hrecoveredPrimitive := StrictRecombine.primitiveRaw_isPrimitive
+    symmetric recoveredFactor content hsymmetricNonempty hsymmetricCanonical
+      hprimitive
+  have hsemantic := StrictRecombine.primitiveRaw_toPoly symmetric
+    recoveredFactor content hprimitive
+  have hcontentNe : content ≠ 0 := by
+    intro hzero
+    apply hsymmetricNe
+    rw [hsemantic, hzero]
+    simp
+  have hmap := congrArg (Polynomial.map (Int.castRingHom ℚ)) hsemantic
+  rw [hsymmetric] at hmap
+  simp only [Polynomial.map_mul, Polynomial.map_C] at hmap
+  have hcontentUnit : IsUnit (Polynomial.C (content : ℚ)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr
+      (Int.cast_ne_zero.mpr hcontentNe))
+  have hquotientUnit : IsUnit
+      (Polynomial.C (quotient.leadingCoeff : ℚ)) :=
+    Polynomial.isUnit_C.mpr (isUnit_iff_ne_zero.mpr
+      (Int.cast_ne_zero.mpr hquotientLeadingNe))
+  let recoveredQ :=
+    (SparsePolyZZ.toPoly recoveredFactor).map (Int.castRingHom ℚ)
+  let divisorQ := divisor.map (Int.castRingHom ℚ)
+  have hleft : Associated
+      (Polynomial.C (content : ℚ) * recoveredQ) recoveredQ :=
+    (associated_isUnit_mul_left_iff hcontentUnit).mpr (Associated.refl _)
+  have hright : Associated
+      (Polynomial.C (quotient.leadingCoeff : ℚ) * divisorQ) divisorQ :=
+    (associated_isUnit_mul_left_iff hquotientUnit).mpr (Associated.refl _)
+  have hassociated : Associated recoveredQ divisorQ := by
+    exact hleft.symm.trans ((Associated.of_eq hmap.symm).trans hright)
+  apply (Polynomial.IsPrimitive.Int.dvd_iff_map_cast_dvd_map_cast
+    (SparsePolyZZ.toPoly recoveredFactor) divisor hrecoveredPrimitive
+      hdivisorPrimitive).mpr
+  exact hassociated.dvd
+
+/-- The literal generated Zassenhaus attempt extracts the genuine legal
+Hensel candidate.  Every intermediate result is obtained from the source
+execution theorems above, including exact long division and quotient
+primitive normalization. -/
+theorem zassenhausAttempt_extracts_hensel_divisor_candidate
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime 0 output)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size) (hdegree : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (divisor quotient : Polynomial Int)
+    (hfactor : SparsePolyZZ.toPoly f = divisor * quotient)
+    (hdivisorPrimitive : divisor.IsPrimitive)
+    (hdivisorModNonzero : Polynomial.map
+      (Int.castRingHom (ZMod selection.prime.toNat)) divisor ≠ 0)
+    (hdivisorLeading :
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor).leadingCoeff =
+          (divisor.leadingCoeff : ZMod selection.prime.toNat))
+    (candidate : Array Nat)
+    (hlegal : StrictRecombine.LegalCombination output.1.size candidate.size
+      candidate)
+    (hactiveFits : output.1.size ≤ 2 ^ 31)
+    (hassociated : Associated
+      (Polynomial.map
+        (Int.castRingHom (ZMod selection.prime.toNat)) divisor)
+      (((StrictRecombine.selectSourceIndices output.1.toList
+        candidate.toList).map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod)) :
+    ∃ recoveredFactor recoveredQuotient,
+      Generated.StrictRecombine.zassenhausAttempt f output.1 output.2 candidate =
+        .ok (.extracted recoveredFactor recoveredQuotient) := by
+  have hfront : f[0] = leading := by
+    rw [Array.getElem?_eq_getElem hnonempty] at hleading
+    exact Option.some.inj hleading
+  have hsourceNe : SparsePolyZZ.toPoly f ≠ 0 := by
+    intro hzero
+    apply hselection.goodPrime.lc_nonzero
+    rw [hzero]
+    simp
+  have hdivisorNe : divisor ≠ 0 := by
+    intro hzero
+    apply hdivisorModNonzero
+    simp [hzero]
+  have hquotientNe : quotient ≠ 0 := by
+    intro hzero
+    apply hsourceNe
+    rw [hfactor, hzero]
+    simp
+  have hbound : ∀ position (hposition : position < candidate.size),
+      candidate[position] < output.1.size := by
+    intro position hposition
+    simpa [getElem!_pos candidate position hposition] using
+      hlegal.2.2 position hposition
+  rcases zassenhausLeadingPrune_accepts_hensel_candidate hentry hcanonical
+      hnonempty hdegree leading hleading candidate hbound with
+    ⟨leadingProduct, hleadingRun, hleadingAccept⟩
+  rcases zassenhausConstantPrune_accepts_hensel_divisor_candidate hcount hp2
+      hfactors hleadingSemantic hselection hentry hcanonical hnonempty hdegree
+      leading hleading divisor quotient hfactor hdivisorModNonzero
+      hdivisorLeading candidate hlegal hassociated with
+    ⟨constantProduct, hconstantRun, _hconstantRecovered, hconstantAccept⟩
+  rcases zassenhausCandidate_executes_through_primitive hcount hp2 hfactors
+      hleadingSemantic hselection hentry hcanonical hnonempty hdegree leading
+      hleading divisor quotient hfactor hdivisorModNonzero hdivisorLeading
+      candidate hlegal hactiveFits hassociated with
+    ⟨candidate32, product, symmetric, content, recoveredFactor, hconvert,
+      hproduct, hsymmetric, hsymmetricPoly, hsymmetricCanonical, hprimitive⟩
+  have hrecoveredDvdDivisor :=
+    primitiveRaw_factor_dvd_scaled_primitive_divisor symmetric recoveredFactor
+      content divisor quotient hsymmetricPoly hsymmetricCanonical hprimitive
+      hdivisorPrimitive hdivisorNe hquotientNe
+  have hrecoveredDvdSource : SparsePolyZZ.toPoly recoveredFactor ∣
+      SparsePolyZZ.toPoly f := by
+    exact dvd_trans hrecoveredDvdDivisor
+      (hfactor ▸ dvd_mul_right divisor quotient)
+  have hrecoveredCanonical := StrictRecombine.primitiveRaw_canonical symmetric
+    recoveredFactor content hsymmetricCanonical hprimitive
+  have hrecoveredNonempty : 0 < recoveredFactor.size := by
+    by_contra hnot
+    have hzero : recoveredFactor.size = 0 := Nat.eq_zero_of_not_pos hnot
+    have hempty : recoveredFactor = #[] := Array.size_eq_zero_iff.mp hzero
+    rw [hempty] at hrecoveredDvdDivisor
+    simp [SparsePolyZZ.toPoly] at hrecoveredDvdDivisor
+    exact hdivisorNe hrecoveredDvdDivisor
+  rcases StrictRecombine.exactDivmodRaw_complete_of_dvd f recoveredFactor
+      hcanonical hrecoveredCanonical hrecoveredNonempty hrecoveredDvdSource with
+    ⟨rawQuotient, hdivmod⟩
+  have hrawQuotientCanonical :=
+    StrictRecombine.exactDivmodRaw_quotient_canonical f recoveredFactor
+      rawQuotient #[] hcanonical.2 hdivmod
+  rcases StrictRecombine.primitiveRaw_complete rawQuotient
+      hrawQuotientCanonical with
+    ⟨quotientContent, recoveredQuotient, hquotientPrimitive⟩
+  refine ⟨recoveredFactor, recoveredQuotient, ?_⟩
+  unfold Generated.StrictRecombine.zassenhausAttempt
+  rw [dif_pos hnonempty]
+  dsimp only
+  rw [hfront]
+  simp only [hleadingRun]
+  rw [if_neg hleadingAccept]
+  simp only [hconstantRun]
+  rw [if_neg hconstantAccept]
+  simp only [hconvert, hproduct, hsymmetric, hprimitive, hdivmod]
+  simp only [Array.isEmpty_empty, if_true, hquotientPrimitive]
 
 /-- If the actual generated fixed-size Zassenhaus scan exhausts, then the
 occurrence-sensitive candidate supplied by any genuine integer divisor was

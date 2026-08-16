@@ -167,3 +167,33 @@ to turn consumed-subset cardinality into memberwise irreducibility later.
 - Next: preserve these modular subset associations across all validation
   pushes, together with the consumed partition, and apply the equal-cardinality
   UFD bridge on the accepted `__lll_factorize` branch.
+
+## Preserve modular nonunits and lift the cardinality conclusion
+
+The complete validation invariant now records three properties for every
+physical result factor: it is a nonunit over `ZZ`, its reduction at the
+selected prime is a nonunit, and its integer leading coefficient remains
+nonzero after reduction.  The modular nonunit proof uses the newly exposed
+association with the exact checked candidate product.  The leading fact comes
+from `validationRecoveredFactor_leading_mod_ne_zero`, which takes leading
+coefficients of the actual exact-division/primitive-quotient equation; a zero
+factor leading coefficient would force the previous live leading coefficient
+to zero.
+
+`modular_irreducible_members_of_equal_length_associated_product` packages the
+UFD cardinality step for a physical output array.  Given an associated product
+with the irreducible modular atoms and equal physical length, the preserved
+leading coefficients establish nonzero mapped outputs and the validation
+invariant supplies nonunits, so every mapped output is irreducible.
+
+Finally, `factorArrayIrreducible_of_modular` lifts those memberwise modular
+irreducibility facts back to the actual primitive integer factors.  Each
+physical member is primitive because it divides the primitive accumulated
+product, and the preserved leading coefficient prevents degree loss modulo the
+prime.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: preserve the global modular product and output-cardinality equations
+  through `vanHoeijLoop`, then discharge the accepted first-pass branch of the
+  generated `__lll_factorize_raw_ir`.

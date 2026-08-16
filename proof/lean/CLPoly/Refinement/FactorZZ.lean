@@ -817,6 +817,30 @@ theorem FactorArrayIrreducible.finishZassenhaus
     next hdegree => exact hresult
   next hnonempty => exact hresult
 
+/-- Modular irreducibility of every physical output lifts back to integer
+irreducibility when the actual accumulated product is primitive and every
+leading coefficient survives reduction. -/
+theorem factorArrayIrreducible_of_modular
+    (prime : Nat) [Fact (Nat.Prime prime)]
+    (result : Array SparsePolyZZ)
+    (hprimitive :
+      (result.toList.map SparsePolyZZ.toPoly).prod.IsPrimitive)
+    (hleading : ∀ factor ∈ result.toList,
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod prime) ≠ 0)
+    (hmodIrreducible : ∀ factor ∈ result.toList,
+      Irreducible (StrictHensel.toPolyMod prime factor)) :
+    FactorArrayIrreducible result := by
+  intro factor hfactor
+  have hfactorMem : SparsePolyZZ.toPoly factor ∈
+      result.toList.map SparsePolyZZ.toPoly :=
+    List.mem_map.mpr ⟨factor, hfactor, rfl⟩
+  have hfactorPrimitive : (SparsePolyZZ.toPoly factor).IsPrimitive :=
+    Polynomial.isPrimitive_of_dvd hprimitive
+      (List.dvd_prod hfactorMem)
+  exact primitive_irreducible_of_irreducible_mod prime
+    (SparsePolyZZ.toPoly factor) hfactorPrimitive (hleading factor hfactor)
+    (by simpa [StrictHensel.toPolyMod] using hmodIrreducible factor hfactor)
+
 /-- The selected-prime product relation exposed in the orientation used by
 the live divisor-to-subset theorem. -/
 theorem LiveHenselProduct.primeProductAssociated

@@ -15849,6 +15849,38 @@ theorem validationQuotient_leading_mod_ne_zero
     at hleadingCast
   exact hleadingCast
 
+/-- The physical primitive factor emitted by a successful exact validation
+also retains a nonzero leading coefficient modulo the selected prime. -/
+theorem validationRecoveredFactor_leading_mod_ne_zero
+    (base : Nat) [Fact (Nat.Prime base)]
+    (fStar factor quotient quotientPrimitive : SparsePolyZZ)
+    (quotientContent : ZZ)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hdivide : Generated.StrictRecombine.exactDivmodRaw fStar factor =
+      .ok (quotient, #[]))
+    (hprimitive : Generated.StrictRecombine.primitiveRaw quotient =
+      .ok (quotientContent, quotientPrimitive)) :
+    ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0 := by
+  have hproduct := successfulTrialExtraction_toPoly fStar factor quotient
+    quotientPrimitive quotientContent hdivide hprimitive
+  have hleadingEq := congrArg Polynomial.leadingCoeff hproduct
+  rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_mul] at hleadingEq
+  have hconstantLeading :
+      (Polynomial.C quotientContent).leadingCoeff = quotientContent :=
+    Polynomial.leadingCoeff_C quotientContent
+  rw [hconstantLeading] at hleadingEq
+  have hleadingCast := congrArg (fun coefficient : Int =>
+    (coefficient : ZMod base)) hleadingEq
+  intro hfactorZero
+  apply hleading
+  change ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) =
+    ((quotientContent * ((SparsePolyZZ.toPoly factor).leadingCoeff *
+      (SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff) : Int) :
+        ZMod base) at hleadingCast
+  rw [Int.cast_mul, Int.cast_mul, hfactorZero, zero_mul, mul_zero]
+    at hleadingCast
+  exact hleadingCast
+
 theorem validateCandidatesLoop_product
     (ops : Generated.StrictRecombine.CandidateValidationRawOps)
     (candidates : Array (Array Int32)) (candidateIndex : Nat)
@@ -16262,7 +16294,9 @@ theorem validateCandidatesLoop_result_nonunit
     (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
     (hconsumedSize : consumed.size = activeLifted.size)
     (hresult : ∀ factor ∈ result.toList,
-      ¬ IsUnit (SparsePolyZZ.toPoly factor))
+      ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+        ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+        ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0)
     (hrun : Generated.StrictRecombine.validateCandidatesLoop ops candidates
       candidateIndex activeLifted (modulus : ZZ) fStar result consumed remaining =
         .ok (fStar', result', consumed')) :
@@ -16271,7 +16305,9 @@ theorem validateCandidatesLoop_result_nonunit
       ((SparsePolyZZ.toPoly fStar').leadingCoeff : ZMod base) ≠ 0 ∧
       consumed'.size = activeLifted.size ∧
       ∀ factor ∈ result'.toList,
-        ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+        ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+          ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+          ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0 := by
   induction hmeasure : candidates.size - candidateIndex using Nat.strong_induction_on
       generalizing candidateIndex fStar result consumed remaining fStar' result' consumed' with
   | h measure ih =>
@@ -16380,10 +16416,41 @@ theorem validateCandidatesLoop_result_nonunit
                                     content hmodulus hdivides hvalid
                                     hcandidateNonempty hirreducible hnonempty
                                     hheadLeading hproduct hsymmetric hprimitive
+                                have hfactorModAssociated :=
+                                  validationRecoveredFactor_mod_associated_selected
+                                    ops candidates[candidateIndex] activeLifted
+                                    modulus base fStar product symmetric factor
+                                    content hmodulus hdivides hvalid hirreducible
+                                    hnonempty hheadLeading hproduct hsymmetric
+                                    hprimitive
+                                have hselectedNonunit : ¬ IsUnit
+                                    (SelectedProductMod base
+                                      candidates[candidateIndex] activeLifted 0) := by
+                                  simpa [SelectedProductMod] using
+                                    (selectedProductMod_not_isUnit_of_nonempty_irreducible
+                                      base candidates[candidateIndex]
+                                      activeLifted hcandidateNonempty hvalid
+                                      hirreducible)
+                                have hfactorModNonunit : ¬ IsUnit
+                                    (Refinement.StrictHensel.toPolyMod base
+                                      factor) := by
+                                  intro hunit
+                                  exact hselectedNonunit
+                                    (hfactorModAssociated.isUnit_iff.mp hunit)
+                                have hfactorLeading :=
+                                  validationRecoveredFactor_leading_mod_ne_zero
+                                    base fStar factor quotient quotientPrimitive
+                                    quotientContent hleading hdivmod
+                                    hquotientPrimitive
                                 have hresultPush : ∀ candidateFactor ∈
                                     (result.push factor).toList,
                                     ¬ IsUnit
-                                      (SparsePolyZZ.toPoly candidateFactor) := by
+                                        (SparsePolyZZ.toPoly candidateFactor) ∧
+                                      ¬ IsUnit
+                                        (Refinement.StrictHensel.toPolyMod base
+                                          candidateFactor) ∧
+                                      ((SparsePolyZZ.toPoly candidateFactor).leadingCoeff :
+                                        ZMod base) ≠ 0 := by
                                   intro candidateFactor hcandidateFactor
                                   rw [Array.toList_push] at hcandidateFactor
                                   rcases List.mem_append.mp hcandidateFactor with
@@ -16392,7 +16459,8 @@ theorem validateCandidatesLoop_result_nonunit
                                   · have hsame : candidateFactor = factor := by
                                       simpa using hlast
                                     subst candidateFactor
-                                    exact hfactorNonunit
+                                    exact ⟨hfactorNonunit, hfactorModNonunit,
+                                      hfactorLeading⟩
                                 have hquotientCanonical :=
                                   exactDivmodRaw_quotient_canonical fStar factor
                                     quotient #[] hcanonical.2 hdivmod
@@ -16514,7 +16582,9 @@ theorem validateCandidates_result_nonunit
     (hnonempty : 0 < fStar.size)
     (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
     (hresult : ∀ factor ∈ result.toList,
-      ¬ IsUnit (SparsePolyZZ.toPoly factor))
+      ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+        ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+        ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0)
     (hrun : Generated.StrictRecombine.validateCandidates ops fStar activeLifted
       (modulus : ZZ) candidates result = .ok (fStar', result', consumed)) :
     StrictPolynomialMod.SparsePolyZZCanonical fStar' ∧
@@ -16522,7 +16592,9 @@ theorem validateCandidates_result_nonunit
       ((SparsePolyZZ.toPoly fStar').leadingCoeff : ZMod base) ≠ 0 ∧
       consumed.size = activeLifted.size ∧
       ∀ factor ∈ result'.toList,
-        ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+        ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+          ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+          ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0 := by
   unfold Generated.StrictRecombine.validateCandidates at hrun
   exact validateCandidatesLoop_result_nonunit ops candidates 0 activeLifted
     modulus base hmodulus hdivides hirreducible fStar fStar' result result'
@@ -16713,6 +16785,50 @@ theorem irreducible_members_of_associated_products_and_equal_length
     rw [hfactor] at hnormalized
     simpa using hnormalized
   exact hassociated.irreducible hfactorIrreducible
+
+/-- A physical integer-factor array whose reductions have the same cardinality
+and associated product as a list of modular atoms consists pointwise of
+modular irreducibles.  Leading-coefficient survival supplies the required
+nonzeroness of every mapped physical output. -/
+theorem modular_irreducible_members_of_equal_length_associated_product
+    (base : Nat) [Fact (Nat.Prime base)]
+    (physical : Array SparsePolyZZ)
+    (atoms : List (Polynomial (ZMod base)))
+    (hatoms : ∀ atom ∈ atoms, Irreducible atom)
+    (hleading : ∀ factor ∈ physical.toList,
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0)
+    (hnonunit : ∀ factor ∈ physical.toList,
+      ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor))
+    (hproduct : Associated
+      ((physical.toList.map
+        (Refinement.StrictHensel.toPolyMod base)).prod)
+      atoms.prod)
+    (hlength : physical.size = atoms.length) :
+    ∀ factor ∈ physical.toList,
+      Irreducible (Refinement.StrictHensel.toPolyMod base factor) := by
+  let outputs := physical.toList.map
+    (Refinement.StrictHensel.toPolyMod base)
+  have houtputsNe : ∀ output ∈ outputs, output ≠ 0 := by
+    intro output houtput
+    rcases List.mem_map.mp houtput with ⟨factor, hfactor, rfl⟩
+    have hleadingFactor := hleading factor hfactor
+    intro hzero
+    have hleadingMap := Polynomial.leadingCoeff_map_of_leadingCoeff_ne_zero
+      (Int.castRingHom (ZMod base)) hleadingFactor
+    change Polynomial.map (Int.castRingHom (ZMod base))
+      (SparsePolyZZ.toPoly factor) = 0 at hzero
+    rw [hzero] at hleadingMap
+    exact hleadingFactor (by simpa using hleadingMap.symm)
+  have houtputsNonunit : ∀ output ∈ outputs, ¬ IsUnit output := by
+    intro output houtput
+    rcases List.mem_map.mp houtput with ⟨factor, hfactor, rfl⟩
+    exact hnonunit factor hfactor
+  have hlength' : outputs.length = atoms.length := by
+    simpa [outputs] using hlength
+  have hirreducible := irreducible_members_of_associated_products_and_equal_length
+    atoms outputs hatoms houtputsNe houtputsNonunit hproduct hlength'
+  intro factor hfactor
+  exact hirreducible _ (List.mem_map.mpr ⟨factor, hfactor, rfl⟩)
 
 /-- The source-shaped van-Hoeij loop preserves the complete live product up
 to a unit across validation extraction, precision retry, and the concrete

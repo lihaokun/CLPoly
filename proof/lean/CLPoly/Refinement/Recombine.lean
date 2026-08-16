@@ -24,6 +24,23 @@ open CLPoly.Math
 
 namespace Refinement.StrictRecombine
 
+/-- Project an integer-polynomial congruence from a larger modulus to any
+divisor modulus.  This is the transport used to compare the actual `p^k`
+Hensel execution with the selected-prime factorization at `p`. -/
+theorem polynomialMap_eq_of_modulus_dvd (small large : Nat)
+    (hdivides : small ∣ large) (left right : Polynomial Int)
+    (heq : Polynomial.map (Int.castRingHom (ZMod large)) left =
+      Polynomial.map (Int.castRingHom (ZMod large)) right) :
+    Polynomial.map (Int.castRingHom (ZMod small)) left =
+      Polynomial.map (Int.castRingHom (ZMod small)) right := by
+  have projected : Polynomial.map (ZMod.castHom hdivides (ZMod small))
+        (Polynomial.map (Int.castRingHom (ZMod large)) left) =
+      Polynomial.map (ZMod.castHom hdivides (ZMod small))
+        (Polynomial.map (Int.castRingHom (ZMod large)) right) :=
+    congrArg _ heq
+  simp only [Polynomial.map_map] at projected
+  convert projected using 1 <;> congr 1 <;> ext value <;> simp
+
 private def appendZeroSuffix
     (matrix : Generated.StrictRecombine.LLLMatrix) (index : Nat) :
     Generated.StrictRecombine.LLLMatrix :=
@@ -3151,6 +3168,24 @@ theorem removeCombination_product_partition (candidate : Array Nat)
   rw [show candidate.size = candidate.toList.length by simp,
     List.take_length] at hpartition
   exact hpartition
+
+/-- Modular image of the exact physical selected/complement partition. -/
+theorem removeCombination_toPolyMod_product_partition (modulus : Nat)
+    (candidate : Array Nat) (active output : Array SparsePolyZZ)
+    (hlegal : LegalCombination active.size candidate.size candidate)
+    (hrun : Generated.StrictRecombine.removeCombination candidate active =
+      .ok output) :
+    ((selectSourceIndices active.toList candidate.toList).map
+        (Refinement.StrictHensel.toPolyMod modulus)).prod *
+      (output.toList.map
+        (Refinement.StrictHensel.toPolyMod modulus)).prod =
+      (active.toList.map
+        (Refinement.StrictHensel.toPolyMod modulus)).prod := by
+  have hpartition := congrArg
+    (Polynomial.map (Int.castRingHom (ZMod modulus)))
+    (removeCombination_product_partition candidate active output hlegal hrun)
+  simpa [Refinement.StrictHensel.toPolyMod, Polynomial.map_mul,
+    Polynomial.map_list_prod, List.map_map] using hpartition
 
 /-- Full legal-candidate entry form of `removeCombinationLoop_succeeds`. -/
 theorem removeCombination_succeeds (candidate : Array Nat)

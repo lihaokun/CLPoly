@@ -3000,3 +3000,28 @@ actual `.ok output`.  Thus a proof about a candidate that is rejected before
 the source removal branch may still compute its unique physical complement by
 running the same generated function; no semantic complement witness is added
 to the refinement interface.
+
+## Align the physical Hensel product at its exact prime-power modulus
+
+`selectionHenselFactors_primePower_product_eq_unit_mul_source` combines the
+well-founded loop's positive exponent with the generated normalization result.
+It exposes one definitionally aligned `ZMod (p^k)` in which the complete
+physical output product equals the concrete normalization unit times the
+integer source polynomial.
+
+`polynomialMap_eq_of_modulus_dvd` projects integer-polynomial congruences from
+the executed `p^k` modulus to `p`.  Using that projection,
+`selectionHenselFactors_prime_product_eq_unit_mul_source` carries the exact
+normalization unit to the selected-prime field and proves both the large- and
+small-modulus product identities in one certificate.  The reduced unit is the
+ring-homomorphic image of the physical `p^k` unit, not a separately selected
+scalar.
+
+The modular form of the physical deletion identity is exported as
+`removeCombination_toPolyMod_product_partition`.  Together these results put
+the selected product, its actual generated complement, and the source product
+in the exact two rings required by `hensel_unique`.
+
+No C++ files changed, so this step has no new C++ regression or b2b change
+surface.  Next, source/divisor leading-coefficient scaling will instantiate
+the two Hensel factorizations and rule out the remaining candidate rejection.

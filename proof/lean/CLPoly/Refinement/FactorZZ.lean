@@ -368,6 +368,154 @@ theorem selectionHenselFactors_normalized_product_eq_unit_mul_source
   refine ⟨outputM, scale, houtputM, hscaleUnit, ?_⟩
   rw [hnormalizedProduct, hpreProduct]
 
+/-- Prime-power specialization of the normalized full-product invariant.  The
+exponent comes from the actual well-founded Hensel execution and the scale is
+the concrete normalization unit at that same returned modulus. -/
+theorem selectionHenselFactors_primePower_product_eq_unit_mul_source
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∃ exponent : Nat, 0 < exponent ∧
+      ∃ scale : ZMod (selection.prime.toNat ^ exponent),
+        output.2 = ((selection.prime.toNat ^ exponent : Nat) : Int) ∧
+        IsUnit scale ∧
+        (output.1.toList.map
+          (StrictHensel.toPolyMod
+            (selection.prime.toNat ^ exponent))).prod =
+          Polynomial.C scale *
+            StrictHensel.toPolyMod
+              (selection.prime.toNat ^ exponent) f := by
+  rcases selectionHenselFactors_normalized_product_eq_unit_mul_source
+      hcount hp2 hfactors hleadingSemantic hselection hentry with
+    ⟨outputM, scale, houtputM, hscaleUnit, hproduct⟩
+  rcases hentry.outputModulus_eq_prime_pow with
+    ⟨exponent, hexponent, hprimePower⟩
+  have hmodulus : outputM = selection.prime.toNat ^ exponent := by
+    exact_mod_cast houtputM.symm.trans hprimePower
+  subst outputM
+  exact ⟨exponent, hexponent, scale, hprimePower, hscaleUnit, hproduct⟩
+
+/-- Reduce the concrete prime-power normalization unit and full-product
+identity back to the selected prime.  Both unit witnesses are images of the
+same physical normalization scalar. -/
+theorem selectionHenselFactors_prime_product_eq_unit_mul_source
+    {termination : Generated.StrictHensel.DivmodTermination}
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {aTarget : Int32} {output : Array SparsePolyZZ × ZZ}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hcount : 2 ≤ selection.factors.size)
+    (hp2 : selection.prime.toNat * selection.prime.toNat ≤ UInt64.size)
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hentry : StrictHensel.HenselLiftEntryCorrect termination f
+      selection.factors selection.prime aTarget output) :
+    ∃ exponent : Nat, 0 < exponent ∧
+      ∃ scale : ZMod (selection.prime.toNat ^ exponent),
+      ∃ scaleAtPrime : ZMod selection.prime.toNat,
+        output.2 = ((selection.prime.toNat ^ exponent : Nat) : Int) ∧
+        IsUnit scale ∧ IsUnit scaleAtPrime ∧
+        scaleAtPrime = (scale.val : ZMod selection.prime.toNat) ∧
+        (output.1.toList.map
+          (StrictHensel.toPolyMod
+            (selection.prime.toNat ^ exponent))).prod =
+          Polynomial.C scale * StrictHensel.toPolyMod
+            (selection.prime.toNat ^ exponent) f ∧
+        (output.1.toList.map
+          (StrictHensel.toPolyMod selection.prime.toNat)).prod =
+          Polynomial.C scaleAtPrime *
+            StrictHensel.toPolyMod selection.prime.toNat f := by
+  rcases selectionHenselFactors_primePower_product_eq_unit_mul_source
+      hcount hp2 hfactors hleadingSemantic hselection hentry with
+    ⟨exponent, hexponent, scale, houtput, hscaleUnit, hlargeProduct⟩
+  let prime := selection.prime.toNat
+  have hprime : Nat.Prime prime := Fact.out
+  have hpowerNe : prime ^ exponent ≠ 0 :=
+    pow_ne_zero exponent hprime.ne_zero
+  letI : NeZero (prime ^ exponent) := ⟨hpowerNe⟩
+  let scaleAtPrime : ZMod prime := scale.val
+  have hdivides : prime ∣ prime ^ exponent :=
+    dvd_pow_self prime (Nat.ne_of_gt hexponent)
+  have hscaleAtPrimeUnit : IsUnit scaleAtPrime := by
+    have hmapped := hscaleUnit.map
+      (ZMod.castHom hdivides (ZMod prime))
+    rw [ZMod.castHom_apply, ZMod.cast_eq_val] at hmapped
+    exact hmapped
+  let scaleInt : Int := Int.ofNat scale.val
+  let fullInteger : Polynomial Int :=
+    (output.1.toList.map SparsePolyZZ.toPoly).prod
+  let scaledSource : Polynomial Int :=
+    Polynomial.C scaleInt * SparsePolyZZ.toPoly f
+  have hscaleLarge : (scaleInt : ZMod (prime ^ exponent)) = scale := by
+    simp [scaleInt, ZMod.natCast_zmod_val]
+  have hmapFullLarge : Polynomial.map
+        (Int.castRingHom (ZMod (prime ^ exponent))) fullInteger =
+      (output.1.toList.map
+        (StrictHensel.toPolyMod (prime ^ exponent))).prod := by
+    simp only [fullInteger, Polynomial.map_list_prod]
+    apply congrArg List.prod
+    rw [List.map_map]
+    apply List.map_congr_left
+    intro factor hfactor
+    rfl
+  have hmapScaledLarge : Polynomial.map
+        (Int.castRingHom (ZMod (prime ^ exponent))) scaledSource =
+      Polynomial.C scale * StrictHensel.toPolyMod
+        (prime ^ exponent) f := by
+    simp only [scaledSource, Polynomial.map_mul, Polynomial.map_C]
+    change Polynomial.C (scaleInt : ZMod (prime ^ exponent)) *
+        StrictHensel.toPolyMod (prime ^ exponent) f = _
+    rw [hscaleLarge]
+  have hlargeInteger : Polynomial.map
+        (Int.castRingHom (ZMod (prime ^ exponent)))
+        fullInteger =
+      Polynomial.map (Int.castRingHom (ZMod (prime ^ exponent)))
+        scaledSource :=
+    hmapFullLarge.trans (hlargeProduct.trans hmapScaledLarge.symm)
+  have hprimeInteger := StrictRecombine.polynomialMap_eq_of_modulus_dvd
+    prime (prime ^ exponent) hdivides
+    fullInteger scaledSource hlargeInteger
+  have hmapFullPrime : Polynomial.map
+        (Int.castRingHom (ZMod prime)) fullInteger =
+      (output.1.toList.map (StrictHensel.toPolyMod prime)).prod := by
+    simp only [fullInteger, Polynomial.map_list_prod]
+    apply congrArg List.prod
+    rw [List.map_map]
+    apply List.map_congr_left
+    intro factor hfactor
+    rfl
+  have hscalePrime : (scaleInt : ZMod prime) = scaleAtPrime := by
+    simp [scaleInt, scaleAtPrime]
+  have hmapScaledPrime : Polynomial.map
+        (Int.castRingHom (ZMod prime)) scaledSource =
+      Polynomial.C scaleAtPrime * StrictHensel.toPolyMod prime f := by
+    simp only [scaledSource, Polynomial.map_mul, Polynomial.map_C]
+    change Polynomial.C (scaleInt : ZMod prime) *
+        StrictHensel.toPolyMod prime f = _
+    rw [hscalePrime]
+  have hprimeProduct :
+      (output.1.toList.map (StrictHensel.toPolyMod prime)).prod =
+        Polynomial.C scaleAtPrime * StrictHensel.toPolyMod prime f := by
+    rw [← hmapFullPrime, hprimeInteger, hmapScaledPrime]
+  exact ⟨exponent, hexponent, scale, scaleAtPrime, houtput, hscaleUnit,
+    hscaleAtPrimeUnit, rfl, hlargeProduct, hprimeProduct⟩
+
 private theorem origins_preserve_irreducible
     {p : Nat} {inputs : List SparsePolyZp} {outputs : List SparsePolyZZ}
     (horigins : List.Forall₂

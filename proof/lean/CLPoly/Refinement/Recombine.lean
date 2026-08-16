@@ -22640,6 +22640,246 @@ decreasing_by
       (Generated.StrictRecombine.nextPrecision_retry_decreases state.target
         initial maximum _ hinitial (by assumption))
 
+/-- The concrete generated van-Hoeij loop preserves physical factor quality
+through validation extraction, precision retry, and the literal concrete
+Zassenhaus fallback.  If a live `fStar` is returned, its canonicality,
+selected-prime leading coefficient, and whole-live-product primitivity are
+also preserved for the source finishing block. -/
+theorem concreteVanHoeijLoop_physicalFactorQuality
+    (lifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)]
+    (initial maximum : Nat) (hinitial : 0 < initial)
+    (state : Generated.StrictRecombine.VanHoeijState)
+    (hstate : Generated.StrictRecombine.VanHoeijStateValid
+      concreteVanHoeijRawOps state)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hnonempty : 0 < state.fStar.size)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical state.fStar)
+    (hprimitive : (SparsePolyZZ.toPoly state.fStar *
+      factorArrayProduct state.result).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly state.fStar).leadingCoeff :
+      ZMod base) ≠ 0)
+    (hactiveFits : state.active.size ≤ 2 ^ 31)
+    (hliftedIrreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base lifted[index]))
+    (hresult : PhysicalFactorQuality base state.result)
+    (output : SparsePolyZZ × Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.vanHoeijLoop
+      concreteVanHoeijRawOps concreteVanHoeijTermination lifted
+      (modulus : ZZ) initial maximum hinitial state hstate = .ok output) :
+    PhysicalFactorQuality base output.2 ∧
+      ∀ houtputNonempty : 0 < output.1.size,
+        StrictPolynomialMod.SparsePolyZZCanonical output.1 ∧
+        ((SparsePolyZZ.toPoly output.1).leadingCoeff : ZMod base) ≠ 0 ∧
+        (SparsePolyZZ.toPoly output.1 *
+          factorArrayProduct output.2).IsPrimitive := by
+  rw [Generated.StrictRecombine.vanHoeijLoop] at hrun
+  split at hrun
+  next hdone =>
+    have hout := Except.ok.inj hrun
+    subst output
+    exact ⟨hresult, fun _ => ⟨hcanonical, hleading, hprimitive⟩⟩
+  next hdone =>
+    split at hrun
+    next fault hgather => contradiction
+    next activeLifted hgather =>
+      let hdimension : state.matrix.size =
+          activeLifted.size + state.currentColumns := by
+        rw [concreteVanHoeijRawOps.gather_size state.active lifted
+          activeLifted hgather]
+        exact hstate.dimension
+      have hactiveLiftedIrreducible :
+          ∀ index (hindex : index < activeLifted.size),
+            Irreducible
+              (Refinement.StrictHensel.toPolyMod base activeLifted[index]) :=
+        gatherActive_irreducible base state.active lifted activeLifted
+          hliftedIrreducible hgather
+      have hactiveLiftedFits : activeLifted.size ≤ 2 ^ 31 := by
+        rw [concreteVanHoeijRawOps.gather_size state.active lifted
+          activeLifted hgather]
+        exact hactiveFits
+      split at hrun
+      next fault hprepare => contradiction
+      next prepared hprepare =>
+        let matrix' := prepared.1.1
+        let currentColumns' := prepared.1.2.1
+        let candidates := prepared.1.2.2
+        dsimp only at hrun
+        split at hrun
+        next fault hvalidate => contradiction
+        next fStar' result' consumed hvalidate =>
+          have hvalidated := validateCandidates_result_nonunit
+            concreteCandidateValidationRawOps state.fStar activeLifted modulus
+            base hmodulus hdivides hactiveLiftedIrreducible candidates
+            state.result fStar' result' consumed hcanonical hnonempty hleading
+            hresult hvalidate
+          have hprimitive' := validateCandidates_preserves_primitive
+            concreteCandidateValidationRawOps state.fStar activeLifted
+            (modulus : ZZ) candidates state.result fStar' result' consumed
+            hprimitive hvalidate
+          by_cases hfound : ∃ index, ∃ hindex : index < consumed.size,
+              consumed[index] = true
+          · rw [dif_pos hfound] at hrun
+            split at hrun
+            next fault hremove => contradiction
+            next activeNext hremove =>
+              split at hrun
+              next fault hreset => contradiction
+              next resetMatrix resetBound hreset =>
+                let nextState : Generated.StrictRecombine.VanHoeijState :=
+                  { active := activeNext.1, fStar := fStar', result := result',
+                    matrix := resetMatrix, currentColumns := 0,
+                    shortBound := resetBound, target := 0 }
+                have hnextValid :
+                    Generated.StrictRecombine.VanHoeijStateValid
+                      concreteVanHoeijRawOps nextState :=
+                  ⟨(concreteVanHoeijRawOps.reset_valid activeNext.1.size
+                      resetMatrix resetBound hreset).1,
+                    by simpa [nextState] using
+                      (concreteVanHoeijRawOps.reset_valid activeNext.1.size
+                        resetMatrix resetBound hreset).2⟩
+                exact concreteVanHoeijLoop_physicalFactorQuality lifted modulus
+                  base initial maximum hinitial nextState hnextValid hmodulus
+                  hbase hdivides (by simpa [nextState] using hvalidated.2.1)
+                  (by simpa [nextState] using hvalidated.1)
+                  (by simpa [nextState] using hprimitive')
+                  (by simpa [nextState] using hvalidated.2.2.1)
+                  (by dsimp [nextState]; exact activeNext.2.le.trans hactiveFits)
+                  hliftedIrreducible
+                  (by simpa [nextState, PhysicalFactorQuality] using
+                    hvalidated.2.2.2.2) output hrun
+          · rw [dif_neg hfound] at hrun
+            split at hrun
+            next target' hprecision =>
+              let nextState : Generated.StrictRecombine.VanHoeijState :=
+                { active := state.active, fStar := state.fStar,
+                  result := state.result, matrix := matrix',
+                  currentColumns := currentColumns',
+                  shortBound := state.shortBound, target := target' }
+              have hnextValid :
+                  Generated.StrictRecombine.VanHoeijStateValid
+                    concreteVanHoeijRawOps nextState :=
+                ⟨prepared.2.1, by
+                  have hactiveSize := concreteVanHoeijRawOps.gather_size
+                    state.active lifted activeLifted hgather
+                  dsimp [nextState]
+                  exact prepared.2.2.trans (by omega)⟩
+              exact concreteVanHoeijLoop_physicalFactorQuality lifted modulus
+                base initial maximum hinitial nextState hnextValid hmodulus
+                hbase hdivides (by simpa [nextState] using hnonempty)
+                (by simpa [nextState] using hcanonical)
+                (by simpa [nextState] using hprimitive)
+                (by simpa [nextState] using hleading)
+                (by simpa [nextState] using hactiveFits) hliftedIrreducible
+                (by simpa [nextState] using hresult) output hrun
+            next hprecision =>
+              split at hrun
+              next fault hfallback => contradiction
+              next fallback hfallback =>
+                split at hrun
+                next fault happend => contradiction
+                next appended happend =>
+                  have hout := Except.ok.inj hrun
+                  subst output
+                  have hfStarPrimitive :
+                      (SparsePolyZZ.toPoly state.fStar).IsPrimitive :=
+                    isPrimitive_left_of_mul hprimitive
+                  have hfallbackQuality :=
+                    zassenhausRecombine_physicalFactorQuality state.fStar
+                      activeLifted fallback modulus base hmodulus hbase
+                      hdivides hcanonical hnonempty hfStarPrimitive hleading
+                      hactiveLiftedFits hactiveLiftedIrreducible hfallback
+                  constructor
+                  · exact appendFallback_physicalFactorQuality base fallback
+                      state.result appended hfallbackQuality hresult happend
+                  · intro houtputNonempty
+                    simp at houtputNonempty
+termination_by
+  (state.active.size,
+    Generated.StrictRecombine.precisionRank state.target initial maximum)
+decreasing_by
+  · decreasing_tactic
+  · exact Prod.Lex.right _
+      (Generated.StrictRecombine.nextPrecision_retry_decreases state.target
+        initial maximum _ hinitial (by assumption))
+
+/-- The exact generated C++ `__vanhoeij_recombine` entry returns only
+physical factors satisfying the quality invariant, including its final
+conditional append and degree sort. -/
+theorem __vanhoeij_recombine_raw_ir_physicalFactorQuality
+    (f : SparsePolyZZ) (lifted output : Array SparsePolyZZ)
+    (modulus base : Nat) [Fact (Nat.Prime base)]
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod base) ≠ 0)
+    (hliftedFits : lifted.size ≤ 2 ^ 31)
+    (hirreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base lifted[index]))
+    (hrun : Generated.StrictRecombine.__vanhoeij_recombine_raw_ir
+      concreteVanHoeijRawOps concreteVanHoeijTermination f lifted
+      (modulus : ZZ) hdegree = .ok output) :
+    PhysicalFactorQuality base output := by
+  rw [Generated.StrictRecombine.__vanhoeij_recombine_raw_ir] at hrun
+  dsimp only at hrun
+  split at hrun
+  next fault hreset => contradiction
+  next matrix bound hreset =>
+    split at hrun
+    next fault hloop => contradiction
+    next fStar result hloop =>
+      have hout := Except.ok.inj hrun
+      subst output
+      let factorCount := lifted.size
+      let degree := (get_deg f).toNatClampNeg
+      let maximum := (degree + 1) / 2
+      let starting := if 3 * factorCount > degree + 1 then 30 else 10
+      let initial := min starting maximum
+      let active := (Array.range factorCount).map
+        (fun index => index.toUInt32.toInt32)
+      let state : Generated.StrictRecombine.VanHoeijState :=
+        { active := active, fStar := f, result := #[], matrix := matrix,
+          currentColumns := 0, shortBound := bound, target := 0 }
+      have hinitial : 0 < initial := by
+        have hmaximum : 0 < maximum := by
+          dsimp [maximum, degree]
+          apply Nat.div_pos <;> omega
+        have hstarting : 0 < starting := by
+          dsimp [starting]
+          split <;> omega
+        exact lt_min hstarting hmaximum
+      have hstate : Generated.StrictRecombine.VanHoeijStateValid
+          concreteVanHoeijRawOps state :=
+        ⟨(concreteVanHoeijRawOps.reset_valid factorCount matrix bound
+            hreset).1,
+          by
+            dsimp [state, active, factorCount]
+            rw [(concreteVanHoeijRawOps.reset_valid lifted.size matrix bound
+              hreset).2]
+            simp⟩
+      have hloopQuality := concreteVanHoeijLoop_physicalFactorQuality lifted
+        modulus base initial maximum hinitial state hstate hmodulus hbase
+        hdivides (by simpa [state] using hnonempty)
+        (by simpa [state] using hcanonical)
+        (by simpa [state, factorArrayProduct] using hprimitive)
+        (by simpa [state] using hleading)
+        (by simpa [state, active, factorCount] using hliftedFits)
+        hirreducible (by simpa [state] using physicalFactorQuality_empty base)
+        (fStar, result) hloop
+      apply finishZassenhaus_physicalFactorQuality base fStar result
+        hloopQuality.1
+      intro hfStarNonempty hfStarDegree
+      rcases hloopQuality.2 hfStarNonempty with
+        ⟨hfStarCanonical, hfStarLeading, _hfStarPrimitive⟩
+      exact canonical_positive_degree_physical_quality base fStar
+        hfStarCanonical hfStarNonempty (by
+          simpa [getElem!_pos fStar 0 hfStarNonempty] using hfStarDegree)
+        hfStarLeading
+
 /-- The complete generated van-Hoeij loop cannot create more physical output
 slots than are present in its accumulated-result/active-factor budget.  The
 proof follows the same lexicographic recursion as the source-shaped loop. -/

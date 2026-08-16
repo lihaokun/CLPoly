@@ -331,3 +331,5 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_physical_quality
 #print axioms Refinement.StrictRecombine.zassenhausLoop_physicalFactorQuality
 #print axioms Refinement.StrictRecombine.zassenhausRecombine_physicalFactorQuality
+#print axioms Refinement.StrictRecombine.concreteVanHoeijLoop_physicalFactorQuality
+#print axioms Refinement.StrictRecombine.__vanhoeij_recombine_raw_ir_physicalFactorQuality

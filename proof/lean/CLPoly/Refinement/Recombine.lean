@@ -14054,6 +14054,48 @@ theorem appendFallback_size (fallback result output : Array SparsePolyZZ)
   subst output
   simp
 
+/-- The three semantic facts required of every physical integer factor emitted
+by either recombination path.  Keeping this as a predicate on the actual
+generated array makes the later loop invariant independent of factor order. -/
+def PhysicalFactorQuality (base : Nat) (factors : Array SparsePolyZZ) : Prop :=
+  ∀ factor ∈ factors.toList,
+    ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+      ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0
+
+theorem physicalFactorQuality_empty (base : Nat) :
+    PhysicalFactorQuality base #[] := by
+  simp [PhysicalFactorQuality]
+
+theorem physicalFactorQuality_push (base : Nat)
+    (factors : Array SparsePolyZZ) (factor : SparsePolyZZ)
+    (hfactors : PhysicalFactorQuality base factors)
+    (hfactor : ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+      ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0) :
+    PhysicalFactorQuality base (factors.push factor) := by
+  intro item hitem
+  simp only [Array.toList_append, Array.toList_push, List.mem_append,
+    List.mem_singleton] at hitem
+  exact hitem.elim (hfactors item) (fun heq => heq ▸ hfactor)
+
+/-- Literal fallback appending preserves factor quality from both physical
+input arrays. -/
+theorem appendFallback_physicalFactorQuality (base : Nat)
+    (fallback result output : Array SparsePolyZZ)
+    (hfallback : PhysicalFactorQuality base fallback)
+    (hresult : PhysicalFactorQuality base result)
+    (hrun : Generated.StrictRecombine.appendFallback fallback result =
+      .ok output) :
+    PhysicalFactorQuality base output := by
+  unfold Generated.StrictRecombine.appendFallback at hrun
+  rw [appendFallbackLoop_refines] at hrun
+  have hout := Except.ok.inj hrun
+  subst output
+  intro factor hfactor
+  simp only [Array.toList_append, List.mem_append] at hfactor
+  exact hfactor.elim (hresult factor) (hfallback factor)
+
 /-- Pure list meaning of the source reverse-erasure loop. -/
 def removeConsumedL2 (active : Array Int32) (consumed : Array Bool) :
     List Int32 :=
@@ -19316,6 +19358,40 @@ private theorem selectedSourceProduct_ne_zero_of_irreducible
     (by simpa using hactive), Array.getElem_toList hactive] at hsourceZero
   exact (hirreducible candidate[position] hactive).ne_zero hsourceZero
 
+/-- A nonempty legal natural-index candidate selects at least one of the live
+modular atoms, hence its exact occurrence-sensitive product is not a unit. -/
+private theorem selectedSourceProduct_not_isUnit_of_irreducible
+    (base : Nat) [Fact (Nat.Prime base)]
+    (activeLifted : Array SparsePolyZZ) (candidate : Array Nat)
+    (hnonempty : 0 < candidate.size)
+    (hlegal : LegalCombination activeLifted.size candidate.size candidate)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index])) :
+    ¬ IsUnit (((selectSourceIndices activeLifted.toList candidate.toList).map
+      (Refinement.StrictHensel.toPolyMod base)).prod) := by
+  let activeIndex := candidate[0]
+  have hactive : activeIndex < activeLifted.size := by
+    simpa [activeIndex, getElem!_pos candidate 0 hnonempty] using
+      hlegal.2.2 0 hnonempty
+  let selected := Refinement.StrictHensel.toPolyMod base
+    activeLifted[activeIndex]
+  have hselectedIrreducible : Irreducible selected :=
+    hirreducible activeIndex hactive
+  have hselectedMem : selected ∈
+      (selectSourceIndices activeLifted.toList candidate.toList).map
+        (Refinement.StrictHensel.toPolyMod base) := by
+    apply List.mem_map.mpr
+    refine ⟨activeLifted[activeIndex], ?_, rfl⟩
+    unfold selectSourceIndices
+    apply List.mem_map.mpr
+    refine ⟨activeIndex, ?_, ?_⟩
+    · exact Array.getElem_mem_toList hnonempty
+    · rw [getElem!_pos activeLifted.toList activeIndex (by simpa using hactive),
+        Array.getElem_toList hactive]
+  exact not_isUnit_of_not_isUnit_dvd hselectedIrreducible.not_isUnit
+    (List.dvd_prod hselectedMem)
+
 /-- Every nonempty legal candidate over the live Hensel array executes the
 complete generated attempt without a raw fault.  A non-factor returns
 `.rejected`; a factor returns `.extracted`.  Nonzeroness of the physical trial
@@ -20307,6 +20383,86 @@ theorem scanZassenhausCombinations_extracted_mod_certificate
             rw [hmeasure] at hdecrease
             exact ih (termination.rank next) hdecrease next hvalidNext hrun rfl
 
+/-- Every factor physically returned by the generated fixed-size scan has the
+three quality properties needed by the final irreducibility argument.  The
+proof combines the exact candidate provenance, its product of live modular
+atoms, and the literal primitive exact-division equation; it does not inspect
+or prescribe the returned polynomial. -/
+theorem scanZassenhausCombinations_extracted_physical_quality
+    {count : Nat}
+    (fStar factor quotientPrimitive : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus base : Nat)
+    [Fact (Nat.Prime base)]
+    (start candidate : Array Nat)
+    (hcandidateSize : candidate.size = count)
+    (hcountPositive : 0 < count)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hactiveFits : activeLifted.size ≤ 2 ^ 31)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hirreducible : ∀ index (hindex : index < activeLifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base
+        activeLifted[index]))
+    (hvalidStart : LegalCombination activeLifted.size count start)
+    (hrun : Generated.StrictRecombine.scanZassenhausCombinations
+      (concreteCombinationTermination activeLifted.size count)
+      fStar activeLifted (modulus : ZZ) start hvalidStart = .ok
+        (.extracted factor quotientPrimitive candidate hcandidateSize)) :
+    (¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+        ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+        ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0) ∧
+      ((SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff : ZMod base) ≠ 0 := by
+  have hcertificate :=
+    scanZassenhausCombinations_extracted_mod_certificate fStar factor
+      quotientPrimitive activeLifted modulus base start candidate
+      hcandidateSize hmodulus hbase hdivides hactiveFits hcanonical hnonempty
+      hprimitive hleading hirreducible hvalidStart hrun
+  have hcandidateLegal :
+      LegalCombination activeLifted.size count candidate :=
+    scanZassenhausCombinations_extracted_legal
+      (concreteCombinationTermination activeLifted.size count) fStar factor
+      quotientPrimitive activeLifted (modulus : ZZ) start candidate
+      hcandidateSize hvalidStart hrun
+  have hcandidateLegalSize :
+      LegalCombination activeLifted.size candidate.size candidate := by
+    simpa [hcandidateSize] using hcandidateLegal
+  have hselectedNonunit :=
+    selectedSourceProduct_not_isUnit_of_irreducible base activeLifted candidate
+      (by omega) hcandidateLegalSize hirreducible
+  have hfactorModNonunit :
+      ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) := by
+    intro hunit
+    exact hselectedNonunit (hcertificate.1.isUnit_iff.mp hunit)
+  have hfactorNonunit : ¬ IsUnit (SparsePolyZZ.toPoly factor) := by
+    intro hunit
+    exact hfactorModNonunit (hunit.map
+      (Polynomial.mapRingHom (Int.castRingHom (ZMod base))))
+  rcases scanZassenhausCombinations_extracted_unit_scalar
+      (concreteCombinationTermination activeLifted.size count) fStar factor
+      quotientPrimitive activeLifted (modulus : ZZ) start candidate
+      hcandidateSize hprimitive hvalidStart hrun with
+    ⟨scalar, _hscalar, hextraction⟩
+  have hleadingEq := congrArg Polynomial.leadingCoeff hextraction
+  rw [Polynomial.leadingCoeff_mul, Polynomial.leadingCoeff_mul,
+    Polynomial.leadingCoeff_C] at hleadingEq
+  have hleadingCast := congrArg (fun coefficient : Int =>
+    (coefficient : ZMod base)) hleadingEq
+  have hfactorLeading :
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0 := by
+    intro hzero
+    apply hleading
+    change ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) =
+      ((scalar * ((SparsePolyZZ.toPoly factor).leadingCoeff *
+        (SparsePolyZZ.toPoly quotientPrimitive).leadingCoeff) : Int) :
+          ZMod base) at hleadingCast
+    rw [Int.cast_mul, Int.cast_mul, hzero, zero_mul, mul_zero] at hleadingCast
+    exact hleadingCast
+  exact ⟨⟨hfactorNonunit, hfactorModNonunit, hfactorLeading⟩,
+    hcertificate.2⟩
+
 /-- The modular product invariant is preserved by the exact successful scan
 and removal executions used by the generated outer loop.  The proof cancels
 the physically returned nonzero factor from the mapped integer extraction
@@ -20436,6 +20592,75 @@ private theorem factorArrayProduct_sortFactorsByDegree
   unfold factorArrayProduct Generated.StrictRecombine.sortFactorsByDegree
   simpa using ((List.mergeSort_perm factors.toList fun left right =>
     left[0]!.1.deg < right[0]!.1.deg).map SparsePolyZZ.toPoly).prod_eq
+
+/-- Sorting is a permutation, so it preserves every per-factor physical
+quality fact in both directions. -/
+theorem sortFactorsByDegree_physicalFactorQuality (base : Nat)
+    (factors : Array SparsePolyZZ) :
+    PhysicalFactorQuality base
+        (Generated.StrictRecombine.sortFactorsByDegree factors) ↔
+      PhysicalFactorQuality base factors := by
+  let relation : SparsePolyZZ → SparsePolyZZ → Bool :=
+    fun left right => left[0]!.1.deg < right[0]!.1.deg
+  have hperm : List.Perm (factors.toList.mergeSort relation) factors.toList :=
+    List.mergeSort_perm factors.toList relation
+  constructor <;> intro hquality factor hfactor
+  · apply hquality factor
+    simpa [Generated.StrictRecombine.sortFactorsByDegree, relation] using
+      hperm.mem_iff.mpr hfactor
+  · apply hquality factor
+    exact hperm.mem_iff.mp (by
+      simpa [Generated.StrictRecombine.sortFactorsByDegree, relation] using
+        hfactor)
+
+private theorem canonical_positive_degree_physical_quality
+    (base : Nat) [Fact (Nat.Prime base)] (factor : SparsePolyZZ)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical factor)
+    (hnonempty : 0 < factor.size) (hdegree : 0 < factor[0]!.1.deg)
+    (hleading : ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0) :
+    ¬ IsUnit (SparsePolyZZ.toPoly factor) ∧
+      ¬ IsUnit (Refinement.StrictHensel.toPolyMod base factor) ∧
+      ((SparsePolyZZ.toPoly factor).leadingCoeff : ZMod base) ≠ 0 := by
+  have hdegreeEq := sparsePolyZZ_toPoly_degree_eq_head factor hcanonical hnonempty
+  have hdegreePositive : 0 < (SparsePolyZZ.toPoly factor).degree := by
+    rw [hdegreeEq]
+    exact WithBot.coe_lt_coe.mpr hdegree
+  have hintegerNonunit : ¬ IsUnit (SparsePolyZZ.toPoly factor) :=
+    Polynomial.not_isUnit_of_degree_pos _ hdegreePositive
+  have hmappedDegree := Polynomial.degree_map_eq_of_leadingCoeff_ne_zero
+    (Int.castRingHom (ZMod base)) hleading
+  have hmappedPositive :
+      0 < (Refinement.StrictHensel.toPolyMod base factor).degree := by
+    change 0 < (Polynomial.map (Int.castRingHom (ZMod base))
+      (SparsePolyZZ.toPoly factor)).degree
+    rw [hmappedDegree]
+    exact hdegreePositive
+  exact ⟨hintegerNonunit,
+    Polynomial.not_isUnit_of_degree_pos _ hmappedPositive, hleading⟩
+
+/-- The common literal terminal block preserves accumulated quality, provided
+the remaining factor has that quality whenever the source actually appends
+it. -/
+theorem finishZassenhaus_physicalFactorQuality (base : Nat)
+    (fStar : SparsePolyZZ) (result : Array SparsePolyZZ)
+    (hresult : PhysicalFactorQuality base result)
+    (hfStar : 0 < fStar.size → 0 < fStar[0]!.1.deg →
+      ¬ IsUnit (SparsePolyZZ.toPoly fStar) ∧
+        ¬ IsUnit (Refinement.StrictHensel.toPolyMod base fStar) ∧
+        ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0) :
+    PhysicalFactorQuality base
+      (Generated.StrictRecombine.finishZassenhaus fStar result) := by
+  unfold Generated.StrictRecombine.finishZassenhaus
+  apply (sortFactorsByDegree_physicalFactorQuality base _).2
+  split
+  next hnonempty =>
+    split
+    next hdegree =>
+      exact physicalFactorQuality_push base result fStar hresult
+        (hfStar hnonempty (by
+          simpa [getElem!_pos fStar 0 hnonempty] using hdegree))
+    next => exact hresult
+  next => exact hresult
 
 /-- Exact product effect of the common source finishing block, including its
 conditional append of the remaining positive-degree factor. -/
@@ -20661,6 +20886,153 @@ decreasing_by
   · exact Prod.Lex.left _ _
       (concreteZassenhausTermination.removal_decreases active candidate active'
         (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
+/-- The complete physical output of the concrete generated Zassenhaus loop
+consists only of integer nonunits whose selected-prime reductions are
+nonunits and whose integer leading coefficients survive modulo that prime.
+Every recursive step follows the returned scan candidate and actual removal. -/
+theorem zassenhausLoop_physicalFactorQuality
+    (modulus base : Nat) [Fact (Nat.Prime base)]
+    (active : Array SparsePolyZZ) (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) (subsetSize : Nat)
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hsubsetPositive : 0 < subsetSize)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical fStar)
+    (hnonempty : 0 < fStar.size)
+    (hprimitive : (SparsePolyZZ.toPoly fStar).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly fStar).leadingCoeff : ZMod base) ≠ 0)
+    (hactiveFits : active.size ≤ 2 ^ 31)
+    (hirreducible : ∀ index (hindex : index < active.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base active[index]))
+    (hresult : PhysicalFactorQuality base result)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictRecombine.zassenhausLoop
+      concreteZassenhausTermination (modulus : ZZ) active fStar result
+      subsetSize hsubsetPositive = .ok output) :
+    PhysicalFactorQuality base output := by
+  rw [Generated.StrictRecombine.zassenhausLoop] at hrun
+  split at hrun
+  next hcontinue =>
+    let count := subsetSize
+    let initial := Generated.StrictRecombine.initialCombination count
+    have hfits : count ≤ active.size := by omega
+    let hinitial := initialCombination_legal active.size count hfits
+    cases hscan : Generated.StrictRecombine.scanZassenhausCombinations
+        (concreteCombinationTermination active.size count) fStar active
+        (modulus : ZZ) initial hinitial with
+    | error fault =>
+        simp [concreteZassenhausTermination, count, initial, hinitial,
+          hscan] at hrun
+    | ok scanResult =>
+      cases scanResult with
+      | exhausted =>
+          simp only [concreteZassenhausTermination, count, initial, hinitial,
+            hscan] at hrun
+          exact zassenhausLoop_physicalFactorQuality modulus base active fStar
+            result (subsetSize + 1) hmodulus hbase hdivides (by omega)
+            hcanonical hnonempty hprimitive hleading hactiveFits hirreducible
+            hresult output hrun
+      | extracted factor quotient candidate candidateSize =>
+          simp only [concreteZassenhausTermination, count, initial, hinitial,
+            hscan] at hrun
+          cases hremove : Generated.StrictRecombine.removeCombination candidate
+              active with
+          | error fault =>
+              rw [hremove] at hrun
+              contradiction
+          | ok active' =>
+              rw [hremove] at hrun
+              have hfactorQuotient :=
+                scanZassenhausCombinations_extracted_canonical_primitive
+                  (concreteCombinationTermination active.size count) fStar
+                  factor quotient active (modulus : ZZ) initial candidate
+                  candidateSize hcanonical hnonempty hinitial hscan
+              have hquality :=
+                scanZassenhausCombinations_extracted_physical_quality fStar
+                  factor quotient active modulus base initial candidate
+                  candidateSize (by simpa [count] using hsubsetPositive)
+                  hmodulus hbase hdivides hactiveFits hcanonical hnonempty
+                  hprimitive hleading hirreducible hinitial hscan
+              have hquotientNonempty : 0 < quotient.size := by
+                by_contra hnot
+                have hempty : quotient = #[] := Array.size_eq_zero_iff.mp
+                  (Nat.eq_zero_of_not_pos hnot)
+                apply hquality.2
+                simp [hempty, SparsePolyZZ.toPoly]
+              have hirreducible' : ∀ index (hindex : index < active'.size),
+                  Irreducible
+                    (Refinement.StrictHensel.toPolyMod base active'[index]) :=
+                removeCombination_preserves_pointwise candidate active active'
+                  (fun poly => Irreducible
+                    (Refinement.StrictHensel.toPolyMod base poly))
+                  hirreducible hremove
+              have hactiveFits' : active'.size ≤ 2 ^ 31 := by
+                have hdecrease :=
+                  concreteZassenhausTermination.removal_decreases active
+                    candidate active' (by
+                      rw [candidateSize]
+                      simpa [count] using hsubsetPositive) hremove
+                omega
+              exact zassenhausLoop_physicalFactorQuality modulus base active'
+                quotient (result.push factor) 1 hmodulus hbase hdivides
+                (by omega) hfactorQuotient.2.1 hquotientNonempty
+                hfactorQuotient.2.2 hquality.2 hactiveFits' hirreducible'
+                (physicalFactorQuality_push base result factor hresult
+                  hquality.1) output hrun
+  next hcontinue =>
+    have hout := Except.ok.inj hrun
+    subst output
+    exact finishZassenhaus_physicalFactorQuality base fStar result hresult
+      (fun _ hdegree =>
+        canonical_positive_degree_physical_quality base fStar hcanonical
+          hnonempty (by
+            simpa [getElem!_pos fStar 0 hnonempty] using hdegree) hleading)
+termination_by (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (concreteZassenhausTermination.removal_decreases active candidate active'
+        (by rw [candidateSize]; simpa [count] using hsubsetPositive) hremove)
+
+/-- Public concrete Zassenhaus entry version of the physical quality
+invariant, including the literal zero/one-lifted-factor fast path. -/
+theorem zassenhausRecombine_physicalFactorQuality
+    (f : SparsePolyZZ) (lifted output : Array SparsePolyZZ)
+    (modulus base : Nat) [Fact (Nat.Prime base)]
+    (hmodulus : 0 < modulus) (hbase : 0 < base)
+    (hdivides : base ∣ modulus)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hnonempty : 0 < f.size)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hleading : ((SparsePolyZZ.toPoly f).leadingCoeff : ZMod base) ≠ 0)
+    (hliftedFits : lifted.size ≤ 2 ^ 31)
+    (hirreducible : ∀ index (hindex : index < lifted.size),
+      Irreducible (Refinement.StrictHensel.toPolyMod base lifted[index]))
+    (hrun : Generated.StrictRecombine.zassenhausRecombine
+      concreteZassenhausTermination f lifted (modulus : ZZ) = .ok output) :
+    PhysicalFactorQuality base output := by
+  unfold Generated.StrictRecombine.zassenhausRecombine at hrun
+  split at hrun
+  next hlifted =>
+    split at hrun
+    next hdegree =>
+      have hout := Except.ok.inj hrun
+      subst output
+      apply physicalFactorQuality_push base #[] f
+        (physicalFactorQuality_empty base)
+      exact canonical_positive_degree_physical_quality base f hcanonical
+        hnonempty (by
+          simpa [getElem!_pos f 0 hnonempty] using hdegree) hleading
+    next hdegree =>
+      have hout := Except.ok.inj hrun
+      subst output
+      exact physicalFactorQuality_empty base
+  next hlifted =>
+    exact zassenhausLoop_physicalFactorQuality modulus base lifted f #[] 1
+      hmodulus hbase hdivides (by omega) hcanonical hnonempty hprimitive
+      hleading hliftedFits hirreducible (physicalFactorQuality_empty base)
+      output hrun
 
 /-- The literal Zassenhaus fallback never returns more physical factors than
 the already accumulated results plus the current active lifted factors. -/

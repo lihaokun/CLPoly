@@ -748,3 +748,33 @@ semantic candidate oracle, `sorry`, or custom axiom is introduced.
   surface.
 - Next: preserve these witnesses through both `prepareCandidates` branches
   and connect transform-entry equality to the generated CLD matrix rows.
+
+## Prove generated short-row collection is complete
+
+The exact short-row collector now has the completeness direction required by
+the forthcoming lattice-span argument:
+
+- `insertShortRow_preserves_member` and
+  `insertShortRow_contains_inserted` follow every recursive comparator call
+  and prove that sorted insertion neither loses an old physical row index nor
+  omits the newly inserted one;
+- `collectShortRows_preserves_member` carries membership through all later
+  generated collection iterations;
+- `collectShortRows_includes_bounded_row` proves that any concrete matrix row
+  whose literal generated `dotRows` result is at most the C++ bound occurs in
+  the returned array; and
+- `concreteLLLReduce_includes_bounded_row` specializes that fact to the
+  reduced matrix and short-row array returned by the same full generated
+  `lllReduce` execution.
+
+Together with the previous index-validity theorem, short rows are now tied to
+the actual reduced basis in both directions needed downstream: no fabricated
+indices, and no omitted bounded basis row.  The recursion uses the generated
+array suffix measures and introduces no fuel, partial definition, collection
+oracle, `sorry`, or custom axiom.
+
+- C++ changes: none, so this step has no new C++ regression or B2B change
+  surface.
+- Next: prove the final generated LLL state satisfies its completed
+  size-reduction/Lovasz conditions, then derive that every sufficiently short
+  lattice vector lies in the span of the collected rows.

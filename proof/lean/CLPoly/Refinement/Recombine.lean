@@ -10435,6 +10435,189 @@ theorem insertShortRow_indices_valid
         · exact hsorted value hold
         · exact hnew ▸ hrow
 
+theorem insertShortRow_preserves_member
+    (matrix : Generated.StrictRecombine.LLLMatrix) (row : Nat)
+    (sorted output : Array Nat) (position value : Nat)
+    (hmember : value ∈ sorted.toList)
+    (hrun : Generated.StrictRecombine.insertShortRow matrix row sorted position =
+      .ok output) :
+    value ∈ output.toList := by
+  induction hmeasure : sorted.size - position using Nat.strong_induction_on
+      generalizing position sorted output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.insertShortRow] at hrun
+      split at hrun
+      next hposition =>
+        split at hrun
+        next hrow =>
+          split at hrun
+          next hexisting =>
+            cases hrowNorm : Generated.StrictRecombine.dotRows matrix[row]
+                matrix[row] with
+            | error fault => simp [hrowNorm] at hrun
+            | ok rowNorm =>
+                simp only [hrowNorm] at hrun
+                cases hexistingNorm : Generated.StrictRecombine.dotRows
+                    matrix[sorted[position]] matrix[sorted[position]] with
+                | error fault => simp [hexistingNorm] at hrun
+                | ok existingNorm =>
+                    simp only [hexistingNorm] at hrun
+                    split at hrun
+                    next hlt =>
+                      have hout := Except.ok.inj hrun
+                      subst output
+                      have hsplit : value ∈ sorted.toList.take position ∨
+                          value ∈ sorted.toList.drop position := by
+                        rw [← List.mem_append, List.take_append_drop]
+                        exact hmember
+                      rcases hsplit with hbefore | hafter
+                      · simp only [Array.toList_append, List.mem_append]
+                        left
+                        rw [Array.toList_extract]
+                        simpa [List.extract] using Or.inl hbefore
+                      · simp only [Array.toList_append, List.mem_append]
+                        right
+                        rw [Array.toList_extract]
+                        have htake :
+                            (sorted.toList.drop position).take
+                                (sorted.size - position) =
+                              sorted.toList.drop position := by
+                          exact (List.take_eq_self_iff _).2 (by simp)
+                        simpa [List.extract, htake] using hafter
+                    next hlt =>
+                      exact ih (sorted.size - (position + 1)) (by omega)
+                        sorted output (position + 1) hmember hrun rfl
+          next hexisting => contradiction
+        next hrow => contradiction
+      next hposition =>
+        have hout := Except.ok.inj hrun
+        subst output
+        simp only [Array.toList_push, List.mem_append]
+        exact Or.inl hmember
+
+theorem insertShortRow_contains_inserted
+    (matrix : Generated.StrictRecombine.LLLMatrix) (row : Nat)
+    (sorted output : Array Nat) (position : Nat)
+    (hrun : Generated.StrictRecombine.insertShortRow matrix row sorted position =
+      .ok output) :
+    row ∈ output.toList := by
+  induction hmeasure : sorted.size - position using Nat.strong_induction_on
+      generalizing position sorted output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.insertShortRow] at hrun
+      split at hrun
+      next hposition =>
+        split at hrun
+        next hrow =>
+          split at hrun
+          next hexisting =>
+            cases hrowNorm : Generated.StrictRecombine.dotRows matrix[row]
+                matrix[row] with
+            | error fault => simp [hrowNorm] at hrun
+            | ok rowNorm =>
+                simp only [hrowNorm] at hrun
+                cases hexistingNorm : Generated.StrictRecombine.dotRows
+                    matrix[sorted[position]] matrix[sorted[position]] with
+                | error fault => simp [hexistingNorm] at hrun
+                | ok existingNorm =>
+                    simp only [hexistingNorm] at hrun
+                    split at hrun
+                    next hlt =>
+                      have hout := Except.ok.inj hrun
+                      subst output
+                      simp
+                    next hlt =>
+                      exact ih (sorted.size - (position + 1)) (by omega)
+                        sorted output (position + 1) hrun rfl
+          next hexisting => contradiction
+        next hrow => contradiction
+      next hposition =>
+        have hout := Except.ok.inj hrun
+        subst output
+        simp
+
+theorem collectShortRows_preserves_member
+    (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
+    (row : Nat) (result output : Array Nat) (value : Nat)
+    (hmember : value ∈ result.toList)
+    (hrun : Generated.StrictRecombine.collectShortRows matrix bound row result =
+      .ok output) :
+    value ∈ output.toList := by
+  induction hmeasure : matrix.size - row using Nat.strong_induction_on
+      generalizing row result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectShortRows] at hrun
+      split at hrun
+      next hrow =>
+        cases hnorm : Generated.StrictRecombine.dotRows matrix[row] matrix[row] with
+        | error fault => simp [hnorm] at hrun
+        | ok norm =>
+            simp only [hnorm] at hrun
+            split at hrun
+            next hshort =>
+              cases hinsert : Generated.StrictRecombine.insertShortRow matrix row
+                  result 0 with
+              | error fault => simp [hinsert] at hrun
+              | ok next =>
+                  simp only [hinsert] at hrun
+                  exact ih (matrix.size - (row + 1)) (by omega) (row + 1)
+                    next output
+                    (insertShortRow_preserves_member matrix row result next 0
+                      value hmember hinsert) hrun rfl
+            next hshort =>
+              exact ih (matrix.size - (row + 1)) (by omega) (row + 1)
+                result output hmember hrun rfl
+      next hrow =>
+        exact (Except.ok.inj hrun) ▸ hmember
+
+/-- Every concrete basis row whose literal generated dot product meets the
+C++ short-vector bound is present in the final collected array. -/
+theorem collectShortRows_includes_bounded_row
+    (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
+    (start : Nat) (result output : Array Nat) (row : Nat) (norm : ZZ)
+    (hstart : start ≤ row) (hrow : row < matrix.size)
+    (hnorm : Generated.StrictRecombine.dotRows matrix[row] matrix[row] =
+      .ok norm) (hbound : norm ≤ bound)
+    (hrun : Generated.StrictRecombine.collectShortRows matrix bound start result =
+      .ok output) :
+    row ∈ output.toList := by
+  induction hmeasure : matrix.size - start using Nat.strong_induction_on
+      generalizing start result output with
+  | h measure ih =>
+      rw [Generated.StrictRecombine.collectShortRows] at hrun
+      have hstartMatrix : start < matrix.size := by omega
+      rw [dif_pos hstartMatrix] at hrun
+      by_cases heq : start = row
+      · subst start
+        simp only [hnorm] at hrun
+        rw [if_pos hbound] at hrun
+        cases hinsert : Generated.StrictRecombine.insertShortRow matrix row
+            result 0 with
+        | error fault => simp [hinsert] at hrun
+        | ok next =>
+            simp only [hinsert] at hrun
+            exact collectShortRows_preserves_member matrix bound (row + 1) next
+              output row (insertShortRow_contains_inserted matrix row result next
+                0 hinsert) hrun
+      · have hnext : start + 1 ≤ row := by omega
+        cases hcurrent : Generated.StrictRecombine.dotRows matrix[start]
+            matrix[start] with
+        | error fault => simp [hcurrent] at hrun
+        | ok currentNorm =>
+            simp only [hcurrent] at hrun
+            split at hrun
+            next hshort =>
+              cases hinsert : Generated.StrictRecombine.insertShortRow matrix start
+                  result 0 with
+              | error fault => simp [hinsert] at hrun
+              | ok next =>
+                  simp only [hinsert] at hrun
+                  exact ih (matrix.size - (start + 1)) (by omega) (start + 1)
+                    next output hnext hrun rfl
+            next hshort =>
+              exact ih (matrix.size - (start + 1)) (by omega) (start + 1)
+                result output hnext hrun rfl
+
 theorem collectShortRows_indices_valid
     (matrix : Generated.StrictRecombine.LLLMatrix) (bound : ZZ)
     (row : Nat) (result output : Array Nat)
@@ -10509,6 +10692,40 @@ theorem concreteLLLReduce_short_rows_valid
         subst output
         exact collectShortRows_from_empty_indices_valid reduced.matrix bound rows
           hrows
+
+/-- The short-row array returned by the complete generated `__lll_reduce` is
+complete for its own reduced-basis rows: every row whose literal squared dot
+product is at most the source bound occurs in that physical array. -/
+theorem concreteLLLReduce_includes_bounded_row
+    (matrix : Generated.StrictRecombine.LLLMatrix)
+    (hinput : ConcreteLLLInputValid matrix) (bound : ZZ)
+    (output : { value : Generated.StrictRecombine.LLLMatrix ×
+        Generated.StrictRecombine.LLLMatrix × Array Nat //
+      concreteLLLExecution.inputValid value.1 ∧ value.1.size = matrix.size })
+    (hrun : Generated.StrictRecombine.lllReduce concreteLLLExecution matrix
+      hinput bound = .ok output)
+    (row : Nat) (norm : ZZ) (hrow : row < output.val.1.size)
+    (hnorm : Generated.StrictRecombine.dotRows output.val.1[row]
+      output.val.1[row] = .ok norm) (hbound : norm ≤ bound) :
+    row ∈ output.val.2.2.toList := by
+  rw [Generated.StrictRecombine.lllReduce] at hrun
+  split at hrun
+  next fault hinitialize => contradiction
+  next mu norms transform hinitialize =>
+    let state := Generated.StrictRecombine.LLLState.mk matrix transform mu norms 1
+    let hvalid := concreteLLLExecution.initialized_valid matrix mu norms transform
+      hinput hinitialize
+    dsimp only at hrun
+    split at hrun
+    next fault hmain => contradiction
+    next reduced hmain =>
+      split at hrun
+      next fault hrows => contradiction
+      next rows hrows =>
+        have hresult := Except.ok.inj hrun
+        subst output
+        exact collectShortRows_includes_bounded_row reduced.matrix bound 0 #[]
+          rows row norm (by omega) hrow hnorm hbound hrows
 
 /-- The actual transform and short-row array returned by generated
 `__lll_reduce` are safe inputs to the generated candidate-column loops.  This

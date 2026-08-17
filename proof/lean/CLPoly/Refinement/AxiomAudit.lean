@@ -6,6 +6,8 @@ import CLPoly.Refinement.Recombine
 #print axioms Refinement.__ddf_Zp_raw_ir_refines_ddf
 #print axioms Refinement.__edf_Zp_raw_ir_refines_edf
 #print axioms Refinement.__hensel_lift_upoly_raw_ir_refines
+#print axioms Refinement.__factor_Zp_raw_ir_refines_FactorZpCorrect
+#print axioms Refinement.__factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
 #print axioms Refinement.StrictRecombine.zassenhausAttempt_extracted_factor_mod_eq_selected
 #print axioms Refinement.StrictRecombine.polynomialMap_eq_of_modulus_dvd
 #print axioms Refinement.StrictRecombine.scanZassenhausCombinations_extracted_mod_certificate

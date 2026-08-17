@@ -11100,6 +11100,47 @@ decreasing_by
   · have := Generated.StrictHensel.henselTreeMidpoint_gt_start start stop hlength
     omega
 
+/-- The source builder allocates one node for each non-singleton factor
+interval, hence strictly fewer nodes than factors in every nonempty range. -/
+theorem henselTreeInternalNodeCount_lt_length
+    (start stop : Nat) (hpositive : start < stop) :
+    henselTreeInternalNodeCount start stop < stop - start := by
+  rw [henselTreeInternalNodeCount]
+  split
+  next hlength =>
+    let mid := (start + stop) / 2
+    have hmidLt : mid < stop := by
+      exact Generated.StrictHensel.henselTreeMidpoint_lt_stop
+        start stop hlength
+    have hstartLtMid : start < mid := by
+      exact Generated.StrictHensel.henselTreeMidpoint_gt_start
+        start stop hlength
+    have hleft := henselTreeInternalNodeCount_lt_length
+      start mid hstartLtMid
+    have hright := henselTreeInternalNodeCount_lt_length
+      mid stop hmidLt
+    have hleftLe :
+        henselTreeInternalNodeCount start mid + 1 ≤ mid - start :=
+      Nat.succ_le_iff.mpr hleft
+    have hrightLe :
+        henselTreeInternalNodeCount mid stop + 1 ≤ stop - mid :=
+      Nat.succ_le_iff.mpr hright
+    have hsplit : mid - start + (stop - mid) = stop - start := by
+      omega
+    apply Nat.lt_of_succ_le
+    calc
+      (1 + henselTreeInternalNodeCount start mid +
+          henselTreeInternalNodeCount mid stop) + 1 =
+          (henselTreeInternalNodeCount start mid + 1) +
+            (henselTreeInternalNodeCount mid stop + 1) := by omega
+      _ ≤ (mid - start) + (stop - mid) :=
+        Nat.add_le_add hleftLe hrightLe
+      _ = stop - start := hsplit
+  next hshort =>
+    simp
+    omega
+termination_by stop - start
+
 /-- Canonical finite topology induced solely by the source interval split and
 preorder append order.  It contains no polynomial values or expected output. -/
 def henselTreeBuildTopology : Nat → Nat → Nat →
@@ -14040,9 +14081,6 @@ structure HenselLiftEntryInvariant
   exponent : aTarget = 0 ∨ aTarget > 0
   targetNonnegative : ∀ target,
     HenselLiftTargetCorrect f this._p aTarget target → 0 ≤ target
-  factorCount : 2 ≤ factors.size
-  factorCountFits : factors.size < 2 ^ 31
-  topologyFits : henselTreeInternalNodeCount 0 factors.size < 2 ^ 31
   adjustedCanonical : ∀ adjusted,
     HenselAdjustFirstFactorCorrect f factors this._p adjusted →
     ∀ factor ∈ adjusted.toList,
@@ -14375,6 +14413,24 @@ theorem __hensel_lift_upoly_raw_ir_factorCountFits_of_success
       Except.bind] at hrun
     contradiction
 
+/-- A successful concrete Hensel entry also proves that the source assertion
+requiring at least two modular factors was taken. -/
+theorem __hensel_lift_upoly_raw_ir_factorCount_of_success
+    (stepOps : Generated.StrictHensel.HenselStepRawOps)
+    (treeOps : Generated.StrictHensel.HenselTreeBuildRawOps)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : 2 ≤ p.toNat)
+    (output : Array SparsePolyZZ × ZZ)
+    (hrun : Generated.StrictHensel.__hensel_lift_upoly_raw_ir stepOps treeOps
+      f factors p aTarget hp = .ok output) :
+    2 ≤ factors.size := by
+  rw [Generated.StrictHensel.__hensel_lift_upoly_raw_ir] at hrun
+  by_cases hcount : 2 ≤ factors.size
+  · exact hcount
+  · simp only [hcount, ↓reduceIte, pure, Except.pure, bind,
+      Except.bind] at hrun
+    contradiction
+
 /-- Genuine raw-to-safe and L1-to-L2 composition theorem for the full C++
 Hensel entry.  Every intermediate is obtained from the strict generated raw
 program before its invariant is instantiated. -/
@@ -14385,7 +14441,9 @@ theorem __hensel_lift_upoly_raw_ir_refines
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
     (hinvariant : HenselLiftEntryInvariant this termination mulProvider f
-      factors aTarget) :
+      factors aTarget)
+    (hfactorCount : 2 ≤ factors.size)
+    (hfactorFits : factors.size < 2 ^ 31) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_upoly_raw_ir
           (strictHenselRawOps termination)
@@ -14401,7 +14459,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
   rcases __hensel_adjust_first_factor_raw_ir_refines f factors this._p
       ⟨hinvariant.sourceLeading, by
         have hzero : 0 < factors.size := lt_of_lt_of_le (by omega)
-          hinvariant.factorCount
+          hfactorCount
         exact ⟨factors[0], Array.getElem?_eq_getElem hzero⟩⟩ with
     ⟨adjusted, hadjustRun, hadjustCorrect⟩
   have hadjustSize : adjusted.size = factors.size := by
@@ -14413,14 +14471,19 @@ theorem __hensel_lift_upoly_raw_ir_refines
           contradiction
         simp [Array.set!, hindex]
   let tree := henselTreeBuildTopology 0 factors.size 0
+  have hfactorsPositive : 0 < factors.size := by
+    exact lt_of_lt_of_le (by omega) hfactorCount
+  have htopologyFits : henselTreeInternalNodeCount 0 factors.size < 2 ^ 31 :=
+    (henselTreeInternalNodeCount_lt_length 0 factors.size hfactorsPositive).trans
+      hfactorFits
   rcases strictHenselTreeBuildRawIR_refines_topology_root this hcfg
       mulProvider adjusted (hinvariant.adjustedCanonical adjusted hadjustCorrect)
       (hinvariant.adjustedNonempty adjusted hadjustCorrect)
       (hadjustCorrect.monic_of_pos hinvariant.factorsMonic)
       (hinvariant.adjustedPairwise adjusted hadjustCorrect)
-      (by rw [hadjustSize]; exact hinvariant.factorCount)
-      (by rw [hadjustSize]; exact hinvariant.factorCountFits)
-      (by rw [hadjustSize]; exact hinvariant.topologyFits) with
+      (by rw [hadjustSize]; exact hfactorCount)
+      (by rw [hadjustSize]; exact hfactorFits)
+      (by rw [hadjustSize]; exact htopologyFits) with
     ⟨nodes, hnodesRun, hroot, hsize, hrootIndex, hleft, hright,
       hextractInvariant, hsemanticInvariant, hrootInvariant,
       hnodesCanonical, hnodesOneHead⟩
@@ -14438,7 +14501,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
   have htreeNodup : (henselLiftTreeIndices tree).Nodup := by
     simpa [tree] using
       (henselTreeBuildTopology_indices_nodup_bounded 0 factors.size 0
-        hinvariant.factorCount).1
+        hfactorCount).1
   have hinitialPhysical := hsemanticInvariant'.toPhysicalHeads
   have hliftedPhysical : HenselTreePhysicalHeads 0 factors.size tree
       liftedNodes :=
@@ -14454,7 +14517,7 @@ theorem __hensel_lift_upoly_raw_ir_refines
   have hextractedOneHead : HenselFactorArrayOneHeadFrom 1 extracted := by
     apply hextractCorrect.outputOneHeadFrom_empty
     · simpa [tree] using hliftedPhysical
-    · exact hinvariant.factorCount
+    · exact hfactorCount
   have hliftedCanonical : HenselArrayCanonical liftedNodes :=
     hliftCorrect.arrayCanonical hnodesCanonical
   have hliftedOneHead : HenselArrayHOneHead liftedNodes :=
@@ -14485,8 +14548,8 @@ theorem __hensel_lift_upoly_raw_ir_refines
       hliftedOneHead, hextractCorrect,
       hnormalizeCorrect, rfl, hnormalizedCanonical, hnormalizedOneHead⟩⟩
   apply henselLiftUpolyRawIR_run_of_stages
-    (hcount := hinvariant.factorCount)
-    (hfactorFits := hinvariant.factorCountFits) (htarget := htargetRun)
+    (hcount := hfactorCount)
+    (hfactorFits := hfactorFits) (htarget := htargetRun)
     (htargetNonnegative := htargetNonnegative) (hadjust := hadjustRun)
     (hbuild := hnodesRun)
   · simpa [htreeEq] using hliftRun

@@ -263,6 +263,10 @@ theorem {theorem_name}
     {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
     (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hnonempty : 0 < f.size)
     (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
@@ -277,9 +281,11 @@ theorem {theorem_name}
       (StrictSelectPrime.selectPrimeTermination
         (StrictSelectPrime.concreteTryCandidate engine provider))
       initialRng useLargePrime f = .ok result) :
-    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) result := by
+    StrictSelectPrime.SelectionCorrect (SparsePolyZZ.toPoly f) result ∧
+      StrictSelectPrime.SelectionPhysical result := by
   exact {proof_theorem} engine provider initialRng useLargePrime f
-    hcanonical hnonempty hdegree hdegreeBound hlcSemantic result hrun
+    hinitialPrimeCorrect hcanonical hnonempty hdegree hdegreeBound
+      hlcSemantic result hrun
 '''
     if contract["kind"] == "strict_factor_zp":
         return f"""/-- Generated public end-to-end contract for the original C++ `__factor_Zp`
@@ -313,9 +319,49 @@ theorem {theorem_name}
         .ok (lc, output) ∧
       FactorZpCorrect (SparsePolyZp.toPoly this._p.toNat f)
         (Zp.toZMod this._p.toNat lc)
-        (StrictFactorZp.factorResultToL2 this._p.toNat output) := by
+        (StrictFactorZp.factorResultToL2 this._p.toNat output) ∧
+      (∀ item ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat item.1) := by
   exact {proof_theorem} engine this hcfg sqfPhysical providers termination
     sort initialRng f hcanonical hnonempty hdegreePositive hdegreeBound
+"""
+    if contract["kind"] == "strict_factor_zz":
+        return f"""/-- Generated public end-to-end contract for the original
+C++ `__factor_squarefree_primitive_ZZ` entry.  Its executable side fixes the
+actual generated prime-selection, modular factorization, quadratic Hensel
+lifting, van-Hoeij/Zassenhaus recombination, and source branch structure. -/
+theorem {theorem_name}
+    {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
+    (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
+      (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
+      let candidate := provider.physical selection.prime hp
+      @StrictFactorZZ.HenselLiftEntryReadiness candidate.dense
+        StrictHensel.concreteDivmodTermination candidate.providers.mul
+        f selection.factors aTarget)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hdegree63 : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+      (StrictFactorZZ.concreteRecombineFactorZZRawOps
+        (StrictFactorZZ.concreteSelectPrime engine provider initialRng)
+        (StrictFactorZZ.concreteHenselLift engine provider))
+      useLargePrime f = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  exact {proof_theorem} engine provider initialRng useLargePrime f
+    hinitialPrimeCorrect hhenselInvariant hcanonical hprimitive hnonempty
+      hdegree hdegree62 hdegree63 leading hleading output hrun
 """
     if contract["kind"] == "strict_squarefree_zp":
         return f"""/-- Generated public contract for the original C++ `__squarefree_Zp` entry.
@@ -384,7 +430,9 @@ theorem {theorem_name}
     (termination : Generated.StrictEDF.EDFTermination
       (StrictEDF.strictEDFRawOps engine this providers))
     (result : Array SparsePolyZp) (f : SparsePolyZp) (d : UInt64)
-    (rng : State) (hinvariant : StrictEDF.EDFEntryInvariant this f d) :
+    (rng : State) (hinvariant : StrictEDF.EDFEntryInvariant this f d)
+    (hresultCanonical : ∀ factor ∈ result.toList,
+      SparsePolyZp.Canonical this._p.toNat factor) :
     ∃ output rng' factors,
       Generated.StrictEDF.__edf_Zp_raw_ir
           (StrictEDF.strictEDFRawOps engine this providers)
@@ -392,9 +440,11 @@ theorem {theorem_name}
           result f d rng hinvariant = .ok (output, rng') ∧
       StrictEDF.edfResultToL2 this._p.toNat output =
         StrictEDF.edfResultToL2 this._p.toNat result ++ factors ∧
-      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors := by
+      EDFCorrect (SparsePolyZp.toPoly this._p.toNat f) d.toNat factors ∧
+      ∀ factor ∈ output.toList,
+        SparsePolyZp.Canonical this._p.toNat factor := by
   exact {proof_theorem} engine this providers termination result f d rng
-    hinvariant
+    hinvariant hresultCanonical
 """
     if contract["kind"] == "strict_hensel_eea":
         return f"""/-- Generated public contract for the polynomial extended
@@ -405,8 +455,6 @@ three concrete results satisfy the Bézout contract. -/
 theorem {theorem_name}
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (left right : SparsePolyZp)
     (hleftCanonical : SparsePolyZp.Canonical this._p.toNat left)
     (hrightCanonical : SparsePolyZp.Canonical this._p.toNat right)
@@ -431,7 +479,7 @@ theorem {theorem_name}
         GCDMonoid.gcd
           (SparsePolyZp.toPoly this._p.toNat left)
           (SparsePolyZp.toPoly this._p.toNat right) := by
-  exact {proof_theorem} this hcfg h2p hp2 left right
+  exact {proof_theorem} this hcfg left right
     hleftCanonical hrightCanonical hleftNonempty
 """
     if contract["kind"] == "strict_hensel_step":
@@ -493,8 +541,6 @@ oracle. -/
 theorem {theorem_name}
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (factors : Array SparsePolyZp)
     (hfactors : ∀ factor ∈ factors.toList,
@@ -508,6 +554,7 @@ theorem {theorem_name}
         (SparsePolyZp.toPoly this._p.toNat (getElem factors i hi))
         (SparsePolyZp.toPoly this._p.toNat (getElem factors j hj)))
     (htwo : 2 ≤ factors.size)
+    (hfactorFits : factors.size < 2 ^ 31)
     (hfitsInt32 : StrictHensel.henselTreeInternalNodeCount
       0 factors.size < 2 ^ 31) :
     let tree := StrictHensel.henselTreeBuildTopology 0 factors.size 0
@@ -528,8 +575,9 @@ theorem {theorem_name}
         0 factors.size (getElem output 0 hroot) ∧
       StrictHensel.HenselArrayCanonical output ∧
       StrictHensel.HenselArrayHOneHead output := by
-  exact {proof_theorem} this hcfg h2p hp2 mulProvider factors hfactors
-    hfactorsNonempty hfactorsMonicAfterZero hpairwise htwo hfitsInt32
+  exact {proof_theorem} this hcfg mulProvider factors hfactors
+    hfactorsNonempty hfactorsMonicAfterZero hpairwise htwo hfactorFits
+      hfitsInt32
 """
     if contract["kind"] == "strict_hensel_lift_upoly":
         return f"""/-- Generated public contract for the original C++
@@ -540,12 +588,12 @@ result without an oracle, fallback, or fuel parameter. -/
 theorem {theorem_name}
     (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
     (hcfg : CLPoly.Impl.StrictWordArithmetic.DensePreinvConfigured this)
-    (h2p : 2 * this._p.toNat ≤ UInt64.size)
-    (hp2 : this._p.toNat * this._p.toNat ≤ UInt64.size)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp) (aTarget : Int32)
     (hinvariant : StrictHensel.HenselLiftEntryInvariant this
-      StrictHensel.concreteDivmodTermination mulProvider f factors aTarget) :
+      StrictHensel.concreteDivmodTermination mulProvider f factors aTarget)
+    (hfactorCount : 2 ≤ factors.size)
+    (hfactorFits : factors.size < 2 ^ 31) :
     ∃ output,
       Generated.StrictHensel.__hensel_lift_upoly_raw_ir
           (StrictHensel.strictHenselRawOps
@@ -557,8 +605,9 @@ theorem {theorem_name}
       StrictHensel.HenselLiftEntryCorrect
         StrictHensel.concreteDivmodTermination f factors this._p aTarget
         output := by
-  exact {proof_theorem} this hcfg h2p hp2
-    StrictHensel.concreteDivmodTermination mulProvider f factors aTarget hinvariant
+  exact {proof_theorem} this hcfg
+    StrictHensel.concreteDivmodTermination mulProvider f factors aTarget
+      hinvariant hfactorCount hfactorFits
 """
     raise ValueError(f"unsupported verified contract kind: {contract['kind']}")
 

@@ -881,6 +881,28 @@ REFINEMENT_MAP = {
             "kind": "strict_factor_zp",
         },
     },
+    "__factor_squarefree_primitive_ZZ": {
+        "l1_name": "__factor_squarefree_primitive_ZZ_raw_ir",
+        "l2_name": "FactorZZCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "FactorZZ",
+        "result_kind": "factor_zz_correct",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "squarefree primitive integer polynomial factorization",
+        "verified_contract": {
+            "theorem_name": (
+                "__factor_squarefree_primitive_ZZ_raw_ir_refines_"
+                "FactorZZCorrect"
+            ),
+            "proof_import": "CLPoly.Refinement.FactorZZ",
+            "proof_theorem": (
+                "Refinement.StrictFactorZZ."
+                "concreteSelectHensel___factor_squarefree_primitive_ZZ_"
+                "raw_ir_refines"
+            ),
+            "kind": "strict_factor_zz",
+        },
+    },
     "__squarefree_Zp": {
         "l1_name": "__squarefree_Zp_ir",
         "l2_name": "sqfZp",

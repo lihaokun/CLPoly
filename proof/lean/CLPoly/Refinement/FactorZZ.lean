@@ -103,18 +103,16 @@ noncomputable def concreteHenselLift {State : Type}
         f factors p aTarget candidate.prime.two_le
     else .error .assertionFailure
 
-/-- Readiness for the semantic Hensel stages, conditional on the machine
-factor-count guard.  The guard itself is not a caller premise: a successful
-literal raw execution proves it before this readiness is instantiated. -/
+/-- Readiness for the semantic Hensel stages.  Machine factor-count and tree
+index bounds are derived separately from the successful literal execution. -/
 def HenselLiftEntryReadiness
     (this : DenseUPolyZp)
     (termination : Generated.StrictHensel.DivmodTermination)
     (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp)
     (aTarget : Int32) : Prop :=
-  factors.size < 2 ^ 31 →
-    StrictHensel.HenselLiftEntryInvariant this termination mulProvider
-      f factors aTarget
+  StrictHensel.HenselLiftEntryInvariant this termination mulProvider
+    f factors aTarget
 
 /-- The concrete C++ Hensel call cannot succeed unless its checked `size_t`
 factor count is representable by every downstream source `int` index. -/
@@ -177,10 +175,17 @@ theorem concreteHenselLift_success {State : Type}
   have hfactorFits : factors.size < 2 ^ 31 :=
     concreteHenselLift_factorCountFits_of_success engine provider f factors
       p aTarget hp output hrun
+  have hfactorCount : 2 ≤ factors.size :=
+    StrictHensel.__hensel_lift_upoly_raw_ir_factorCount_of_success
+      (StrictHensel.strictHenselRawOps
+        StrictHensel.concreteDivmodTermination)
+      (StrictHensel.strictHenselTreeBuildRawOps candidate.dense
+        candidate.providers.mul)
+      f factors p aTarget candidate.prime.two_le output hrun'
   rcases StrictHensel.__hensel_lift_upoly_raw_ir_refines candidate.dense
       candidate.configured
       StrictHensel.concreteDivmodTermination candidate.providers.mul
-      f factors aTarget (hreadiness hfactorFits) with
+      f factors aTarget hreadiness hfactorCount hfactorFits with
         ⟨actual, hactualRun, hcorrect⟩
   have houtput : actual = output := by
     have hactualRun' :

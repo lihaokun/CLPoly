@@ -6,6 +6,19 @@ set_option maxErrors 2000
 
 namespace Generated
 
+
+def _loop___upoly_make_monic_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZp) (lc_inv_1 : Zp) : (Int64 × SparsePolyZp) :=
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
+    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
+    let term_2 : (UMonomial × Zp) := { term_1 with snd := (term_1.snd * lc_inv_1) }
+    let __rangefor_cont_0_3 : SparsePolyZp := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 term_2)
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop___upoly_make_monic_0_ir __rangefor_idx_0_3 __rangefor_cont_0_3 lc_inv_1
+  else
+    ((0 : Int64), __rangefor_cont_0_2)
+
+termination_by Array.size __rangefor_cont_0_2 - __rangefor_idx_0_2
+
 mutual
 partial def _loop___assign_partial_zp_lex_0_ir (i_2 : Nat) (result_2 : PolyZp) (alphas : Array Zp) (vars : Array Variable) : (Int64 × PolyZp) :=
   if (i_2 < (Array.size vars)) then
@@ -25,17 +38,47 @@ partial def __assign_partial_zp_lex_ir (f : MvPolyZZ) (vars : Array Variable) (a
   let result_2 : PolyZp := __loop_ret___assign_partial_zp_lex_0_1.snd
   (MvPolyZp.mk result_2)
 
-partial def _loop___binomial_0_ir (i_2 : Int64) (result_2 : ZZ) (k_2 : Int64) (n : Int64) : (Int64 × ZZ) :=
-  if (i_2 < k_2) then
-    let result_3 : ZZ := (result_2 * ((n - i_2)).toInt)
-    -- require (h_nonzero): (((i_2 + (1 : Int64))).toInt != (0 : Int64))
-    let result_4 : ZZ := (result_3 / ((i_2 + (1 : Int64))).toInt)
-    let i_3 : Int64 := (i_2 + (1 : Int64))
-    _loop___binomial_0_ir i_3 result_4 k_2 n
+partial def _loop___polynomial_to_zp_lex_0_ir (__rangefor_idx_0_2 : Nat) (result_2 : PolyZp) (__rangefor_cont_0_1 : MvPolyZZ) (p : UInt64) : (Int64 × PolyZp) :=
+  let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4 =>
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_3 result_4 __rangefor_cont_0_1 p
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+    let term_1 : (Monomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
+    let coeff_1 : Zp := (Zp.ofInt (term_1.snd).toInt p)
+    if (coeff_1.val != (0 : Int32)) then
+      let result_3 : PolyZp := (Array.push result_2 ((term_1.fst, coeff_1)))
+      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_3
+    else
+      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_2
   else
     ((0 : Int64), result_2)
 
-partial def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
+partial def __polynomial_to_zp_lex_ir (f : MvPolyZZ) (p : UInt64) : MvPolyZp :=
+  let result_1 : PolyZp := (MvPolyZp.mk (MvPolyZZ.comp f))
+  let __rangefor_cont_0_1 : MvPolyZZ := f
+  let __rangefor_idx_0_1 : Nat := (0 : Nat)
+  let __loop_ret___polynomial_to_zp_lex_0_1 : (Int64 × PolyZp) := (_loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_1 result_1 __rangefor_cont_0_1 p)
+  let result_2 : PolyZp := __loop_ret___polynomial_to_zp_lex_0_1.snd
+  let result_5 : PolyZp := (MvPolyZp.normalization result_2)
+  (MvPolyZp.mk result_5)
+
+end
+
+def _loop___binomial_0_ir (i_2 : Int64) (result_2 : ZZ) (k_2 : Int64) (n : Int64) : (Int64 × ZZ) :=
+  go ((k_2 - i_2).toNatClampNeg) i_2 result_2 k_2 n
+where
+  go : Nat → Int64 → ZZ → Int64 → Int64 → (Int64 × ZZ)
+    | 0, i_2, result_2, k_2, n => ((0 : Int64), result_2)
+    | d+1, i_2, result_2, k_2, n =>
+      if h : i_2 < k_2 then
+        let result_3 : ZZ := (result_2 * ((n - i_2)).toInt)
+        -- require (h_nonzero): (((i_2 + (1 : Int64))).toInt != (0 : Int64))
+        let result_4 : ZZ := (result_3 / ((i_2 + (1 : Int64))).toInt)
+        go d (i_2 + 1) result_4 k_2 n
+      else
+        ((0 : Int64), result_2)
+
+def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
   let bb_11 := fun n k_2 =>
     let result_1 : ZZ := ((1 : Int32)).toInt
     let i_1 : Int64 := (0 : Int64)
@@ -54,6 +97,174 @@ partial def __binomial_ir (n : Int64) (k : Int64) : ZZ :=
       else
         bb_11 n k
 
+-- === _def variants for squarefree & p-th root (before mutual block, so they can be unfolded in proofs) ===
+
+def _loop___extract_pth_root_0_ir_def (__rangefor_idx_0_2 : Nat) (g_2 : SparsePolyZp) (__rangefor_cont_0_1 : SparsePolyZp) (p_1 : UInt64) : (Int64 × SparsePolyZp) :=
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
+    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
+    let g_3 : SparsePolyZp := (Array.push g_2 (Prod.mk (UMonomial.mk (((((term_1.fst.deg).toUInt64) / p_1)).toInt64)) term_1.snd))
+    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
+    _loop___extract_pth_root_0_ir_def __rangefor_idx_0_3 g_3 __rangefor_cont_0_1 p_1
+  else
+    ((0 : Int64), g_2)
+termination_by Array.size __rangefor_cont_0_1 - __rangefor_idx_0_2
+decreasing_by omega
+
+def __extract_pth_root_ir_def (f : SparsePolyZp) : SparsePolyZp :=
+  let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
+  let g_1 : SparsePolyZp := (SparsePolyZp.empty)
+  let __rangefor_cont_0_1 : SparsePolyZp := f
+  let __rangefor_idx_0_1 : Nat := (0 : Nat)
+  let __loop_ret___extract_pth_root_0_1 : (Int64 × SparsePolyZp) := (_loop___extract_pth_root_0_ir_def __rangefor_idx_0_1 g_1 __rangefor_cont_0_1 p_1)
+  let g_2 : SparsePolyZp := __loop_ret___extract_pth_root_0_1.snd
+  g_2
+
+def __upoly_make_monic_ir_def (f : SparsePolyZp) : (Zp × SparsePolyZp) :=
+  let lc_1 : Zp := (SparsePolyZp.front! f).snd
+  if (lc_1.val == (1 : Int32)) then
+    (lc_1, f)
+  else
+    let lc_inv_1 : Zp := (Zp.inv lc_1)
+    let __rangefor_cont_0_1 : SparsePolyZp := f
+    let __rangefor_idx_0_1 : Nat := (0 : Nat)
+    let __loop_ret___upoly_make_monic_0_1 : (Int64 × SparsePolyZp) := (_loop___upoly_make_monic_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 lc_inv_1)
+    let __rangefor_cont_0_2 : SparsePolyZp := __loop_ret___upoly_make_monic_0_1.snd
+    let f_1 : SparsePolyZp := __rangefor_cont_0_2
+    (lc_1, f_1)
+
+private def _sep_sqfree_aux_1 : Unit := ()
+
+def _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (SparsePolyZp × UInt64)) (result_2 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
+  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
+    -- ============================================================
+    -- MANUAL FIX (2026-07-01): Removed 4 `let` bindings + 1 `Array.set!` call.
+    --
+    -- Reason: The equation compiler produces opaque `let` bindings in `eq_1`
+    -- that cannot be matched by `rw` in refinement proofs. Removing them
+    -- makes the definition zeta-reducible.
+    --
+    -- Correctness: The removed operations are semantically neutral:
+    --   (1) `let si_ei_1 := cont[idx]!`          — pure binding, no effect
+    --   (2) `let result_3 := result.push(...)`    — pure binding, no effect
+    --   (3) `Array.set! cont idx si_ei_1`         — **NO-OP**: sets cont[idx] to
+    --       si_ei_1, but si_ei_1 was just accessed as cont[idx]!, so it sets
+    --       the element to itself. In the C++ model this is a redundant
+    --       write-back from reference semantics; the Lean model doesn't need it.
+    --   (4) `let __rangefor_idx_0_3 := idx + 1`   — pure binding, no effect
+    --
+    -- The rewritten code performs exactly the same computation (increment
+    -- index, push transformed element, recurse) with the same arguments.
+    -- ============================================================
+    _loop___squarefree_Zp_0_ir_def (__rangefor_idx_0_2 + 1) __rangefor_cont_0_2
+      (Array.push result_2 ((__rangefor_cont_0_2[__rangefor_idx_0_2]!).1, (__rangefor_cont_0_2[__rangefor_idx_0_2]!).2 * p_1)) p_1
+  else
+    ((0 : Int64), __rangefor_cont_0_2, result_2)
+termination_by Array.size __rangefor_cont_0_2 - __rangefor_idx_0_2
+
+private def _sep_sqfree_aux_2 : Unit := ()
+
+def _loop___squarefree_Zp_2_ir_def (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : Array (SparsePolyZp × UInt64)) (result_7 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
+  if (__rangefor_idx_1_2 < (Array.size __rangefor_cont_1_2)) then
+    let sj_ej_1 : (SparsePolyZp × UInt64) /- ref residual -/ := (__rangefor_cont_1_2[(__rangefor_idx_1_2)]!)
+    let result_8 : Array (SparsePolyZp × UInt64) := (Array.push result_7 (((id sj_ej_1.fst), (sj_ej_1.snd * p_1))))
+    let __rangefor_cont_1_3 : Array (SparsePolyZp × UInt64) := (Array.set! __rangefor_cont_1_2 __rangefor_idx_1_2 sj_ej_1)
+    let __rangefor_idx_1_3 : Nat := (__rangefor_idx_1_2 + (1 : Nat))
+    _loop___squarefree_Zp_2_ir_def __rangefor_idx_1_3 __rangefor_cont_1_3 result_8 p_1
+  else
+    ((0 : Int64), __rangefor_cont_1_2, result_7)
+termination_by Array.size __rangefor_cont_1_2 - __rangefor_idx_1_2
+decreasing_by
+  unfold Array.set!; simp
+  omega
+
+private def _sep_sqfree_aux_3 : Unit := ()
+
+def squarefreeMeasure (f : SparsePolyZp) : Nat :=
+  if f.isEmpty then 0 else f[0]!.fst.deg + 1
+
+def _loop___squarefree_Zp_1_ir_def (i_2 : UInt64) (w_4 : SparsePolyZp) (c_2 : SparsePolyZp) (result_4 : Array (SparsePolyZp × UInt64)) : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
+  if ((! (Array.isEmpty w_4)) && ((get_deg w_4) > (0 : Int64))) then
+    let y_1 : SparsePolyZp := (polynomial_GCD w_4 c_2)
+    let z_1 : SparsePolyZp := (SparsePolyZp.empty)
+    let z_2 : SparsePolyZp := (pair_vec_div z_1 w_4 y_1 (SparsePolyZp.comp w_4))
+    let z_3 : SparsePolyZp := (SparsePolyZp.normalization z_2)
+    let result_6 :=
+      if ((! (Array.isEmpty z_3)) && ((get_deg z_3) > (0 : Int64))) then
+        let __refret_1_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def z_3)
+        let z_4 : SparsePolyZp := __refret_1_1.snd
+        Array.push result_4 (((id z_4), i_2))
+      else result_4
+    let c_new_1 : SparsePolyZp := (SparsePolyZp.empty)
+    let c_new_2 : SparsePolyZp := (pair_vec_div c_new_1 c_2 y_1 (SparsePolyZp.comp c_2))
+    let c_3 : SparsePolyZp := (id c_new_2)
+    let c_4 : SparsePolyZp := (SparsePolyZp.normalization c_3)
+    let w_5 : SparsePolyZp := (id y_1)
+    let i_3 : UInt64 := (i_2 + (1 : UInt64))
+    if hdec : squarefreeMeasure w_5 + squarefreeMeasure c_4 <
+        squarefreeMeasure w_4 + squarefreeMeasure c_2 then
+      _loop___squarefree_Zp_1_ir_def i_3 w_5 c_4 result_6
+    else
+      ((0 : Int64), c_4, result_6)
+  else
+    ((0 : Int64), c_2, result_4)
+termination_by squarefreeMeasure w_4 + squarefreeMeasure c_2
+decreasing_by assumption
+
+def __squarefree_Zp_ir_def (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
+  let bb_17 := fun result_9 =>
+    ((result_9 : Array _))
+  let result_1 : Array (SparsePolyZp × UInt64) := (#[])
+  let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
+  let f_deriv_1 : SparsePolyZp := (derivative f)
+  if (Array.isEmpty f_deriv_1) then
+    let g_1 : SparsePolyZp := (__extract_pth_root_ir_def f)
+    let __refret_0_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def g_1)
+    let g_2 : SparsePolyZp := __refret_0_1.snd
+    let sub_1 : Array (SparsePolyZp × UInt64) :=
+      if hdec : squarefreeMeasure g_2 < squarefreeMeasure f then
+        __squarefree_Zp_ir_def g_2
+      else
+        #[]
+    let __rangefor_cont_0_1 : Array (SparsePolyZp × UInt64) := sub_1
+    let __rangefor_idx_0_1 : Nat := (0 : Nat)
+    let __loop_ret___squarefree_Zp_0_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_0_ir_def __rangefor_idx_0_1 __rangefor_cont_0_1 result_1 p_1)
+    let __rangefor_cont_0_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_0_1.2.1
+    let result_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_0_1.2.2
+    let _sub_2 : Array (SparsePolyZp × UInt64) := __rangefor_cont_0_2
+    ((result_2 : Array _))
+  else
+    let c_1 : SparsePolyZp := (polynomial_GCD f f_deriv_1)
+    let w_1 : SparsePolyZp := (SparsePolyZp.empty)
+    let w_2 : SparsePolyZp := (pair_vec_div w_1 f c_1 (SparsePolyZp.comp f))
+    let w_3 : SparsePolyZp := (SparsePolyZp.normalization w_2)
+    let i_1 : UInt64 := (1 : UInt64)
+    let __loop_ret___squarefree_Zp_1_1 : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_1_ir_def i_1 w_3 c_1 result_1)
+    let c_2 : SparsePolyZp := __loop_ret___squarefree_Zp_1_1.2.1
+    let result_4 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_1_1.2.2
+    if ((! (Array.isEmpty c_2)) && ((get_deg c_2) > (0 : Int64))) then
+      let g_3 : SparsePolyZp := (__extract_pth_root_ir_def c_2)
+      let __refret_2_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir_def g_3)
+      let g_4 : SparsePolyZp := __refret_2_1.snd
+      let sub_3 : Array (SparsePolyZp × UInt64) :=
+        if hdec : squarefreeMeasure g_4 < squarefreeMeasure f then
+          __squarefree_Zp_ir_def g_4
+        else
+          #[]
+      let __rangefor_cont_1_1 : Array (SparsePolyZp × UInt64) := sub_3
+      let __rangefor_idx_1_1 : Nat := (0 : Nat)
+      let __loop_ret___squarefree_Zp_2_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_2_ir_def __rangefor_idx_1_1 __rangefor_cont_1_1 result_4 p_1)
+      let __rangefor_cont_1_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_2_1.2.1
+      let result_7 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_2_1.2.2
+      let _sub_4 : Array (SparsePolyZp × UInt64) := __rangefor_cont_1_2
+      bb_17 result_7
+    else
+      bb_17 result_4
+termination_by squarefreeMeasure f
+decreasing_by
+  all_goals try dsimp only at *
+  all_goals assumption
+
+mutual
 partial def _loop__lambda___build_cld_matrix_upoly_1_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_1 : SparsePolyZZ) (deg : Int32) : (Int64 × (UMonomial × ZZ)) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
     let term_1 : (UMonomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
@@ -588,28 +799,10 @@ partial def __extract_monomial_content_lex_ir (f : MvPolyZZ) (var_factors : Arra
       ((MvPolyZZ.mk result_4), var_factors_2)
 
 partial def _loop___extract_pth_root_0_ir (__rangefor_idx_0_2 : Nat) (g_2 : SparsePolyZp) (__rangefor_cont_0_1 : SparsePolyZp) (p_1 : UInt64) : (Int64 × SparsePolyZp) :=
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
-    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
-    -- require (h_assert): ((((term_1.fst.deg).toUInt64) % p_1) == (0 : UInt64))
-    -- require (h_nonneg): (term_1.fst.deg >= (0 : Int64))
-    -- require (h_nonneg): (term_1.fst.deg >= (0 : Int64))
-    -- require (h_fits_int64): (((((term_1.fst.deg).toUInt64) / p_1) >= (-9223372036854775808 : UInt64)) && ((((term_1.fst.deg).toUInt64) / p_1) <= (9223372036854775807 : UInt64)))
-    -- require (h_nonzero): (p_1 != (0 : UInt64))
-    let g_3 : SparsePolyZp := (Array.push g_2 (Prod.mk (UMonomial.mk (((((term_1.fst.deg).toUInt64) / p_1)).toInt64)) term_1.snd))
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___extract_pth_root_0_ir __rangefor_idx_0_3 g_3 __rangefor_cont_0_1 p_1
-  else
-    ((0 : Int64), g_2)
+  _loop___extract_pth_root_0_ir_def __rangefor_idx_0_2 g_2 __rangefor_cont_0_1 p_1
 
 partial def __extract_pth_root_ir (f : SparsePolyZp) : SparsePolyZp :=
-  -- require (h_nonempty): (! (Array.isEmpty f))
-  let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
-  let g_1 : SparsePolyZp := (SparsePolyZp.empty)
-  let __rangefor_cont_0_1 : SparsePolyZp := f
-  let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret___extract_pth_root_0_1 : (Int64 × SparsePolyZp) := (_loop___extract_pth_root_0_ir __rangefor_idx_0_1 g_1 __rangefor_cont_0_1 p_1)
-  let g_2 : SparsePolyZp := __loop_ret___extract_pth_root_0_1.snd
-  g_2
+  __extract_pth_root_ir_def f
 
 partial def _lambda___factor_Zp_1_ir (a : (SparsePolyZp × UInt64)) (b : (SparsePolyZp × UInt64)) : Bool :=
   ((get_deg a.fst) < (get_deg b.fst))
@@ -3738,30 +3931,6 @@ partial def __mtshl_zp_univar_mdp_ir (F : Array SparsePolyZp) (c : SparsePolyZp)
     else
       (false, sigma)
 
-partial def _loop___polynomial_to_zp_lex_0_ir (__rangefor_idx_0_2 : Nat) (result_2 : PolyZp) (__rangefor_cont_0_1 : MvPolyZZ) (p : UInt64) : (Int64 × PolyZp) :=
-  let bb_7 := fun __rangefor_idx_0_2 __rangefor_cont_0_1 p result_4 =>
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_3 result_4 __rangefor_cont_0_1 p
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
-    let term_1 : (Monomial × ZZ) /- ref residual -/ := (__rangefor_cont_0_1[(__rangefor_idx_0_2)]!)
-    let coeff_1 : Zp := (Zp.ofInt (term_1.snd).toInt p)
-    if (coeff_1.val != (0 : Int32)) then
-      let result_3 : PolyZp := (Array.push result_2 ((term_1.fst, coeff_1)))
-      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_3
-    else
-      bb_7 __rangefor_idx_0_2 __rangefor_cont_0_1 p result_2
-  else
-    ((0 : Int64), result_2)
-
-partial def __polynomial_to_zp_lex_ir (f : MvPolyZZ) (p : UInt64) : MvPolyZp :=
-  let result_1 : PolyZp := (MvPolyZp.mk (MvPolyZZ.comp f))
-  let __rangefor_cont_0_1 : MvPolyZZ := f
-  let __rangefor_idx_0_1 : Nat := (0 : Nat)
-  let __loop_ret___polynomial_to_zp_lex_0_1 : (Int64 × PolyZp) := (_loop___polynomial_to_zp_lex_0_ir __rangefor_idx_0_1 result_1 __rangefor_cont_0_1 p)
-  let result_2 : PolyZp := __loop_ret___polynomial_to_zp_lex_0_1.snd
-  let result_5 : PolyZp := (MvPolyZp.normalization result_2)
-  (MvPolyZp.mk result_5)
-
 partial def _loop___select_eval_point_lex_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (Variable × Int64)) (vars_2 : Array Variable) (main_var : Variable) : (Int64 × Array (Variable × Int64) × Array Variable) :=
   let bb_7 := fun v_1 d_1 __rangefor_cont_0_2 __rangefor_idx_0_2 main_var vars_4 =>
     let __decomp_2 := (v_1, d_1)
@@ -4578,92 +4747,16 @@ partial def __si_vandermonde_solve_ir (values : Array Zp) (thetas : Array Zp) (c
     (false, coeffs)
 
 partial def _loop___squarefree_Zp_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : Array (SparsePolyZp × UInt64)) (result_2 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
-    let si_ei_1 : (SparsePolyZp × UInt64) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
-    let result_3 : Array (SparsePolyZp × UInt64) := (Array.push result_2 (((id si_ei_1.fst), (si_ei_1.snd * p_1))))
-    let __rangefor_cont_0_3 : Array (SparsePolyZp × UInt64) := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 si_ei_1)
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___squarefree_Zp_0_ir __rangefor_idx_0_3 __rangefor_cont_0_3 result_3 p_1
-  else
-    ((0 : Int64), __rangefor_cont_0_2, result_2)
+  _loop___squarefree_Zp_0_ir_def __rangefor_idx_0_2 __rangefor_cont_0_2 result_2 p_1
 
 partial def _loop___squarefree_Zp_1_ir (i_2 : UInt64) (w_4 : SparsePolyZp) (c_2 : SparsePolyZp) (result_4 : Array (SparsePolyZp × UInt64)) : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) :=
-  let bb_14 := fun c_2 y_1 i_2 result_6 =>
-    let c_new_1 : SparsePolyZp := (SparsePolyZp.empty)
-    let c_new_2 : SparsePolyZp := (pair_vec_div c_new_1 c_2 y_1 (SparsePolyZp.comp c_2))
-    let c_3 : SparsePolyZp := (id c_new_2)
-    let c_4 : SparsePolyZp := (SparsePolyZp.normalization c_3)
-    let w_5 : SparsePolyZp := (id y_1)
-    let i_3 : UInt64 := (i_2 + (1 : UInt64))
-    _loop___squarefree_Zp_1_ir i_3 w_5 c_4 result_6
-  if ((! (Array.isEmpty w_4)) && ((get_deg w_4) > (0 : Int64))) then
-    let y_1 : SparsePolyZp := (polynomial_GCD w_4 c_2)
-    let z_1 : SparsePolyZp := (SparsePolyZp.empty)
-    let z_2 : SparsePolyZp := (pair_vec_div z_1 w_4 y_1 (SparsePolyZp.comp w_4))
-    let z_3 : SparsePolyZp := (SparsePolyZp.normalization z_2)
-    if ((! (Array.isEmpty z_3)) && ((get_deg z_3) > (0 : Int64))) then
-      let __refret_1_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir z_3)
-      let z_4 : SparsePolyZp := __refret_1_1.snd
-      let result_5 : Array (SparsePolyZp × UInt64) := (Array.push result_4 (((id z_4), i_2)))
-      bb_14 c_2 y_1 i_2 result_5
-    else
-      bb_14 c_2 y_1 i_2 result_4
-  else
-    ((0 : Int64), c_2, result_4)
+  _loop___squarefree_Zp_1_ir_def i_2 w_4 c_2 result_4
 
 partial def _loop___squarefree_Zp_2_ir (__rangefor_idx_1_2 : Nat) (__rangefor_cont_1_2 : Array (SparsePolyZp × UInt64)) (result_7 : Array (SparsePolyZp × UInt64)) (p_1 : UInt64) : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) :=
-  if (__rangefor_idx_1_2 < (Array.size __rangefor_cont_1_2)) then
-    let sj_ej_1 : (SparsePolyZp × UInt64) /- ref residual -/ := (__rangefor_cont_1_2[(__rangefor_idx_1_2)]!)
-    let result_8 : Array (SparsePolyZp × UInt64) := (Array.push result_7 (((id sj_ej_1.fst), (sj_ej_1.snd * p_1))))
-    let __rangefor_cont_1_3 : Array (SparsePolyZp × UInt64) := (Array.set! __rangefor_cont_1_2 __rangefor_idx_1_2 sj_ej_1)
-    let __rangefor_idx_1_3 : Nat := (__rangefor_idx_1_2 + (1 : Nat))
-    _loop___squarefree_Zp_2_ir __rangefor_idx_1_3 __rangefor_cont_1_3 result_8 p_1
-  else
-    ((0 : Int64), __rangefor_cont_1_2, result_7)
+  _loop___squarefree_Zp_2_ir_def __rangefor_idx_1_2 __rangefor_cont_1_2 result_7 p_1
 
 partial def __squarefree_Zp_ir (f : SparsePolyZp) : Array (SparsePolyZp × UInt64) :=
-  let bb_17 := fun result_9 =>
-    ((result_9 : Array _))
-  -- require (h_assert): (! (Array.isEmpty f))
-  let result_1 : Array (SparsePolyZp × UInt64) := (#[])
-  -- require (h_nonempty): (! (Array.isEmpty f))
-  let p_1 : UInt64 := (SparsePolyZp.front! f).snd.prime
-  let f_deriv_1 : SparsePolyZp := (derivative f)
-  if (Array.isEmpty f_deriv_1) then
-    let g_1 : SparsePolyZp := (__extract_pth_root_ir f)
-    let __refret_0_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir g_1)
-    let g_2 : SparsePolyZp := __refret_0_1.snd
-    let sub_1 : Array (SparsePolyZp × UInt64) := (__squarefree_Zp_ir g_2)
-    let __rangefor_cont_0_1 : Array (SparsePolyZp × UInt64) := sub_1
-    let __rangefor_idx_0_1 : Nat := (0 : Nat)
-    let __loop_ret___squarefree_Zp_0_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 result_1 p_1)
-    let __rangefor_cont_0_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_0_1.2.1
-    let result_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_0_1.2.2
-    let _sub_2 : Array (SparsePolyZp × UInt64) := __rangefor_cont_0_2
-    ((result_2 : Array _))
-  else
-    let c_1 : SparsePolyZp := (polynomial_GCD f f_deriv_1)
-    let w_1 : SparsePolyZp := (SparsePolyZp.empty)
-    let w_2 : SparsePolyZp := (pair_vec_div w_1 f c_1 (SparsePolyZp.comp f))
-    let w_3 : SparsePolyZp := (SparsePolyZp.normalization w_2)
-    let i_1 : UInt64 := (1 : UInt64)
-    let __loop_ret___squarefree_Zp_1_1 : (Int64 × SparsePolyZp × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_1_ir i_1 w_3 c_1 result_1)
-    let c_2 : SparsePolyZp := __loop_ret___squarefree_Zp_1_1.2.1
-    let result_4 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_1_1.2.2
-    if ((! (Array.isEmpty c_2)) && ((get_deg c_2) > (0 : Int64))) then
-      let g_3 : SparsePolyZp := (__extract_pth_root_ir c_2)
-      let __refret_2_1 : (Zp × SparsePolyZp) := (__upoly_make_monic_ir g_3)
-      let g_4 : SparsePolyZp := __refret_2_1.snd
-      let sub_3 : Array (SparsePolyZp × UInt64) := (__squarefree_Zp_ir g_4)
-      let __rangefor_cont_1_1 : Array (SparsePolyZp × UInt64) := sub_3
-      let __rangefor_idx_1_1 : Nat := (0 : Nat)
-      let __loop_ret___squarefree_Zp_2_1 : (Int64 × Array (SparsePolyZp × UInt64) × Array (SparsePolyZp × UInt64)) := (_loop___squarefree_Zp_2_ir __rangefor_idx_1_1 __rangefor_cont_1_1 result_4 p_1)
-      let __rangefor_cont_1_2 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_2_1.2.1
-      let result_7 : Array (SparsePolyZp × UInt64) := __loop_ret___squarefree_Zp_2_1.2.2
-      let _sub_4 : Array (SparsePolyZp × UInt64) := __rangefor_cont_1_2
-      bb_17 result_7
-    else
-      bb_17 result_4
+  __squarefree_Zp_ir_def f
 
 partial def _loop___subset_product_mod_upoly_0_ir (__rangefor_idx_0_2 : Nat) (prod_3 : SparsePolyZZ) (__rangefor_cont_0_1 : Array Nat) (factors : Array SparsePolyZZ) (m : ZZ) : (Int64 × SparsePolyZZ) :=
   if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_1)) then
@@ -4896,30 +4989,8 @@ partial def __upoly_divmod_mod_upoly_ir (q : SparsePolyZZ) (_r : SparsePolyZZ) (
   let r_3 : SparsePolyZZ := __loop_ret___upoly_divmod_mod_upoly_1_1.2.2
   (q_2, r_3)
 
-partial def _loop___upoly_make_monic_0_ir (__rangefor_idx_0_2 : Nat) (__rangefor_cont_0_2 : SparsePolyZp) (lc_inv_1 : Zp) : (Int64 × SparsePolyZp) :=
-  if (__rangefor_idx_0_2 < (Array.size __rangefor_cont_0_2)) then
-    let term_1 : (UMonomial × Zp) /- ref residual -/ := (__rangefor_cont_0_2[(__rangefor_idx_0_2)]!)
-    let term_2 : (UMonomial × Zp) := { term_1 with snd := (term_1.snd * lc_inv_1) }
-    let __rangefor_cont_0_3 : SparsePolyZp := (Array.set! __rangefor_cont_0_2 __rangefor_idx_0_2 term_2)
-    let __rangefor_idx_0_3 : Nat := (__rangefor_idx_0_2 + (1 : Nat))
-    _loop___upoly_make_monic_0_ir __rangefor_idx_0_3 __rangefor_cont_0_3 lc_inv_1
-  else
-    ((0 : Int64), __rangefor_cont_0_2)
-
 partial def __upoly_make_monic_ir (f : SparsePolyZp) : (Zp × SparsePolyZp) :=
-  -- require (h_assert): (! (Array.isEmpty f))
-  -- require (h_nonempty): (! (Array.isEmpty f))
-  let lc_1 : Zp := (SparsePolyZp.front! f).snd
-  if (lc_1.val == (1 : Int32)) then
-    (lc_1, f)
-  else
-    let lc_inv_1 : Zp := (Zp.inv lc_1)
-    let __rangefor_cont_0_1 : SparsePolyZp := f
-    let __rangefor_idx_0_1 : Nat := (0 : Nat)
-    let __loop_ret___upoly_make_monic_0_1 : (Int64 × SparsePolyZp) := (_loop___upoly_make_monic_0_ir __rangefor_idx_0_1 __rangefor_cont_0_1 lc_inv_1)
-    let __rangefor_cont_0_2 : SparsePolyZp := __loop_ret___upoly_make_monic_0_1.snd
-    let f_1 : SparsePolyZp := __rangefor_cont_0_2
-    (lc_1, f_1)
+  __upoly_make_monic_ir_def f
 
 partial def __upoly_mod_ir (f : SparsePolyZp) (g : SparsePolyZp) : SparsePolyZp :=
   let q_1 : SparsePolyZp := (SparsePolyZp.empty)

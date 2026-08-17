@@ -27,7 +27,7 @@ variable {p : ℕ} [hp : Fact (Nat.Prime p)]
 -- ============================================================
 
 /-- Monic g 整除 f 且 deg(g) > 0 且 f ≠ 0 → deg(f /ₘ g) < deg(f) -/
-private lemma natDegree_divByMonic_lt
+theorem ddf_natDegree_divByMonic_lt
     (f g : Polynomial (ZMod p)) (hg : Monic g)
     (hdvd : g ∣ f) (hg_pos : 0 < g.natDegree) (hf : f ≠ 0) :
     (f /ₘ g).natDegree < f.natDegree := by
@@ -75,7 +75,7 @@ decreasing_by
       rw [hgd_def]; exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right _ _)
     by_cases hfs : f_star = 0
     · simp [hfs] at _hterm ⊢; omega
-    · have := natDegree_divByMonic_lt f_star gd_val hgd_monic hgd_dvd hgd_pos hfs
+    · have := ddf_natDegree_divByMonic_lt f_star gd_val hgd_monic hgd_dvd hgd_pos hfs
       omega
   · -- No-split case: same f_star, d → d+1
     omega
@@ -96,7 +96,7 @@ private lemma monic_normalize_of_ne_zero
   Polynomial.monic_normalize hf
 
 /-- Monic 的 divByMonic 给出精确乘积分解 -/
-private lemma monic_divByMonic_mul_eq
+theorem ddf_monic_divByMonic_mul_eq
     (f g : Polynomial (ZMod p)) (hg : Monic g) (hdvd : g ∣ f) :
     g * (f /ₘ g) = f := by
   have h0 : f %ₘ g = 0 := (modByMonic_eq_zero_iff_dvd hg).mpr hdvd
@@ -125,7 +125,7 @@ private lemma prime_dvd_list_prod
 /-- h-congruence 递推：若 f_star ∣ (h - X^{p^{d-1}})，
     则 f_star ∣ (h^p %ₘ f_star - X^{p^d})。
     证明：(a-b) | (a^p - b^p) + modByMonic 分解 -/
-private lemma h_cong_step
+theorem ddf_h_cong_step
     (h f_star : Polynomial (ZMod p)) (d : ℕ) (hd : d ≥ 1)
     (_hmonic : Monic f_star)
     (hcong : f_star ∣ (h - X ^ (p ^ (d - 1)))) :
@@ -156,7 +156,7 @@ private lemma h_cong_step
 
 /-- 核心桥接：gd 的不可约因子恰为 f_star 中度 = d 的不可约因子。
     q ∣ gd ↔ q ∣ f_star ∧ q.natDegree = d -/
-private lemma gd_irred_characterization
+theorem ddf_gd_irred_characterization
     (f_star : Polynomial (ZMod p))
     (h' : Polynomial (ZMod p))
     (d : ℕ) (hd : d ≥ 1)
@@ -328,14 +328,14 @@ theorem ddfLoop_correct
     have hgd_monic : Monic gdv := Polynomial.monic_normalize hgcd_ne
     -- F3: f_star = gd * f_new
     have hF3 : fv = gdv * (fv /ₘ gdv) :=
-      (monic_divByMonic_mul_eq fv gdv hgd_monic hgd_dvd).symm
+      (ddf_monic_divByMonic_mul_eq fv gdv hgd_monic hgd_dvd).symm
     -- F4: Monic f_new
     have hfn_monic : Monic (fv /ₘ gdv) := by
       have hfn_ne : fv /ₘ gdv ≠ 0 := by
         intro h; rw [h, mul_zero] at hF3; exact hfv_ne hF3
       exact Polynomial.Monic.of_mul_monic_left hgd_monic (hF3 ▸ hmonic)
     -- h-congruence for the new d
-    have hcong_d := h_cong_step hv fv dv hd hmonic hcong
+    have hcong_d := ddf_h_cong_step hv fv dv hd hmonic hcong
     -- Apply IH with updated invariants
     apply ih
     · -- P0: d+1 ≥ 1
@@ -370,7 +370,7 @@ theorem ddfLoop_correct
       by_contra hlt; push_neg at hlt
       have heq : q.natDegree = dv := by omega
       -- q ∣ f_star ∧ deg = d → q ∣ gd (by characterization)
-      have hq_gd := (gd_irred_characterization fv h'v dv hd hmonic hsqf hcong_d hfac q hq).mpr
+      have hq_gd := (ddf_gd_irred_characterization fv h'v dv hd hmonic hsqf hcong_d hfac q hq).mpr
         ⟨hqfs, heq⟩
       -- q ∣ gd and q ∣ f_new → q² ∣ f_star (squarefree contradiction)
       have hq_sq : q * q ∣ fv := by
@@ -383,7 +383,7 @@ theorem ddfLoop_correct
       · rw [h_new]; simp
         refine ⟨dvd_trans hgd_dvd ⟨_, hprod⟩, hgd_monic, ?_⟩
         intro q hq hqdvd
-        exact ((gd_irred_characterization fv h'v dv hd hmonic hsqf hcong_d hfac q hq).mp hqdvd).2
+        exact ((ddf_gd_irred_characterization fv h'v dv hd hmonic hsqf hcong_d hfac q hq).mp hqdvd).2
   -- Case 4: No-split with IH
   · rename_i hv fv dv av hterm h'v gdv hnsplit ihv
     intro hd hprod hcong hmonic hsqf hfac hacc
@@ -393,7 +393,7 @@ theorem ddfLoop_correct
     apply ihv
     · omega                                    -- P0
     · exact hprod                              -- P1
-    · exact h_cong_step hv fv dv hd hmonic hcong  -- P2
+    · exact ddf_h_cong_step hv fv dv hd hmonic hcong  -- P2
     · exact hmonic                             -- P3
     · exact hsqf                               -- P4
     · -- P5: ∀ q irred, q ∣ f_star → q.natDegree ≥ d+1
@@ -401,8 +401,8 @@ theorem ddfLoop_correct
       by_contra hlt; push_neg at hlt
       have hge := hfac q hq hqfs
       have heq : q.natDegree = dv := by omega
-      have hcong_d := h_cong_step hv fv dv hd hmonic hcong
-      have hchar := (gd_irred_characterization fv ((hv ^ p) %ₘ fv)
+      have hcong_d := ddf_h_cong_step hv fv dv hd hmonic hcong
+      have hchar := (ddf_gd_irred_characterization fv ((hv ^ p) %ₘ fv)
         dv hd hmonic hsqf hcong_d hfac q hq).mpr ⟨hqfs, heq⟩
       -- hchar : q ∣ gdv, hnsplit : ¬(0 < gdv.natDegree)
       -- gdv ≠ 0 (f_star ≠ 0 → gcd_dvd_right → gcd ≠ 0 → normalize ≠ 0)

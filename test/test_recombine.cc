@@ -1,4 +1,4 @@
-#include <clpoly/clpoly.hh>
+#include <clpoly/polynomial_factorize_univar.hh>
 #include "clpoly_test.hh"
 
 using namespace clpoly;
@@ -83,6 +83,18 @@ int main() {
     // ========================================
     // 辅助函数测试
     // ========================================
+
+    CLPOLY_TEST("__hensel_factor_count_fits int boundary");
+    {
+        const size_t int_max = static_cast<size_t>(
+            std::numeric_limits<int>::max());
+        CLPOLY_ASSERT(__hensel_factor_count_fits(0));
+        CLPOLY_ASSERT(__hensel_factor_count_fits(2));
+        CLPOLY_ASSERT(__hensel_factor_count_fits(int_max));
+        CLPOLY_ASSERT(!__hensel_factor_count_fits(int_max + 1));
+        CLPOLY_ASSERT(!__hensel_factor_count_fits(
+            std::numeric_limits<size_t>::max()));
+    }
 
     CLPOLY_TEST("__upoly_norm_l1");
     {
@@ -675,6 +687,24 @@ int main() {
         auto result = full_vanhoeij_pipeline(f, 5);
         CLPOLY_ASSERT_EQ(result.size(), (size_t)2);
         CLPOLY_ASSERT(verify_ZZ_factorization(f, result));
+    }
+
+    CLPOLY_TEST("van Hoeij groups modular factors into irreducible ZZ factors");
+    {
+        // Both x^2+1 and x^2+2 split modulo 17, so the four lifted linear
+        // factors must be grouped back into two genuine integer factors.
+        auto f = make_upoly_zz({{4, 1}, {2, 3}, {0, 2}});
+        auto result = full_vanhoeij_pipeline(f, 17);
+        CLPOLY_ASSERT_EQ(result.size(), (size_t)2);
+        CLPOLY_ASSERT(verify_ZZ_factorization(f, result));
+    }
+
+    CLPOLY_TEST("full-precision reduced cardinality requires safety net");
+    {
+        CLPOLY_ASSERT(__needs_zassenhaus_safety_net(2, 3, true));
+        CLPOLY_ASSERT(!__needs_zassenhaus_safety_net(2, 3, false));
+        CLPOLY_ASSERT(!__needs_zassenhaus_safety_net(3, 3, true));
+        CLPOLY_ASSERT(__needs_zassenhaus_safety_net(0, 7, true));
     }
 
     return clpoly_test::test_summary();

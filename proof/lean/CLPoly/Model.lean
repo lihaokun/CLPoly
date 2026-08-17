@@ -1,3 +1,5 @@
+import Mathlib.Data.Nat.Prime.Basic
+
 /-
   CLPoly 可信基类 Lean 模型
 
@@ -8,8 +10,9 @@
 
 -- Model.lean 来自 v1 cpp2lean/clpoly_model.lean，借用其隐式变量风格。
 -- proof/lean lakefile 全局禁用 autoImplicit，本文件局部启用。
--- 不 import Mathlib：Mathlib 的 `Nat.log` 与 cpp2lean Pass 5 emit 的 `Nat.log`
--- 冲突（已弃用，改 emit `Float.log`）。需要的数学引理见 CLPoly.Math.Bigint。
+-- The former generated `Nat.log` collision was removed when Pass 5 switched
+-- to `Float.log`; the focused prime import above supplies the proved
+-- `Nat.Prime` predicate used by uint64 prime enumeration.
 set_option autoImplicit true
 
 -- ============================================================
@@ -48,11 +51,38 @@ instance : Mul Zp where mul a b :=
 instance : Neg Zp where neg a := ⟨(a.prime - a.val) % a.prime, a.prime⟩
 
 -- 扩展欧几里得：gcd(a, b) = a*x + b*y，返回 (gcd, x)
-partial def extGcdAux (old_r r old_s s : Int) : Int × Int :=
-  if r == 0 then (old_r, old_s)
+def extGcdAux (old_r r old_s s : Int) : Int × Int :=
+  if h : r == 0 then (old_r, old_s)
   else
     let q := old_r / r
+    have hr_ne_zero : r ≠ 0 := by
+      intro hzero
+      apply h
+      simp [hzero]
+    have h_decr : (old_r - q * r).natAbs < r.natAbs := by
+      have hq : old_r - q * r = old_r % r := by
+        dsimp [q]
+        have h := Int.ediv_add_emod old_r r
+        -- h: r * (old_r / r) + old_r % r = old_r
+        calc
+          old_r - (old_r / r) * r = (r * (old_r / r) + old_r % r) - (old_r / r) * r := by rw [h]
+          _ = (r * (old_r / r) + old_r % r) - r * (old_r / r) := by
+            rw [Int.mul_comm (old_r / r) r, Int.mul_comm r (old_r / r)]
+          _ = old_r % r := by
+            rw [Int.sub_eq_add_neg, Int.add_comm (r * (old_r / r)) (old_r % r), Int.add_assoc,
+              Int.add_right_neg (r * (old_r / r)), Int.add_zero]
+      rw [hq]
+      have h_nonneg : 0 ≤ old_r % r := Int.emod_nonneg old_r hr_ne_zero
+      have h_mod_lt : old_r % r < (r.natAbs : Int) := Int.emod_lt old_r hr_ne_zero
+      have h_natAbs_lt : (old_r % r).natAbs < r.natAbs := by
+        have h_eq : ((old_r % r).natAbs : Int) = old_r % r :=
+          Int.natAbs_of_nonneg h_nonneg
+        have h' : ((old_r % r).natAbs : Int) < (r.natAbs : Int) := by
+          rw [h_eq]; exact h_mod_lt
+        exact (Int.ofNat_lt.mp h')
+      exact h_natAbs_lt
     extGcdAux r (old_r - q * r) s (old_s - q * s)
+termination_by r.natAbs
 
 def modInv (a p : UInt64) : UInt64 :=
   if a == 0 then 0
@@ -85,6 +115,9 @@ instance : Coe Int Zp where coe i := { val := i.toNat.toUInt64, prime := 1 }
 
 abbrev ZZ := Int
 
+instance : Coe Int64 ZZ where
+  coe x := x.toInt
+
 -- ============================================================
 -- §3. UMonomial：单变量单项式
 -- ============================================================
@@ -94,6 +127,719 @@ abbrev ZZ := Int
 structure UMonomial where
   deg : Nat
 deriving Repr, Inhabited, BEq
+
+/-- Exact unsigned 128-bit machine word used by the dense C++ arithmetic. -/
+abbrev UInt128 := BitVec 128
+
+/-- Zero-extension of an exact 64-bit machine word to 128 bits. -/
+def uint128_of_uint64 (x : UInt64) : UInt128 :=
+  BitVec.ofNat 128 x.toNat
+
+/-- Low 64 bits of an unsigned 128-bit word. -/
+def uint128_lo (x : UInt128) : UInt64 := UInt64.ofNat x.toNat
+
+/-- Exact 64-bit count-leading-zeros operation used by `__builtin_clzll`.
+The C++ call is guarded against zero; this total definition also assigns the
+conventional bit width `64` to zero. -/
+def uint64_clz (x : UInt64) : Int32 :=
+  Int32.ofNat x.toBitVec.clz.toNat
+
+/-- Clang keeps the dense arithmetic shift count as `uint32_t`; Lean's
+machine-word shift instances use `Nat`, so expose the exact conversion. -/
+instance : HShiftLeft UInt64 UInt32 UInt64 where
+  hShiftLeft x n := x <<< n.toUInt64
+
+instance : HShiftRight UInt64 UInt32 UInt64 where
+  hShiftRight x n := x >>> n.toUInt64
+
+/-- Termination fact for the C++ descending `int64_t` loop.
+
+Proof sketch: the loop guard gives `0 ≤ i`.  Hence subtracting one stays in
+the signed 64-bit interval (including the endpoint `-1`), so machine
+subtraction agrees with integer subtraction.  The nonnegative measure
+`max (i + 1) 0` therefore drops by exactly one. -/
+theorem int64_sub_one_measure_lt (i : Int64) (h : i >= (0 : Int64)) :
+    (((i - (1 : Int64)).toInt + 1).toNat < (i.toInt + 1).toNat) := by
+  rw [Int64.toInt_sub]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hlo : 0 ≤ i.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hlo : 0 ≤ i.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hi := Int64.toInt_lt i
+    omega
+
+/-- Termination fact for an ascending signed 64-bit loop guarded by `i < d`.
+
+The guard implies `i` is strictly below the signed upper endpoint because
+`d` itself is representable.  Thus machine addition by one agrees with
+integer addition, and the nonnegative gap to `d` drops by one. -/
+theorem int64_add_one_gap_lt (i d : Int64) (h : i < d) :
+    (d.toInt - (i + (1 : Int64)).toInt).toNat <
+      (d.toInt - i.toInt).toNat := by
+  rw [Int64.toInt_add]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hid : i.toInt < d.toInt := by
+      simpa [Int64.lt_iff_toInt_lt] using h
+    omega
+  · have hlo := Int64.le_toInt i
+    omega
+  · have hdi := Int64.toInt_lt d
+    have hid : i.toInt < d.toInt := by
+      simpa [Int64.lt_iff_toInt_lt] using h
+    omega
+
+/-- Termination fact for the inclusive C++ loop `for (j = 0; j <= d; ++j)`.
+
+Unlike the strict-guarded variant, the inclusive guard needs the reachable
+representation invariant `d < INT64_MAX`; otherwise `j = d = INT64_MAX`
+would wrap.  Under that invariant machine addition is ordinary integer
+addition and the inclusive gap `d-j+1` decreases by one. -/
+theorem int64_add_one_inclusive_gap_lt (j d : Int64)
+    (h : j <= d) (hd : d.toInt < 9223372036854775807) :
+    (d.toInt - (j + (1 : Int64)).toInt + 1).toNat <
+      (d.toInt - j.toInt + 1).toNat := by
+  rw [Int64.toInt_add]
+  have hone : (1 : Int64).toInt = 1 := by decide
+  rw [hone]
+  rw [Int.bmod_eq_of_le]
+  · have hjd : j.toInt ≤ d.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+  · have hlo := Int64.le_toInt j
+    omega
+  · have hjd : j.toInt ≤ d.toInt := by
+      simpa [Int64.le_iff_toInt_le] using h
+    omega
+
+/-- Termination fact for the C++ binary-exponentiation loop.
+
+Proof sketch: a positive integer has positive absolute value; division by the
+positive constant two commutes with `natAbs`, and natural-number division by
+two is strictly smaller than every positive dividend. -/
+theorem int_natAbs_ediv_two_lt (e : Int) (h : 0 < e) :
+    (e / 2).natAbs < e.natAbs := by
+  rw [Int.natAbs_ediv_of_nonneg (Int.le_of_lt h)]
+  have he : 0 < e.natAbs := Int.natAbs_pos.mpr (by omega)
+  simpa using Nat.div_lt_self he (by decide : 1 < 2)
+
+/-- State carried by the C++ `dense_upoly_zp` implementation.  This is only
+the L1 representation type; its constructors and algorithms are translated
+from the corresponding C++ member bodies into generated namespaces. -/
+structure DenseUPolyZp where
+  _coeffs : Array UInt64 := #[]
+  _p : UInt64 := 0
+  _ninv : UInt64 := 0
+  _norm : UInt32 := 0
+deriving Repr, Inhabited, BEq
+
+/-- Exact L1 representation of `dense_upoly_zp::word3`, the three-limb lazy
+accumulator used by the C++ multiplication and division routines. -/
+structure Word3 where
+  lo : UInt64 := 0
+  mid : UInt64 := 0
+  hi : UInt64 := 0
+deriving Repr, Inhabited, BEq
+
+/-- Address identity for C++ raw buffers.  `limbOffset` is measured in
+64-bit limbs, so reinterpretation between limb and `word3` pointers preserves
+the underlying address. -/
+structure RawPtr (α : Type) where
+  region : Option Nat := none
+  limbOffset : Nat
+deriving Repr, Inhabited, BEq
+
+/-- Heap backing the dense raw-pointer API.  Every C++ allocation occupies a
+distinct region and all pointer reads/writes explicitly thread this state. -/
+structure RawHeap where
+  regions : Array (Array UInt64) := #[]
+deriving Repr, Inhabited, BEq
+
+/-- Exact field layout of `dense_upoly_zp::hgcd_mat`.  The C arrays have
+length four; `HgcdMat.Valid` below records that representation invariant. -/
+structure HgcdMat where
+  poly : Array (RawPtr UInt64) := Array.replicate 4 default
+  len : Array Nat := Array.replicate 4 0
+deriving Repr, Inhabited, BEq
+
+def HgcdMat.Valid (m : HgcdMat) : Prop :=
+  m.poly.size = 4 ∧ m.len.size = 4
+
+def HgcdMat.uninit : HgcdMat :=
+  { poly := Array.replicate 4 (RawPtr.mk none 0)
+    len := Array.replicate 4 0 }
+
+inductive RawFault where
+  | assertionFailure
+  | invalidPointer
+  | invalidRegion (region : Nat)
+  | outOfBounds (region limbOffset : Nat)
+  | arithmeticOverflow
+  | arithmeticDomain
+deriving Repr, Inhabited, BEq
+
+abbrev RawExec (α : Type) := Except RawFault α
+
+class RawLimbWidth (α : Type) where
+  width : Nat
+
+instance : RawLimbWidth UInt64 where width := 1
+instance : RawLimbWidth Word3 where width := 3
+
+namespace RawPtr
+
+def add [RawLimbWidth α] (p : RawPtr α) (n : Nat) : RawPtr α :=
+  { p with limbOffset := p.limbOffset + n * RawLimbWidth.width α }
+
+def reinterpret (p : RawPtr α) : RawPtr β :=
+  { region := p.region, limbOffset := p.limbOffset }
+
+def sameAddress (p : RawPtr α) (q : RawPtr β) : Bool :=
+  p.region == q.region && p.limbOffset == q.limbOffset
+
+end RawPtr
+
+namespace RawHeap
+
+/-- `ptr[0..length)` denotes an allocated C++ limb slice.  This predicate is
+the raw-side representation invariant used to rule out UB before relating a
+buffer to an L2 polynomial. -/
+def ValidU64Slice (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat) : Prop :=
+  ∃ regionId, ptr.region = some regionId ∧
+    ∃ hr : regionId < heap.regions.size,
+      ptr.limbOffset + length ≤ heap.regions[regionId].size
+
+def readU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat) :
+    RawExec UInt64 :=
+  match ptr.region with
+  | none => .error .invalidPointer
+  | some regionId =>
+    if hr : regionId < heap.regions.size then
+      let region := heap.regions[regionId]
+      let offset := ptr.limbOffset + index
+      if hb : offset < region.size then
+        .ok region[offset]
+      else
+        .error (.outOfBounds regionId offset)
+    else
+      .error (.invalidRegion regionId)
+
+theorem readU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length index : Nat) (hvalid : ValidU64Slice heap ptr length)
+    (hindex : index < length) :
+    ∃ value, heap.readU64 ptr index = .ok value := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  have hoffset : ptr.limbOffset + index < heap.regions[regionId].size := by
+    omega
+  refine ⟨heap.regions[regionId][ptr.limbOffset + index], ?_⟩
+  simp only [readU64, hregion, hr, dif_pos, hoffset]
+
+theorem readU64_add (heap : RawHeap) (ptr : RawPtr UInt64)
+    (start index : Nat) :
+    heap.readU64 (RawPtr.add ptr start) index =
+      heap.readU64 ptr (start + index) := by
+  have hwidth : RawLimbWidth.width UInt64 = 1 := rfl
+  have haddress : ptr.limbOffset + start * RawLimbWidth.width UInt64 + index =
+      ptr.limbOffset + (start + index) := by
+    rw [hwidth]
+    omega
+  simp [readU64, RawPtr.add, haddress]
+
+def writeU64 (heap : RawHeap) (ptr : RawPtr UInt64) (index : Nat)
+    (value : UInt64) : RawExec RawHeap :=
+  match ptr.region with
+  | none => .error .invalidPointer
+  | some regionId =>
+    if hr : regionId < heap.regions.size then
+      let region := heap.regions[regionId]
+      let offset := ptr.limbOffset + index
+      if hb : offset < region.size then
+        let region' := region.set offset value hb
+        .ok { heap with regions := heap.regions.set regionId region' hr }
+      else
+        .error (.outOfBounds regionId offset)
+    else
+      .error (.invalidRegion regionId)
+
+theorem writeU64_of_valid (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length index : Nat) (value : UInt64)
+    (hvalid : ValidU64Slice heap ptr length) (hindex : index < length) :
+    ∃ heap', heap.writeU64 ptr index value = .ok heap' := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  have hoffset : ptr.limbOffset + index < heap.regions[regionId].size := by
+    omega
+  let region' := heap.regions[regionId].set
+    (ptr.limbOffset + index) value hoffset
+  let heap' : RawHeap :=
+    { heap with regions := heap.regions.set regionId region' hr }
+  refine ⟨heap', ?_⟩
+  simp only [writeU64, hregion, hr, dif_pos, hoffset]
+  simp [heap', region']
+
+/-- A successful raw limb write is observed at the same address by the next
+read.  The statement is failure-aware and derives every bound from the
+successful `writeU64` execution itself. -/
+theorem readU64_writeU64_same (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap') :
+    heap'.readU64 ptr index = .ok value := by
+  cases hregion : ptr.region with
+  | none => simp [writeU64, hregion] at hwrite
+  | some regionId =>
+    simp only [writeU64, hregion] at hwrite
+    split at hwrite
+    next hr =>
+      split at hwrite
+      next hoffset =>
+        let region' := heap.regions[regionId].set
+          (ptr.limbOffset + index) value hoffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set regionId region' hr }
+        have heq : heap' = updated := Except.ok.inj hwrite.symm
+        subst heap'
+        dsimp [updated, region']
+        simp [readU64, hregion, hr, hoffset]
+      next => cases hwrite
+    next => cases hwrite
+
+/-- A successful raw write preserves a successful read at every distinct
+absolute limb address. -/
+theorem readU64_writeU64_ne (heap heap' : RawHeap)
+    (dst src : RawPtr UInt64) (writeIndex readIndex : Nat)
+    (value old : UInt64)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap')
+    (hread : heap.readU64 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region ∨
+      dst.limbOffset + writeIndex ≠ src.limbOffset + readIndex) :
+    heap'.readU64 src readIndex = .ok old := by
+  cases hd : dst.region with
+  | none => simp [writeU64, hd] at hwrite
+  | some dstRegion =>
+    simp only [writeU64, hd] at hwrite
+    split at hwrite
+    next hdValid =>
+      split at hwrite
+      next hdOffset =>
+        let region' := heap.regions[dstRegion].set
+          (dst.limbOffset + writeIndex) value hdOffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set dstRegion region' hdValid }
+        have heq : heap' = updated := Except.ok.inj hwrite.symm
+        subst heap'
+        cases hs : src.region with
+        | none => simp [readU64, hs] at hread
+        | some srcRegion =>
+          simp only [readU64, hs] at hread ⊢
+          split at hread
+          next hsValid =>
+            split at hread
+            next hsOffset =>
+              have hold : heap.regions[srcRegion][src.limbOffset + readIndex] =
+                  old := Except.ok.inj hread
+              by_cases hregions : srcRegion = dstRegion
+              · subst srcRegion
+                have hoffset : dst.limbOffset + writeIndex ≠
+                    src.limbOffset + readIndex := by
+                  rcases hne with hneRegion | hneOffset
+                  · exact False.elim (hneRegion (by simpa [hd, hs]))
+                  · exact hneOffset
+                dsimp [updated, region']
+                simp only [Array.size_set, hdValid, dif_pos,
+                  Array.getElem_set_self]
+                simp only [hsOffset, dif_pos]
+                rw [Array.getElem_set_ne hdOffset hsOffset hoffset]
+                exact congrArg Except.ok hold
+              · dsimp [updated, region']
+                have hsValid' : srcRegion <
+                    (heap.regions.set dstRegion
+                      (heap.regions[dstRegion].set
+                        (dst.limbOffset + writeIndex) value hdOffset)
+                      hdValid).size := by simpa using hsValid
+                have hregionGet :
+                    (heap.regions.set dstRegion
+                      (heap.regions[dstRegion].set
+                        (dst.limbOffset + writeIndex) value hdOffset)
+                      hdValid)[srcRegion] = heap.regions[srcRegion] :=
+                  Array.getElem_set_ne hdValid hsValid (Ne.symm hregions)
+                simp only [Array.size_set, hsValid, dif_pos]
+                rw [hregionGet]
+                simp only [hsOffset, dif_pos]
+                exact congrArg Except.ok hold
+            next => cases hread
+          next => cases hread
+      next => cases hwrite
+    next => cases hwrite
+
+theorem writeU64_preserves_valid (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap')
+    (other : RawPtr UInt64) (length : Nat) :
+    ValidU64Slice heap other length ↔ ValidU64Slice heap' other length := by
+  cases hregion : ptr.region with
+  | none => simp [writeU64, hregion] at hwrite
+  | some regionId =>
+    simp only [writeU64, hregion] at hwrite
+    split at hwrite
+    next hr =>
+      split at hwrite
+      next hoffset =>
+        let region' := heap.regions[regionId].set
+          (ptr.limbOffset + index) value hoffset
+        let updated : RawHeap :=
+          { heap with regions := heap.regions.set regionId region' hr }
+        have heq : heap' = updated := by
+          exact Except.ok.inj hwrite.symm
+        subst heap'
+        dsimp [updated, region']
+        unfold ValidU64Slice
+        constructor <;> intro hvalid
+        · rcases hvalid with ⟨otherRegion, hother, hrother, hlength⟩
+          have hrother' : otherRegion < (heap.regions.set regionId
+              (heap.regions[regionId].set (ptr.limbOffset + index) value hoffset) hr).size := by
+            simpa using hrother
+          refine ⟨otherRegion, hother, hrother', ?_⟩
+          by_cases heqRegion : otherRegion = regionId
+          · subst otherRegion
+            simpa using hlength
+          · simpa only [Array.getElem_set_ne hr hrother (Ne.symm heqRegion)]
+              using hlength
+        · rcases hvalid with ⟨otherRegion, hother, hrother, hlength⟩
+          have hrother' : otherRegion < heap.regions.size := by
+            simpa using hrother
+          refine ⟨otherRegion, hother, hrother', ?_⟩
+          by_cases heqRegion : otherRegion = regionId
+          · subst otherRegion
+            simpa using hlength
+          · simpa only [Array.getElem_set_ne hr hrother' (Ne.symm heqRegion)]
+              using hlength
+      next => cases hwrite
+    next => cases hwrite
+
+theorem validU64Slice_add (heap : RawHeap) (ptr : RawPtr UInt64)
+    (length start count : Nat) (hvalid : ValidU64Slice heap ptr length)
+    (hrange : start + count ≤ length) :
+    ValidU64Slice heap (RawPtr.add ptr start) count := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  refine ⟨regionId, ?_, hr, ?_⟩
+  · simpa [RawPtr.add] using hregion
+  · change ptr.limbOffset + start * 1 + count ≤ heap.regions[regionId].size
+    omega
+
+theorem validU64Slice_mono (heap : RawHeap) (ptr : RawPtr UInt64)
+    (large small : Nat) (hvalid : ValidU64Slice heap ptr large)
+    (hle : small ≤ large) : ValidU64Slice heap ptr small := by
+  rcases hvalid with ⟨regionId, hregion, hr, hlength⟩
+  exact ⟨regionId, hregion, hr, by omega⟩
+
+/-- Two heaps have identical allocation shape.  Values may differ, but every
+raw slice is valid in one heap exactly when it is valid in the other. -/
+def SameLayout (heap heap' : RawHeap) : Prop :=
+  ∀ ptr length, ValidU64Slice heap ptr length ↔
+    ValidU64Slice heap' ptr length
+
+theorem writeU64_sameLayout (heap heap' : RawHeap)
+    (ptr : RawPtr UInt64) (index : Nat) (value : UInt64)
+    (hwrite : heap.writeU64 ptr index value = .ok heap') :
+    SameLayout heap heap' := by
+  intro other length
+  exact writeU64_preserves_valid heap heap' ptr index value hwrite other length
+
+def ValidWord3Slice (heap : RawHeap) (ptr : RawPtr Word3) (length : Nat) : Prop :=
+  ValidU64Slice heap (RawPtr.reinterpret ptr) (3 * length)
+
+def readWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat) :
+    RawExec Word3 :=
+  let base := ptr.limbOffset + 3 * index
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := base }
+  match readU64 heap limbPtr 0, readU64 heap limbPtr 1,
+      readU64 heap limbPtr 2 with
+  | .ok lo, .ok mid, .ok hi => .ok { lo := lo, mid := mid, hi := hi }
+  | .error fault, _, _ => .error fault
+  | _, .error fault, _ => .error fault
+  | _, _, .error fault => .error fault
+
+theorem readWord3_eq_ok_iff (heap : RawHeap) (ptr : RawPtr Word3)
+    (index : Nat) (value : Word3) :
+    heap.readWord3 ptr index = .ok value ↔
+      let limbPtr : RawPtr UInt64 :=
+        { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+      heap.readU64 limbPtr 0 = .ok value.lo ∧
+      heap.readU64 limbPtr 1 = .ok value.mid ∧
+      heap.readU64 limbPtr 2 = .ok value.hi := by
+  simp only [readWord3]
+  split <;> simp_all <;> cases value <;> simp_all
+
+theorem readWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
+    (length index : Nat) (hvalid : ValidWord3Slice heap ptr length)
+    (hindex : index < length) :
+    ∃ value, heap.readWord3 ptr index = .ok value := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  have hslice : ValidU64Slice heap limbPtr 3 := by
+    have hadd := validU64Slice_add heap (RawPtr.reinterpret ptr)
+      (3 * length) (3 * index) 3 hvalid (by omega)
+    simpa [limbPtr, RawPtr.add, RawPtr.reinterpret, Nat.mul_comm,
+      Nat.mul_left_comm, Nat.mul_assoc] using hadd
+  rcases readU64_of_valid heap limbPtr 3 0 hslice (by omega) with ⟨lo, hlo⟩
+  rcases readU64_of_valid heap limbPtr 3 1 hslice (by omega) with ⟨mid, hmid⟩
+  rcases readU64_of_valid heap limbPtr 3 2 hslice (by omega) with ⟨hi, hhi⟩
+  refine ⟨{ lo := lo, mid := mid, hi := hi }, ?_⟩
+  simp [readWord3, limbPtr, hlo, hmid, hhi]
+
+def writeWord3 (heap : RawHeap) (ptr : RawPtr Word3) (index : Nat)
+    (value : Word3) : RawExec RawHeap :=
+  let base := ptr.limbOffset + 3 * index
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := base }
+  match writeU64 heap limbPtr 0 value.lo with
+  | .error fault => .error fault
+  | .ok heap1 =>
+    match writeU64 heap1 limbPtr 1 value.mid with
+    | .error fault => .error fault
+    | .ok heap2 => writeU64 heap2 limbPtr 2 value.hi
+
+theorem writeWord3_of_valid (heap : RawHeap) (ptr : RawPtr Word3)
+    (length index : Nat) (value : Word3)
+    (hvalid : ValidWord3Slice heap ptr length) (hindex : index < length) :
+    ∃ heap', heap.writeWord3 ptr index value = .ok heap' := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  have hslice : ValidU64Slice heap limbPtr 3 := by
+    have hadd := validU64Slice_add heap (RawPtr.reinterpret ptr)
+      (3 * length) (3 * index) 3 hvalid (by omega)
+    simpa [limbPtr, RawPtr.add, RawPtr.reinterpret, Nat.mul_comm,
+      Nat.mul_left_comm, Nat.mul_assoc] using hadd
+  rcases writeU64_of_valid heap limbPtr 3 0 value.lo hslice (by omega) with
+    ⟨heap1, hwrite0⟩
+  have hslice1 : ValidU64Slice heap1 limbPtr 3 :=
+    (writeU64_preserves_valid heap heap1 limbPtr 0 value.lo hwrite0 limbPtr 3).mp hslice
+  rcases writeU64_of_valid heap1 limbPtr 3 1 value.mid hslice1 (by omega) with
+    ⟨heap2, hwrite1⟩
+  have hslice2 : ValidU64Slice heap2 limbPtr 3 :=
+    (writeU64_preserves_valid heap1 heap2 limbPtr 1 value.mid hwrite1 limbPtr 3).mp hslice1
+  rcases writeU64_of_valid heap2 limbPtr 3 2 value.hi hslice2 (by omega) with
+    ⟨heap3, hwrite2⟩
+  refine ⟨heap3, ?_⟩
+  simp [writeWord3, limbPtr, hwrite0, hwrite1, hwrite2]
+
+/-- A successful three-limb write is read back as exactly the written
+`Word3`.  The proof uses the concrete three successive UInt64 writes and
+their distinct absolute offsets. -/
+theorem readWord3_writeWord3_same (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap') :
+    heap'.readWord3 ptr index = .ok value := by
+  let limbPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * index }
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have hlo0 := readU64_writeU64_same heap heap1 limbPtr 0 value.lo hwrite0
+      have hlo1 := readU64_writeU64_ne heap1 heap2 limbPtr limbPtr 1 0
+        value.mid value.lo hwrite1 hlo0 (Or.inr (by omega))
+      have hlo2 := readU64_writeU64_ne heap2 heap' limbPtr limbPtr 2 0
+        value.hi value.lo hwrite hlo1 (Or.inr (by omega))
+      have hmid1 := readU64_writeU64_same heap1 heap2 limbPtr 1 value.mid
+        hwrite1
+      have hmid2 := readU64_writeU64_ne heap2 heap' limbPtr limbPtr 2 1
+        value.hi value.mid hwrite hmid1 (Or.inr (by omega))
+      have hhi := readU64_writeU64_same heap2 heap' limbPtr 2 value.hi hwrite
+      simp [readWord3, limbPtr, hlo2, hmid2, hhi]
+
+/-- Writing one `Word3` preserves every different `Word3` cell. -/
+theorem readWord3_writeWord3_ne (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (writeIndex readIndex : Nat)
+    (value old : Word3)
+    (hwrite : heap.writeWord3 ptr writeIndex value = .ok heap')
+    (hread : heap.readWord3 ptr readIndex = .ok old)
+    (hne : writeIndex ≠ readIndex) :
+    heap'.readWord3 ptr readIndex = .ok old := by
+  let dstPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * writeIndex }
+  let srcPtr : RawPtr UInt64 :=
+    { region := ptr.region, limbOffset := ptr.limbOffset + 3 * readIndex }
+  have hparts := (readWord3_eq_ok_iff heap ptr readIndex old).mp hread
+  change heap.readU64 srcPtr 0 = .ok old.lo ∧
+      heap.readU64 srcPtr 1 = .ok old.mid ∧
+      heap.readU64 srcPtr 2 = .ok old.hi at hparts
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have preserve (b : Nat) (hb : b < 3)
+          (x : UInt64) (hr : heap.readU64 srcPtr b = .ok x) :
+          heap'.readU64 srcPtr b = .ok x := by
+        have hr1 := readU64_writeU64_ne heap heap1 dstPtr srcPtr 0 b
+          value.lo x hwrite0 hr (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+        have hr2 := readU64_writeU64_ne heap1 heap2 dstPtr srcPtr 1 b
+          value.mid x hwrite1 hr1 (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+        exact readU64_writeU64_ne heap2 heap' dstPtr srcPtr 2 b
+          value.hi x hwrite hr2 (Or.inr (by
+            dsimp [dstPtr, srcPtr]
+            omega))
+      apply (readWord3_eq_ok_iff heap' ptr readIndex old).mpr
+      change heap'.readU64 srcPtr 0 = .ok old.lo ∧
+        heap'.readU64 srcPtr 1 = .ok old.mid ∧
+        heap'.readU64 srcPtr 2 = .ok old.hi
+      exact ⟨preserve 0 (by omega) old.lo hparts.1,
+        preserve 1 (by omega) old.mid hparts.2.1,
+        preserve 2 (by omega) old.hi hparts.2.2⟩
+
+/-- A `Word3` write cannot alter a limb read from a different allocation
+region. -/
+theorem readU64_writeWord3_region_ne (heap heap' : RawHeap)
+    (dst : RawPtr Word3) (src : RawPtr UInt64) (writeIndex readIndex : Nat)
+    (value : Word3) (old : UInt64)
+    (hwrite : heap.writeWord3 dst writeIndex value = .ok heap')
+    (hread : heap.readU64 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region) :
+    heap'.readU64 src readIndex = .ok old := by
+  let dstPtr : RawPtr UInt64 :=
+    { region := dst.region, limbOffset := dst.limbOffset + 3 * writeIndex }
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      have hr1 := readU64_writeU64_ne heap heap1 dstPtr src 0 readIndex
+        value.lo old hwrite0 hread (Or.inl (by simpa [dstPtr] using hne))
+      have hr2 := readU64_writeU64_ne heap1 heap2 dstPtr src 1 readIndex
+        value.mid old hwrite1 hr1 (Or.inl (by simpa [dstPtr] using hne))
+      exact readU64_writeU64_ne heap2 heap' dstPtr src 2 readIndex
+        value.hi old hwrite hr2 (Or.inl (by simpa [dstPtr] using hne))
+
+/-- A limb write cannot alter a `Word3` read from a different allocation
+region. -/
+theorem readWord3_writeU64_region_ne (heap heap' : RawHeap)
+    (dst : RawPtr UInt64) (src : RawPtr Word3) (writeIndex readIndex : Nat)
+    (value : UInt64) (old : Word3)
+    (hwrite : heap.writeU64 dst writeIndex value = .ok heap')
+    (hread : heap.readWord3 src readIndex = .ok old)
+    (hne : dst.region ≠ src.region) :
+    heap'.readWord3 src readIndex = .ok old := by
+  let srcPtr : RawPtr UInt64 :=
+    { region := src.region, limbOffset := src.limbOffset + 3 * readIndex }
+  have hparts := (readWord3_eq_ok_iff heap src readIndex old).mp hread
+  change heap.readU64 srcPtr 0 = .ok old.lo ∧
+      heap.readU64 srcPtr 1 = .ok old.mid ∧
+      heap.readU64 srcPtr 2 = .ok old.hi at hparts
+  apply (readWord3_eq_ok_iff heap' src readIndex old).mpr
+  change heap'.readU64 srcPtr 0 = .ok old.lo ∧
+    heap'.readU64 srcPtr 1 = .ok old.mid ∧
+    heap'.readU64 srcPtr 2 = .ok old.hi
+  have preserve (limb : Nat) (x : UInt64)
+      (hr : heap.readU64 srcPtr limb = .ok x) :
+      heap'.readU64 srcPtr limb = .ok x :=
+    readU64_writeU64_ne heap heap' dst srcPtr writeIndex limb value x
+      hwrite hr (Or.inl (by simpa [srcPtr] using hne))
+  exact ⟨preserve 0 old.lo hparts.1,
+    preserve 1 old.mid hparts.2.1,
+    preserve 2 old.hi hparts.2.2⟩
+
+theorem writeWord3_preserves_valid (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap')
+    (other : RawPtr UInt64) (length : Nat) :
+    ValidU64Slice heap other length ↔ ValidU64Slice heap' other length := by
+  simp only [writeWord3] at hwrite
+  split at hwrite
+  next fault => cases hwrite
+  next heap1 hwrite0 =>
+    split at hwrite
+    next fault => cases hwrite
+    next heap2 hwrite1 =>
+      exact (writeU64_preserves_valid heap heap1 _ 0 value.lo hwrite0 other length).trans
+        ((writeU64_preserves_valid heap1 heap2 _ 1 value.mid hwrite1 other length).trans
+          (writeU64_preserves_valid heap2 heap' _ 2 value.hi hwrite other length))
+
+theorem writeWord3_sameLayout (heap heap' : RawHeap)
+    (ptr : RawPtr Word3) (index : Nat) (value : Word3)
+    (hwrite : heap.writeWord3 ptr index value = .ok heap') :
+    SameLayout heap heap' := by
+  intro other length
+  exact writeWord3_preserves_valid heap heap' ptr index value hwrite other length
+
+/-- Limb-level semantics used for the `memcpy` calls in the dense polynomial
+raw API.  Source and destination validity are checked at every C++ access;
+`memcpy`'s non-overlap requirement is carried by the later refinement
+precondition. -/
+def copyU64 (heap : RawHeap) (dst : RawPtr UInt64) (src : RawPtr UInt64) :
+    (count : Nat) → RawExec RawHeap
+  | 0 => .ok heap
+  | count + 1 =>
+    match readU64 heap src 0 with
+    | .error fault => .error fault
+    | .ok value =>
+      match writeU64 heap dst 0 value with
+      | .error fault => .error fault
+      | .ok heap' =>
+        copyU64 heap' (RawPtr.add dst 1) (RawPtr.add src 1) count
+
+/-- Exact decreasing scan of `_poly_normalise(A, len)`: discard trailing zero
+limbs and return the first prefix length whose final limb is nonzero. -/
+def normaliseU64 (heap : RawHeap) (ptr : RawPtr UInt64) :
+    (len : Nat) → RawExec Nat
+  | 0 => .ok 0
+  | len + 1 =>
+    match readU64 heap ptr len with
+    | .error fault => .error fault
+    | .ok value =>
+      if value == 0 then normaliseU64 heap ptr len else .ok (len + 1)
+
+/-- Total observation of a C++ limb slice.  Unlike `Array.get!`, an invalid
+address is observable as `RawFault`; successful observation returns exactly
+`count` coefficients in increasing-address order. -/
+def readU64s (heap : RawHeap) (ptr : RawPtr UInt64) :
+    (count : Nat) → RawExec (Array UInt64)
+  | 0 => .ok #[]
+  | count + 1 =>
+    match readU64 heap ptr 0 with
+    | .error fault => .error fault
+    | .ok head =>
+      match readU64s heap (RawPtr.add ptr 1) count with
+      | .error fault => .error fault
+      | .ok tail => .ok (#[head] ++ tail)
+
+/-- Raw-to-safe representation relation for a coefficient buffer. -/
+def SliceRep (heap : RawHeap) (ptr : RawPtr UInt64) (length : Nat)
+    (coeffs : Array UInt64) : Prop :=
+  readU64s heap ptr length = .ok coeffs
+
+end RawHeap
+
+/-- Executable semantics of the x86_64 instruction sequence in
+`dense_upoly_zp::_add_carry3`:
+`addq b0, lo; adcq b1, mid; adcq 0, hi`. -/
+def word3_addCarry_x86 (s : Word3) (b1 b0 : UInt64) : Word3 :=
+  let sum0 : UInt128 := uint128_of_uint64 s.lo + uint128_of_uint64 b0
+  let carry0 : UInt64 := uint128_lo (sum0 >>> (64 : UInt128))
+  let sum1 : UInt128 :=
+    uint128_of_uint64 s.mid + uint128_of_uint64 b1 +
+      uint128_of_uint64 carry0
+  let carry1 : UInt64 := uint128_lo (sum1 >>> (64 : UInt128))
+  { lo := uint128_lo sum0
+    mid := uint128_lo sum1
+    hi := s.hi + carry1 }
 
 -- ============================================================
 -- §4. SparsePolyZp：Z/pZ 上稀疏多项式
@@ -585,37 +1331,826 @@ namespace SparsePolyZp
 -- §5d.2 多项式长除法 + GCD（须在 HMul / HSub instance 之后定义）
 -- 不变量：g 非空（除数 ≠ 0），所有 Zp 共享 prime（WellFormed）
 
--- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q
--- partial def 因 Lean 终止性证明依赖 deg(r') < deg(r) 的严格递减（数学正确）
-partial def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp)
-    (q r : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  if r.isEmpty then (q, r)
+-- 稀疏多项式「按 deg 严格降序」不变量：首项在 index 0。
+-- mergeAdd/subImpl 等运算隐含假定输入降序；此谓词把该不变量显式化，
+-- 用于长除法主循环的良基终止（首项抵消 ⇒ deg 严格下降）。
+-- Model.lean 不 import Mathlib，故用 Bool 递归实现（天然可判定，供 divmod 依赖 if）。
+def sortedListB : List (UMonomial × Zp) → Bool
+  | [] => true
+  | [_] => true
+  | a :: b :: rest => (b.fst.deg < a.fst.deg) && sortedListB (b :: rest)
+
+def Sorted (f : SparsePolyZp) : Prop := sortedListB f.toList = true
+
+instance (f : SparsePolyZp) : Decidable (Sorted f) :=
+  decEq (sortedListB f.toList) true
+
+-- ── 有序性基础设施：sortedListB 的结构性质 + 各数组运算保持有序 ──
+
+/-- 严格降序 ⇔ 头严格大于尾中所有元素 ∧ 尾亦有序。 -/
+theorem sortedListB_iff (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    sortedListB (a :: rest) = true ↔
+      (∀ x ∈ rest, x.fst.deg < a.fst.deg) ∧ sortedListB rest = true := by
+  induction rest generalizing a with
+  | nil => simp [sortedListB]
+  | cons b rest' ih =>
+    simp only [sortedListB, Bool.and_eq_true, decide_eq_true_eq]
+    constructor
+    · rintro ⟨hba, hsb⟩
+      refine ⟨?_, hsb⟩
+      intro x hx
+      rcases List.mem_cons.mp hx with rfl | hxr
+      · exact hba
+      · exact Nat.lt_trans (((ih b).mp hsb).1 x hxr) hba
+    · rintro ⟨hall, hsb⟩
+      exact ⟨hall b (by simp), hsb⟩
+
+/-- mergeAdd 的元素度数被两输入的公共上界所界。 -/
+theorem mergeAdd_lt_all (d : Nat) : ∀ (xs ys : List (UMonomial × Zp)),
+    (∀ x ∈ xs, x.fst.deg < d) → (∀ y ∈ ys, y.fst.deg < d) →
+    (∀ z ∈ mergeAdd xs ys, z.fst.deg < d) := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy z hz; rw [mergeAdd] at hz; exact hy z hz
+  | case2 f fs => intro hx _ z hz; rw [mergeAdd] at hz; exact hx z hz
+  | case3 f fs g gs hfg ih =>
+    intro hx hy z hz
+    rw [mergeAdd, if_pos hfg] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hx z (by simp)
+    · exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx')) hy z hz'
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy z hz
+    rw [mergeAdd, if_neg hfg, if_pos hfg2] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hy z (by simp)
+    · exact ih hx (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz'
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy z hz
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_pos hs
+    rw [h_eq] at hz
+    exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx'))
+      (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy z hz
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_neg hs
+    rw [h_eq] at hz
+    rcases List.mem_cons.mp hz with rfl | hz'
+    · exact hx f (by simp)
+    · exact ih (fun x hx' => hx x (List.mem_cons_of_mem _ hx'))
+        (fun y hy' => hy y (List.mem_cons_of_mem _ hy')) z hz'
+
+/-- mergeAdd 保持严格降序有序。 -/
+theorem mergeAdd_sorted : ∀ (xs ys : List (UMonomial × Zp)),
+    sortedListB xs = true → sortedListB ys = true → sortedListB (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, sortedListB_iff]
+    have hx' := (sortedListB_iff f fs).mp hx
+    refine ⟨?_, ih hx'.2 hy⟩
+    apply mergeAdd_lt_all f.fst.deg
+    · exact hx'.1
+    · intro y hy'; rcases List.mem_cons.mp hy' with rfl | hy''
+      · exact hfg
+      · exact Nat.lt_trans (((sortedListB_iff g gs).mp hy).1 y hy'') hfg
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, sortedListB_iff]
+    have hy' := (sortedListB_iff g gs).mp hy
+    refine ⟨?_, ih hx hy'.2⟩
+    apply mergeAdd_lt_all g.fst.deg
+    · intro x hx'; rcases List.mem_cons.mp hx' with rfl | hx''
+      · exact hfg2
+      · exact Nat.lt_trans (((sortedListB_iff f fs).mp hx).1 x hx'') hfg2
+    · exact hy'.1
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_pos hs
+    rw [h_eq]
+    exact ih ((sortedListB_iff f fs).mp hx).2 ((sortedListB_iff g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]
+      exact if_neg hs
+    rw [h_eq, sortedListB_iff]
+    have hx' := (sortedListB_iff f fs).mp hx
+    have hy' := (sortedListB_iff g gs).mp hy
+    have hfe : f.fst.deg = g.fst.deg := by omega
+    refine ⟨?_, ih hx'.2 hy'.2⟩
+    apply mergeAdd_lt_all f.fst.deg
+    · exact hx'.1
+    · intro y hy''; rw [hfe]; exact hy'.1 y hy''
+
+/-- 保持 .fst 的 map 不改变有序性（negImpl 用：只改系数、不改单项式）。 -/
+theorem sortedListB_map_fst (F : (UMonomial × Zp) → (UMonomial × Zp))
+    (hF : ∀ x, (F x).fst = x.fst) (l : List (UMonomial × Zp)) :
+    sortedListB (l.map F) = sortedListB l := by
+  induction l with
+  | nil => rfl
+  | cons a t iha =>
+    cases t with
+    | nil => rfl
+    | cons b t' =>
+      simp only [List.map_cons, sortedListB, hF]
+      rw [← List.map_cons, iha]
+
+/-- subImpl 保持严格降序有序（addImpl=mergeAdd, negImpl 只改系数）。 -/
+theorem subImpl_sorted (f g : SparsePolyZp) (hf : Sorted f) (hg : Sorted g) :
+    Sorted (subImpl f g) := by
+  have hng : sortedListB (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact (sortedListB_map_fst _ (by rintro ⟨m, c⟩; rfl) g.toList).trans hg
+  -- (mergeAdd ...).toArray.toList = mergeAdd ... 由 toList_toArray (= rfl) 定义式相等
+  show sortedListB (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact mergeAdd_sorted _ _ hf hng
+
+/-- filterMap 且输出度数 = sh + 输入度数 时：保持「度数 < 界」与有序性。
+    （scaleByMonomial 用：单项式乘法把每个度数平移 sh = m.deg，保序。） -/
+theorem sortedListB_filterMapShift (sh : Nat) (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.fst.deg = sh + x.fst.deg) (l : List (UMonomial × Zp)) :
+    (∀ d, (∀ x ∈ l, x.fst.deg < d) → (∀ z ∈ l.filterMap G, z.fst.deg < sh + d)) ∧
+    (sortedListB l = true → sortedListB (l.filterMap G) = true) := by
+  induction l with
+  | nil =>
+    refine ⟨?_, ?_⟩
+    · intro d _ z hz; simp at hz
+    · intro _; rfl
+  | cons a t ih =>
+    obtain ⟨ih_lt, ih_sorted⟩ := ih
+    refine ⟨?_, ?_⟩
+    · intro d hlt z hz
+      cases hGa : G a with
+      | none =>
+        rw [List.filterMap_cons_none hGa] at hz
+        exact ih_lt d (fun x hx => hlt x (List.mem_cons_of_mem _ hx)) z hz
+      | some b =>
+        rw [List.filterMap_cons_some hGa] at hz
+        rcases List.mem_cons.mp hz with hzb | hz'
+        · rw [hzb, hG a b hGa]; have := hlt a (by simp); omega
+        · exact ih_lt d (fun x hx => hlt x (List.mem_cons_of_mem _ hx)) z hz'
+    · intro hsort
+      cases hGa : G a with
+      | none =>
+        rw [List.filterMap_cons_none hGa]
+        exact ih_sorted ((sortedListB_iff a t).mp hsort).2
+      | some b =>
+        rw [List.filterMap_cons_some hGa, sortedListB_iff]
+        have hst := (sortedListB_iff a t).mp hsort
+        refine ⟨?_, ih_sorted hst.2⟩
+        intro z hz
+        rw [hG a b hGa]
+        exact ih_lt a.fst.deg hst.1 z hz
+
+/-- scaleByMonomial（单项式乘法）保持有序：度数整体平移 m.deg。 -/
+theorem scaleByMonomial_sorted (m : UMonomial) (c : Zp) (f : SparsePolyZp) (hf : Sorted f) :
+    Sorted (scaleByMonomial m c f) := by
+  unfold scaleByMonomial
+  split
+  · rfl
+  · show sortedListB (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    refine (sortedListB_filterMapShift m.deg _ ?_ f.toList).2 hf
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with hxy'; rw [← hxy']
+
+/-- addImpl 保持有序（= mergeAdd）。 -/
+theorem addImpl_sorted (f g : SparsePolyZp) (hf : Sorted f) (hg : Sorted g) :
+    Sorted (addImpl f g) := by
+  show sortedListB (addImpl f g).toList = true
+  unfold addImpl
+  exact mergeAdd_sorted _ _ hf hg
+
+/-- 单项式（单元素数组）乘多项式保持有序：mulImpl 单元素折叠 = scaleByMonomial。 -/
+theorem single_mul_sorted (m : UMonomial) (c : Zp) (g : SparsePolyZp) (hg : Sorted g) :
+    Sorted ((#[(m, c)] : SparsePolyZp) * g) := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact addImpl_sorted _ _ rfl (scaleByMonomial_sorted m c g hg)
+
+-- ── 约化+同素数不变量：所有系数 val < q 且 prime = q（长除法首项抵消所需） ──
+
+def reducedListB (q : UInt64) : List (UMonomial × Zp) → Bool
+  | [] => true
+  | a :: rest => (a.snd.val < q) && (a.snd.prime == q) && reducedListB q rest
+
+def ReducedB (f : SparsePolyZp) (q : UInt64) : Prop := reducedListB q f.toList = true
+
+instance (f : SparsePolyZp) (q : UInt64) : Decidable (ReducedB f q) :=
+  decEq (reducedListB q f.toList) true
+
+theorem reducedListB_cons (q : UInt64) (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    reducedListB q (a :: rest) = true ↔
+      (a.snd.val < q ∧ a.snd.prime = q) ∧ reducedListB q rest = true := by
+  simp only [reducedListB, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, and_assoc]
+
+/-- Zp 加法结果的 val 界（同素数 q>0 时 < q）。 -/
+theorem Zp_add_reduced (a b : Zp) (hq : 0 < a.prime.toNat) :
+    (a + b).val < a.prime ∧ (a + b).prime = a.prime := by
+  refine ⟨?_, rfl⟩
+  show ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64 < a.prime
+  have hlt : (a.val.toNat + b.val.toNat) % a.prime.toNat < a.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (a.val.toNat + b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt a.prime.toNat_lt_size
+  rw [UInt64.lt_iff_toNat_lt,
+    show ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64.toNat
+      = (a.val.toNat + b.val.toNat) % a.prime.toNat from by simp [h2]]
+  exact hlt
+
+/-- mergeAdd 保持约化+同素数不变量。 -/
+theorem reducedListB_mergeAdd (q : UInt64) (hq : 0 < q.toNat) : ∀ (xs ys : List (UMonomial × Zp)),
+    reducedListB q xs = true → reducedListB q ys = true → reducedListB q (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, reducedListB_cons]
+    have hx' := (reducedListB_cons q f fs).mp hx
+    exact ⟨hx'.1, ih hx'.2 hy⟩
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, reducedListB_cons]
+    have hy' := (reducedListB_cons q g gs).mp hy
+    exact ⟨hy'.1, ih hx hy'.2⟩
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_pos hs
+    rw [h_eq]
+    exact ih ((reducedListB_cons q f fs).mp hx).2 ((reducedListB_cons q g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_neg hs
+    rw [h_eq, reducedListB_cons]
+    have hx' := (reducedListB_cons q f fs).mp hx
+    have hprime : f.snd.prime = q := hx'.1.2
+    have hqp : 0 < f.snd.prime.toNat := by rw [hprime]; exact hq
+    have hadd := Zp_add_reduced f.snd g.snd hqp
+    refine ⟨⟨?_, ?_⟩, ih hx'.2 ((reducedListB_cons q g gs).mp hy).2⟩
+    · rw [← hprime]; exact hadd.1
+    · rw [hadd.2]; exact hprime
+
+/-- Zp 乘法结果的 val 界（同素数 q>0 时 < q）。 -/
+theorem Zp_mul_reduced (a b : Zp) (hq : 0 < a.prime.toNat) :
+    (a * b).val < a.prime ∧ (a * b).prime = a.prime := by
+  refine ⟨?_, rfl⟩
+  show ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64 < a.prime
+  have hlt : (a.val.toNat * b.val.toNat) % a.prime.toNat < a.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt a.prime.toNat_lt_size
+  rw [UInt64.lt_iff_toNat_lt,
+    show ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64.toNat
+      = (a.val.toNat * b.val.toNat) % a.prime.toNat from by simp [h2]]
+  exact hlt
+
+/-- Zp 取负结果的 val 界。 -/
+theorem Zp_neg_reduced (c : Zp) (hq : 0 < c.prime.toNat) :
+    (-c).val < c.prime ∧ (-c).prime = c.prime := by
+  refine ⟨?_, rfl⟩
+  show ((c.prime - c.val) % c.prime) < c.prime
+  rw [UInt64.lt_iff_toNat_lt, UInt64.toNat_mod]
+  exact Nat.mod_lt _ hq
+
+/-- filterMap 若每个输出都约化，则结果约化（无需输入约化）。 -/
+theorem reducedListB_filterMap (q : UInt64) (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.snd.val < q ∧ y.snd.prime = q) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q (l.filterMap G) = true := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons a rest ih =>
+    cases hGa : G a with
+    | none => rw [List.filterMap_cons_none hGa]; exact ih
+    | some b => rw [List.filterMap_cons_some hGa, reducedListB_cons]; exact ⟨hG a b hGa, ih⟩
+
+/-- negImpl（映射取负）保持约化。 -/
+theorem reducedListB_neg (q : UInt64) (hq : 0 < q.toNat) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q l = true →
+    reducedListB q (l.map (fun x => (x.1, -x.2))) = true := by
+  intro l
+  induction l with
+  | nil => intro _; rfl
+  | cons a rest ih =>
+    intro h
+    have h' := (reducedListB_cons q a rest).mp h
+    rw [List.map_cons, reducedListB_cons]
+    have hqp : 0 < a.snd.prime.toNat := by rw [h'.1.2]; exact hq
+    have hneg := Zp_neg_reduced a.snd hqp
+    exact ⟨⟨h'.1.2 ▸ hneg.1, hneg.2.trans h'.1.2⟩, ih h'.2⟩
+
+/-- addImpl 保持约化。 -/
+theorem ReducedB_addImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hf : ReducedB f q) (hg : ReducedB g q) : ReducedB (addImpl f g) q := by
+  show reducedListB q (addImpl f g).toList = true
+  unfold addImpl
+  exact reducedListB_mergeAdd q hq _ _ hf hg
+
+/-- subImpl 保持约化。 -/
+theorem ReducedB_subImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hf : ReducedB f q) (hg : ReducedB g q) : ReducedB (subImpl f g) q := by
+  have hng : reducedListB q (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact reducedListB_neg q hq g.toList hg
+  show reducedListB q (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact reducedListB_mergeAdd q hq _ _ hf hng
+
+/-- scaleByMonomial 结果约化（系数素数 = q）。 -/
+theorem ReducedB_scaleByMonomial (m : UMonomial) (c : Zp) (f : SparsePolyZp) (q : UInt64)
+    (hc : c.prime = q) (hq : 0 < q.toNat) : ReducedB (scaleByMonomial m c f) q := by
+  unfold scaleByMonomial
+  split
+  · exact rfl
+  · show reducedListB q (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    apply reducedListB_filterMap q
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with hxy'
+      rw [← hxy']
+      have hqp : 0 < c.prime.toNat := by rw [hc]; exact hq
+      have hmul := Zp_mul_reduced c cf hqp
+      exact ⟨hc ▸ hmul.1, hmul.2.trans hc⟩
+
+/-- 单项式乘多项式结果约化。 -/
+theorem ReducedB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) (q : UInt64)
+    (hc : c.prime = q) (hq : 0 < q.toNat) : ReducedB ((#[(m, c)] : SparsePolyZp) * g) q := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact ReducedB_addImpl _ _ q hq rfl (ReducedB_scaleByMonomial m c g q hc hq)
+
+-- ── 非零系数不变量：所有系数 val ≠ 0（首项抵消所需——保证 term*g 首项存活） ──
+
+def nonzeroListB : List (UMonomial × Zp) → Bool
+  | [] => true
+  | a :: rest => (a.snd.val != 0) && nonzeroListB rest
+
+def NonZeroB (f : SparsePolyZp) : Prop := nonzeroListB f.toList = true
+
+instance (f : SparsePolyZp) : Decidable (NonZeroB f) := decEq (nonzeroListB f.toList) true
+
+theorem nonzeroListB_cons (a : UMonomial × Zp) (rest : List (UMonomial × Zp)) :
+    nonzeroListB (a :: rest) = true ↔ a.snd.val ≠ 0 ∧ nonzeroListB rest = true := by
+  simp only [nonzeroListB, Bool.and_eq_true, bne_iff_ne, ne_eq]
+
+/-- mergeAdd 保持非零系数（case6 的 s.val≠0 条件 + 保留原元素）。 -/
+theorem nonzeroListB_mergeAdd : ∀ (xs ys : List (UMonomial × Zp)),
+    nonzeroListB xs = true → nonzeroListB ys = true → nonzeroListB (mergeAdd xs ys) = true := by
+  intro xs ys
+  induction xs, ys using SparsePolyZp.mergeAdd.induct with
+  | case1 ys => intro _ hy; rw [mergeAdd]; exact hy
+  | case2 f fs => intro hx _; rw [mergeAdd]; exact hx
+  | case3 f fs g gs hfg ih =>
+    intro hx hy
+    rw [mergeAdd, if_pos hfg, nonzeroListB_cons]
+    exact ⟨((nonzeroListB_cons f fs).mp hx).1, ih ((nonzeroListB_cons f fs).mp hx).2 hy⟩
+  | case4 f fs g gs hfg hfg2 ih =>
+    intro hx hy
+    rw [mergeAdd, if_neg hfg, if_pos hfg2, nonzeroListB_cons]
+    exact ⟨((nonzeroListB_cons g gs).mp hy).1, ih hx ((nonzeroListB_cons g gs).mp hy).2⟩
+  | case5 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_pos hs
+    rw [h_eq]
+    exact ih ((nonzeroListB_cons f fs).mp hx).2 ((nonzeroListB_cons g gs).mp hy).2
+  | case6 f fs g gs hfg hfg2 s hs ih =>
+    intro hx hy
+    have h_eq : mergeAdd (f :: fs) (g :: gs) = (f.fst, f.snd + g.snd) :: mergeAdd fs gs := by
+      rw [mergeAdd, if_neg hfg, if_neg hfg2]; exact if_neg hs
+    rw [h_eq, nonzeroListB_cons]
+    exact ⟨hs, ih ((nonzeroListB_cons f fs).mp hx).2 ((nonzeroListB_cons g gs).mp hy).2⟩
+
+/-- Zp 取负保持非零（需约化 val<prime）。 -/
+theorem Zp_neg_nonzero (c : Zp) (hred : c.val < c.prime) (hnz : c.val ≠ 0)
+    (hq : 0 < c.prime.toNat) : (-c).val ≠ 0 := by
+  show ((c.prime - c.val) % c.prime) ≠ 0
+  have h1 : c.val.toNat < c.prime.toNat := (UInt64.lt_iff_toNat_lt).mp hred
+  have h2 : c.val.toNat ≠ 0 := fun h => hnz (UInt64.toNat_inj.mp (by simp [h]))
+  have hsub : (c.prime - c.val).toNat = c.prime.toNat - c.val.toNat :=
+    UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt h1)
+  intro hzero
+  have hz : ((c.prime - c.val) % c.prime).toNat = 0 := by simp [hzero]
+  rw [UInt64.toNat_mod, hsub, Nat.mod_eq_of_lt (by omega)] at hz
+  omega
+
+/-- filterMap 若每个输出都非零，则结果非零。 -/
+theorem nonzeroListB_filterMap (G : (UMonomial × Zp) → Option (UMonomial × Zp))
+    (hG : ∀ x y, G x = some y → y.snd.val ≠ 0) :
+    ∀ (l : List (UMonomial × Zp)), nonzeroListB (l.filterMap G) = true := by
+  intro l
+  induction l with
+  | nil => rfl
+  | cons a rest ih =>
+    cases hGa : G a with
+    | none => rw [List.filterMap_cons_none hGa]; exact ih
+    | some b => rw [List.filterMap_cons_some hGa, nonzeroListB_cons]; exact ⟨hG a b hGa, ih⟩
+
+/-- negImpl 保持非零（需约化）。 -/
+theorem nonzeroListB_neg (q : UInt64) (hq : 0 < q.toNat) :
+    ∀ (l : List (UMonomial × Zp)), reducedListB q l = true → nonzeroListB l = true →
+    nonzeroListB (l.map (fun x => (x.1, -x.2))) = true := by
+  intro l
+  induction l with
+  | nil => intro _ _; rfl
+  | cons a rest ih =>
+    intro hred hnz
+    have hred' := (reducedListB_cons q a rest).mp hred
+    have hnz' := (nonzeroListB_cons a rest).mp hnz
+    rw [List.map_cons, nonzeroListB_cons]
+    have hqp : 0 < a.snd.prime.toNat := by rw [hred'.1.2]; exact hq
+    exact ⟨Zp_neg_nonzero a.snd (hred'.1.2 ▸ hred'.1.1) hnz'.1 hqp, ih hred'.2 hnz'.2⟩
+
+/-- addImpl 保持非零。 -/
+theorem NonZeroB_addImpl (f g : SparsePolyZp) (hf : NonZeroB f) (hg : NonZeroB g) :
+    NonZeroB (addImpl f g) := by
+  show nonzeroListB (addImpl f g).toList = true
+  unfold addImpl
+  exact nonzeroListB_mergeAdd _ _ hf hg
+
+/-- subImpl 保持非零（neg 需约化）。 -/
+theorem NonZeroB_subImpl (f g : SparsePolyZp) (q : UInt64) (hq : 0 < q.toNat)
+    (hredg : ReducedB g q) (hf : NonZeroB f) (hg : NonZeroB g) : NonZeroB (subImpl f g) := by
+  have hng : nonzeroListB (negImpl g).toList = true := by
+    unfold negImpl
+    rw [Array.toList_map]
+    exact nonzeroListB_neg q hq g.toList hredg hg
+  show nonzeroListB (subImpl f g).toList = true
+  unfold subImpl addImpl
+  exact nonzeroListB_mergeAdd _ _ hf hng
+
+/-- scaleByMonomial 结果非零（filterMap 丢弃零系数）。 -/
+theorem NonZeroB_scaleByMonomial (m : UMonomial) (c : Zp) (f : SparsePolyZp) :
+    NonZeroB (scaleByMonomial m c f) := by
+  unfold scaleByMonomial
+  split
+  · exact rfl
+  · show nonzeroListB (Array.filterMap _ f).toList = true
+    rw [Array.toList_filterMap]
+    apply nonzeroListB_filterMap
+    intro x y hxy
+    obtain ⟨mf, cf⟩ := x
+    simp only at hxy
+    split at hxy
+    · exact absurd hxy (by simp)
+    · rename_i hcond
+      injection hxy with hxy'
+      rw [← hxy']
+      exact hcond
+
+/-- 单项式乘多项式结果非零。 -/
+theorem NonZeroB_single_mul (m : UMonomial) (c : Zp) (g : SparsePolyZp) :
+    NonZeroB ((#[(m, c)] : SparsePolyZp) * g) := by
+  have h_eq : (#[(m, c)] : SparsePolyZp) * g = addImpl #[] (scaleByMonomial m c g) := rfl
+  rw [h_eq]
+  exact NonZeroB_addImpl _ _ rfl (NonZeroB_scaleByMonomial m c g)
+
+-- ── divmodAux 终止性基础设施：首项真抵消 ⇒ 度数严格下降 ──
+-- nl-proof: docs/design/divmodAux-termination-nlproof.md
+
+/-- Zp 乘法的 val 用 Nat 表示（供模运算链）。 -/
+theorem Zp_mul_val_toNat (x y : Zp) (hq : 0 < x.prime.toNat) :
+    (x * y).val.toNat = (x.val.toNat * y.val.toNat) % x.prime.toNat := by
+  show ((x.val.toNat * y.val.toNat) % x.prime.toNat).toUInt64.toNat = _
+  have hlt : (x.val.toNat * y.val.toNat) % x.prime.toNat < x.prime.toNat := Nat.mod_lt _ hq
+  have h2 : (x.val.toNat * y.val.toNat) % x.prime.toNat < UInt64.size :=
+    Nat.lt_trans hlt x.prime.toNat_lt_size
+  simp [h2]
+
+/-- 引理 B：三重积逆化。(lc*gh).val = 1 ⇒ ((a*lc)*gh).val = a.val（同素数 pm，a 约化）。 -/
+theorem Zp_mul3_lc (a lc gh : Zp) (pm : UInt64)
+    (hap : a.prime = pm) (hlp : lc.prime = pm) (hgp : gh.prime = pm)
+    (hav : a.val < pm) (hlcgh : (lc * gh).val = 1) (hq : 0 < pm.toNat) :
+    ((a * lc) * gh).val = a.val := by
+  have hq_a : 0 < a.prime.toNat := hap ▸ hq
+  have hq_lc : 0 < lc.prime.toNat := hlp ▸ hq
+  have hav' : a.val.toNat < pm.toNat := (UInt64.lt_iff_toNat_lt).mp hav
+  have hlcgh_nat : (lc.val.toNat * gh.val.toNat) % pm.toNat = 1 := by
+    have hm := Zp_mul_val_toNat lc gh hq_lc
+    rw [hlp] at hm
+    rw [← hm, hlcgh]; rfl
+  apply UInt64.toNat_inj.mp
+  have halc_prime : (a * lc).prime = pm := hap
+  have hq_alc : 0 < (a * lc).prime.toNat := halc_prime ▸ hq
+  rw [Zp_mul_val_toNat (a * lc) gh hq_alc, halc_prime, Zp_mul_val_toNat a lc hq_a, hap,
+      Nat.mod_mul_mod, Nat.mul_assoc, Nat.mul_mod a.val.toNat (lc.val.toNat * gh.val.toNat),
+      hlcgh_nat, Nat.mul_one, Nat.mod_mod, Nat.mod_eq_of_lt hav']
+
+/-- 引理 C：a + (-c) = 0（当 c 与 a 同 val 同 prime，a 约化）。 -/
+theorem Zp_add_neg_cancel (a c : Zp) (hval : c.val = a.val) (hprime : c.prime = a.prime)
+    (hred : a.val < a.prime) (hq : 0 < a.prime.toNat) : (a + (-c)).val = 0 := by
+  show ((a.val.toNat + (-c).val.toNat) % a.prime.toNat).toUInt64 = 0
+  have h1 : a.val.toNat < a.prime.toNat := (UInt64.lt_iff_toNat_lt).mp hred
+  have hnegval : (-c).val.toNat = (a.prime.toNat - a.val.toNat) % a.prime.toNat := by
+    show ((c.prime - c.val) % c.prime).toNat = _
+    rw [UInt64.toNat_mod, hprime, hval, UInt64.toNat_sub_of_le _ _ (Nat.le_of_lt h1)]
+  rw [hnegval]
+  have hkey : (a.val.toNat + (a.prime.toNat - a.val.toNat) % a.prime.toNat) % a.prime.toNat = 0 := by
+    rcases Nat.eq_zero_or_pos a.val.toNat with h0 | hpos
+    · simp [h0, Nat.mod_self]
+    · rw [Nat.mod_eq_of_lt (show a.prime.toNat - a.val.toNat < a.prime.toNat by omega)]
+      rw [show a.val.toNat + (a.prime.toNat - a.val.toNat) = a.prime.toNat by omega, Nat.mod_self]
+  rw [hkey]; rfl
+
+/-- 引理 D：首项等度且系数和为 0 ⇒ mergeAdd 结果全元素度数 < d。 -/
+theorem mergeAdd_cancel_lead (d : Nat) (a b : UMonomial × Zp)
+    (ra rb : List (UMonomial × Zp))
+    (ha : a.fst.deg = d) (hb : b.fst.deg = d)
+    (hsum : (a.snd + b.snd).val = 0)
+    (hra : ∀ x ∈ ra, x.fst.deg < d) (hrb : ∀ y ∈ rb, y.fst.deg < d) :
+    ∀ z ∈ mergeAdd (a :: ra) (b :: rb), z.fst.deg < d := by
+  have h_eq : mergeAdd (a :: ra) (b :: rb) = mergeAdd ra rb := by
+    rw [mergeAdd, if_neg (show ¬ a.fst.deg > b.fst.deg by omega),
+        if_neg (show ¬ a.fst.deg < b.fst.deg by omega)]
+    exact if_pos hsum
+  rw [h_eq]
+  exact mergeAdd_lt_all d ra rb hra hrb
+
+/-- 非空数组的 toList = 首项 :: 尾。 -/
+theorem toList_cons_of_ne_empty (r : SparsePolyZp) (h : ¬ r.isEmpty) :
+    r.toList = (r[0]!) :: r.toList.tail := by
+  match hrl : r.toList with
+  | [] =>
+    exfalso; apply h
+    simp [Array.isEmpty, Array.size_eq_length_toList, hrl]
+  | hd :: tl =>
+    have hsz : 0 < r.size := by rw [Array.size_eq_length_toList, hrl]; simp
+    have hhead : r[0]! = hd := by
+      rw [getElem!_pos r 0 hsz]
+      have h2 : r[0] = r.toList[0]'(by rw [Array.size_eq_length_toList] at hsz; exact hsz) :=
+        (Array.getElem_toList (xs := r) (i := 0) hsz).symm
+      rw [h2]; simp [hrl]
+    simp only [hhead, hrl, List.tail_cons]
+
+/-- addImpl #[] x 的 toList = x 的 toList（mergeAdd [] = id）。 -/
+theorem addImpl_nil_toList (x : SparsePolyZp) : (addImpl #[] x).toList = x.toList := by
+  unfold addImpl; simp [mergeAdd]
+
+/-- scaleByMonomial 内部 filterMap 的 lambda（提取为 def 以便 unfold + 复用）。 -/
+def scaleLambda (m : UMonomial) (coeff : Zp) : (UMonomial × Zp) → Option (UMonomial × Zp) :=
+  fun x => let prod := coeff * x.2
+    if prod.val = 0 then none else some (UMonomial.mk (m.deg + x.1.deg), prod)
+
+/-- 引理 A：scaleByMonomial 的首项 = (m.deg + dg, coeff·gh)，尾全部度数 < m.deg + dg。 -/
+theorem scaleByMonomial_head_drop (m : UMonomial) (coeff : Zp) (g : SparsePolyZp)
+    (gh : UMonomial × Zp) (gt : List (UMonomial × Zp)) (dgv : Nat)
+    (hgl : g.toList = gh :: gt) (hcoeff_nz : coeff.val ≠ 0)
+    (hhead_nz : (coeff * gh.snd).val ≠ 0)
+    (hghdeg : gh.fst.deg = dgv) (hgt_lt : ∀ x ∈ gt, x.fst.deg < dgv) :
+    ∃ T, (scaleByMonomial m coeff g).toList
+          = (UMonomial.mk (m.deg + dgv), coeff * gh.snd) :: T
+      ∧ (∀ z ∈ T, z.fst.deg < m.deg + dgv) := by
+  have hF_shift : ∀ x y, scaleLambda m coeff x = some y → y.fst.deg = m.deg + x.fst.deg := by
+    intro x y hxy
+    unfold scaleLambda at hxy; simp only at hxy; split at hxy
+    · exact absurd hxy (by simp)
+    · injection hxy with h'; rw [← h']
+  have hF_gh : scaleLambda m coeff gh = some (UMonomial.mk (m.deg + dgv), coeff * gh.snd) := by
+    unfold scaleLambda; simp only; rw [if_neg hhead_nz, hghdeg]
+  refine ⟨gt.filterMap (scaleLambda m coeff), ?_, ?_⟩
+  · show (scaleByMonomial m coeff g).toList = _
+    unfold scaleByMonomial
+    rw [if_neg hcoeff_nz, Array.toList_filterMap]
+    show g.toList.filterMap (scaleLambda m coeff) = _
+    rw [hgl, List.filterMap_cons_some hF_gh]
+  · intro z hz
+    exact (sortedListB_filterMapShift m.deg (scaleLambda m coeff) hF_shift gt).1 dgv hgt_lt z hz
+
+/-- subImpl 的 toList = mergeAdd（addImpl 定义展开）。 -/
+theorem subImpl_toList (f g : SparsePolyZp) :
+    (subImpl f g).toList = mergeAdd f.toList (negImpl g).toList := by
+  unfold subImpl addImpl; simp
+
+/-- negImpl 的 toList = 逐项取负 map。 -/
+theorem negImpl_toList (f : SparsePolyZp) :
+    (negImpl f).toList = f.toList.map (fun x => (x.1, -x.2)) := by
+  unfold negImpl; rw [Array.toList_map]
+
+/-- 核心：长除法一步后余式 r' = r - term*g 的所有项度数严格 < 原首项度数 dr。
+    首项真抵消（coeff·lc(g) = r 首项系数，相减为 0）⇒ 度量严格下降。 -/
+theorem divmod_step_drop (g r : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat)
+    (hg_ne : ¬ g.isEmpty) (hg_sorted : Sorted g) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg)
+    (hlp : lc_g_inv.prime = pm) (h_lc : (lc_g_inv * (g[0]!).snd).val = 1)
+    (hr_ne : ¬ r.isEmpty) (hr_sorted : Sorted r) (hr_red : ReducedB r pm) (hr_nz : NonZeroB r)
+    (hdg_le : dg ≤ (r[0]!).fst.deg) :
+    ∀ z ∈ (r - (#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList,
+      z.fst.deg < (r[0]!).fst.deg := by
+  -- r 分解
+  have hr_red' : reducedListB pm r.toList = true := hr_red
+  have hr_nz' : nonzeroListB r.toList = true := hr_nz
+  have hr_sorted' : sortedListB r.toList = true := hr_sorted
+  have hg_red' : reducedListB pm g.toList = true := hg_red
+  have hg_sorted' : sortedListB g.toList = true := hg_sorted
+  have hrl : r.toList = (r[0]!) :: r.toList.tail := toList_cons_of_ne_empty r hr_ne
+  have ha_val_lt : (r[0]!).snd.val < pm := ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.1
+  have ha_prime : (r[0]!).snd.prime = pm := ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.2
+  have ha_nz : (r[0]!).snd.val ≠ 0 := ((nonzeroListB_cons _ _).mp (hrl ▸ hr_nz')).1
+  have hra_lt : ∀ x ∈ r.toList.tail, x.fst.deg < (r[0]!).fst.deg :=
+    ((sortedListB_iff _ _).mp (hrl ▸ hr_sorted')).1
+  -- g 分解
+  have hgl : g.toList = (g[0]!) :: g.toList.tail := toList_cons_of_ne_empty g hg_ne
+  have hgh_prime : (g[0]!).snd.prime = pm := ((reducedListB_cons pm _ _).mp (hgl ▸ hg_red')).1.2
+  have hgt_lt : ∀ x ∈ g.toList.tail, x.fst.deg < dg := by
+    intro x hx
+    have hh := ((sortedListB_iff _ _).mp (hgl ▸ hg_sorted')).1 x hx
+    rwa [h_dg] at hh
+  -- coeff/c 性质
+  have hcoeff_prime : ((r[0]!).snd * lc_g_inv).prime = pm := ha_prime
+  have hc_val : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val = (r[0]!).snd.val :=
+    Zp_mul3_lc (r[0]!).snd lc_g_inv (g[0]!).snd pm ha_prime hlp hgh_prime ha_val_lt h_lc hq
+  have hc_prime : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).prime = pm := hcoeff_prime
+  have hc_nz : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val ≠ 0 := by rw [hc_val]; exact ha_nz
+  have hcoeff_nz : ((r[0]!).snd * lc_g_inv).val ≠ 0 := by
+    intro h0
+    have hz0 : (((r[0]!).snd * lc_g_inv) * (g[0]!).snd).val.toNat = 0 := by
+      rw [Zp_mul_val_toNat _ _ (by rw [hcoeff_prime]; exact hq), h0]; simp
+    exact hc_nz (UInt64.toNat_inj.mp (by rw [hz0]; rfl))
+  -- dr - dg + dg = dr
+  have hdrdg : (r[0]!).fst.deg - dg + dg = (r[0]!).fst.deg := by omega
+  -- term*g 分解
+  obtain ⟨T, hT_eq, hT_lt⟩ := scaleByMonomial_head_drop ⟨(r[0]!).fst.deg - dg⟩
+    ((r[0]!).snd * lc_g_inv) g (g[0]!) (g.toList.tail) dg hgl hcoeff_nz hc_nz h_dg hgt_lt
+  -- 转 (term*g).toList
+  have hterm_eq : ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList
+      = (scaleByMonomial ⟨(r[0]!).fst.deg - dg⟩ ((r[0]!).snd * lc_g_inv) g).toList := by
+    rw [show ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g)
+          = addImpl #[] (scaleByMonomial ⟨(r[0]!).fst.deg - dg⟩ ((r[0]!).snd * lc_g_inv) g) from rfl,
+        addImpl_nil_toList]
+  -- 头 monomial deg 化简
+  have heqdeg : (⟨(r[0]!).fst.deg - dg⟩ : UMonomial).deg + dg = (r[0]!).fst.deg := by
+    show (r[0]!).fst.deg - dg + dg = (r[0]!).fst.deg; omega
+  have hheadmono : (UMonomial.mk ((⟨(r[0]!).fst.deg - dg⟩ : UMonomial).deg + dg))
+      = (⟨(r[0]!).fst.deg⟩ : UMonomial) := by rw [heqdeg]
+  -- (term*g).toList = (⟨dr⟩, c) :: T
+  have hTG : ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g).toList
+      = (⟨(r[0]!).fst.deg⟩, ((r[0]!).snd * lc_g_inv) * (g[0]!).snd) :: T := by
+    rw [hterm_eq, hT_eq, hheadmono]
+  have hT_lt' : ∀ z ∈ T, z.fst.deg < (r[0]!).fst.deg := by
+    intro z hz; have hh := hT_lt z hz; rwa [heqdeg] at hh
+  -- 目标转 mergeAdd 形式
+  rw [show r - (#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g
+        = subImpl r ((#[(⟨(r[0]!).fst.deg - dg⟩, (r[0]!).snd * lc_g_inv)] : SparsePolyZp) * g) from rfl,
+      subImpl_toList, negImpl_toList, hTG, hrl]
+  rw [List.map_cons]
+  apply mergeAdd_cancel_lead (r[0]!).fst.deg (r[0]!)
+    (⟨(r[0]!).fst.deg⟩, -((r[0]!).snd * lc_g_inv * (g[0]!).snd))
+  · rfl
+  · rfl
+  · exact Zp_add_neg_cancel (r[0]!).snd (((r[0]!).snd * lc_g_inv) * (g[0]!).snd)
+      hc_val (hc_prime.trans ha_prime.symm) (ha_prime ▸ ha_val_lt) (by rw [ha_prime]; exact hq)
+  · exact hra_lt
+  · intro y hy
+    rw [List.mem_map] at hy
+    obtain ⟨x, hxT, hxy⟩ := hy
+    rw [← hxy]
+    exact hT_lt' x hxT
+
+-- 长除法主循环：从 r 中持续减去 g 的倍数，累加商到 q。
+-- 良基递归（真 WF，0 admit）：measure = if r.isEmpty then 0 else r[0].deg+1。
+-- 终止依赖「首项真抵消 ⇒ deg 严格下降」（divmod_step_drop），需以下不变量进签名：
+--   pm/hq/hlp/h_lc : 系数同素数 pm、lc_g_inv 为 g 首项之逆
+--   hg_ne/hg_red/h_dg/h_sorted_g : 除数 g 非空、约化、首项度 dg、降序
+--   h_sorted_r/hr_red/hr_nz : 余式 r 降序、约化、非零系数（r' 递归保持）
+-- 全部在 `divmod` 包装处经可判定的依赖 if 提供。
+def divmodAux (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat) (hg_ne : ¬ g.isEmpty) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg) (hlp : lc_g_inv.prime = pm)
+    (h_lc : (lc_g_inv * (g[0]!).snd).val = 1) (h_sorted_g : Sorted g)
+    (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm)
+    (hr_nz : NonZeroB r) : SparsePolyZp × SparsePolyZp :=
+  if hr : r.isEmpty then (q, r)
   else
     let dr := r[0]!.fst.deg
-    if dr < dg then (q, r)
+    if hd : dr < dg then (q, r)
     else
       let coeff := r[0]!.snd * lc_g_inv
       let d := dr - dg
       let term : SparsePolyZp := #[(⟨d⟩, coeff)]
       let r' := r - (term * g)
       let q' := q.push (⟨d⟩, coeff)
-      divmodAux g dg lc_g_inv q' r'
+      have h_sorted_r' : Sorted r' :=
+        subImpl_sorted r (term * g) h_sorted_r (single_mul_sorted ⟨d⟩ coeff g h_sorted_g)
+      have hcoeff_prime : coeff.prime = pm := by
+        have hr_red' : reducedListB pm r.toList = true := hr_red
+        have hrl : r.toList = r[0]! :: r.toList.tail := toList_cons_of_ne_empty r hr
+        exact ((reducedListB_cons pm _ _).mp (hrl ▸ hr_red')).1.2
+      have h_tg_red : ReducedB (term * g) pm := ReducedB_single_mul ⟨d⟩ coeff g pm hcoeff_prime hq
+      have h_tg_nz : NonZeroB (term * g) := NonZeroB_single_mul ⟨d⟩ coeff g
+      have hr'_red : ReducedB r' pm := ReducedB_subImpl r (term * g) pm hq hr_red h_tg_red
+      have hr'_nz : NonZeroB r' := NonZeroB_subImpl r (term * g) pm hq h_tg_red hr_nz h_tg_nz
+      divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g q' r'
+        h_sorted_r' hr'_red hr'_nz
+-- measure 用 `if r.isEmpty then 0 else r[0].deg+1`：空余式度量为 0，非空为首项度数+1，
+-- 保证「r' 空 或 r'首项度<r首项度」两种情形都严格递减（含 constant÷constant 边界）。
+termination_by (if r.isEmpty then 0 else r[0]!.fst.deg + 1)
+decreasing_by
+  have hr_ne : ¬ r.isEmpty := hr
+  have hdg_le : dg ≤ r[0]!.fst.deg := Nat.le_of_not_lt hd
+  have hdrop := divmod_step_drop g r dg lc_g_inv pm hq hg_ne h_sorted_g hg_red h_dg hlp h_lc
+    hr_ne h_sorted_r hr_red hr_nz hdg_le
+  rw [if_neg hr_ne]
+  generalize hRdef : (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g) = R'
+    at hdrop ⊢
+  split
+  · omega
+  · rename_i hR'ne
+    have hr'l := toList_cons_of_ne_empty R' hR'ne
+    have hmem : R'[0]! ∈ R'.toList := by rw [hr'l]; simp
+    have hlt := hdrop R'[0]! hmem
+    omega
+
+-- divmodAux 输出余式：空 或 首项度 < dg（欧几里得余式界，供 gcdAux WF 化）。
+theorem divmodAux_snd_deg_lt (g : SparsePolyZp) (dg : Nat) (lc_g_inv : Zp) (pm : UInt64)
+    (hq : 0 < pm.toNat) (hg_ne : ¬ g.isEmpty) (hg_red : ReducedB g pm)
+    (h_dg : (g[0]!).fst.deg = dg) (hlp : lc_g_inv.prime = pm)
+    (h_lc : (lc_g_inv * (g[0]!).snd).val = 1) (h_sorted_g : Sorted g) :
+    ∀ (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm) (hr_nz : NonZeroB r),
+      (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd.isEmpty = true
+      ∨ (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd[0]!.fst.deg < dg := by
+  suffices H : ∀ n, ∀ (q r : SparsePolyZp) (h_sorted_r : Sorted r) (hr_red : ReducedB r pm)
+      (hr_nz : NonZeroB r), (if r.isEmpty then 0 else r[0]!.fst.deg + 1) = n →
+      (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd.isEmpty = true
+      ∨ (divmodAux g dg lc_g_inv pm hq hg_ne hg_red h_dg hlp h_lc h_sorted_g
+        q r h_sorted_r hr_red hr_nz).snd[0]!.fst.deg < dg by
+    intro q r h_sorted_r hr_red hr_nz; exact H _ q r h_sorted_r hr_red hr_nz rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro q r h_sorted_r hr_red hr_nz hn
+    rw [divmodAux]
+    split
+    · rename_i hr; left; exact hr
+    · rename_i hr
+      dsimp only
+      split
+      · rename_i hd; right; exact hd
+      · rename_i hd
+        have hr_ne : ¬ r.isEmpty := hr
+        have hdg_le : dg ≤ r[0]!.fst.deg := Nat.le_of_not_lt hd
+        have hdrop := divmod_step_drop g r dg lc_g_inv pm hq hg_ne h_sorted_g hg_red h_dg hlp h_lc
+          hr_ne h_sorted_r hr_red hr_nz hdg_le
+        have hmeas : (if (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g).isEmpty
+            then 0
+            else (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g)[0]!.fst.deg + 1)
+            < n := by
+          rw [← hn, if_neg hr_ne]
+          generalize hRdef : (r - (#[(⟨r[0]!.fst.deg - dg⟩, r[0]!.snd * lc_g_inv)] : SparsePolyZp) * g) = R'
+            at hdrop ⊢
+          split
+          · omega
+          · rename_i hR'ne
+            have hr'l := toList_cons_of_ne_empty R' hR'ne
+            have hmem : R'[0]! ∈ R'.toList := by rw [hr'l]; simp
+            have hlt := hdrop R'[0]! hmem
+            omega
+        exact ih _ hmeas _ _ _ _ _ rfl
 
 -- 多项式长除法：f = q * g + r, deg(r) < deg(g)
--- 退化：g 为空（除以 0）→ 返回 (#[], f) 占位
+-- 退化 / 前提不满足（g 空、lc 非逆、未降序、未约化、有零系数）→ 返回 (#[], f) 占位。
+-- 合法输入（域上、降序、g≠0、同素数约化）下依赖 if 走真分支 = WF 主循环。
 def divmod (f g : SparsePolyZp) : SparsePolyZp × SparsePolyZp :=
-  if g.isEmpty then (#[], f)
-  else
-    let dg := g[0]!.fst.deg
-    let lc_g_inv := g[0]!.snd.inv
-    divmodAux g dg lc_g_inv #[] f
+  if h : ¬ g.isEmpty ∧ ((g[0]!.snd.inv * (g[0]!).snd).val = 1) ∧ Sorted g ∧ Sorted f
+      ∧ 0 < (g[0]!.snd.prime).toNat ∧ ReducedB g (g[0]!.snd.prime)
+      ∧ ReducedB f (g[0]!.snd.prime) ∧ NonZeroB f then
+    divmodAux g (g[0]!.fst.deg) (g[0]!.snd.inv) (g[0]!.snd.prime)
+      h.2.2.2.2.1 h.1 h.2.2.2.2.2.1 rfl rfl h.2.1 h.2.2.1 #[] f
+      h.2.2.2.1 h.2.2.2.2.2.2.1 h.2.2.2.2.2.2.2
+  else (#[], f)
 
 -- 标量乘（用于首一化）：multiply all coefs by const Zp
 def scalarMul (c : Zp) (f : SparsePolyZp) : SparsePolyZp :=
   f.filterMap (fun (m, x) =>
-    let new_val := x.val * c.val % c.prime
-    if new_val = 0 then none
-    else some (m, ⟨new_val, c.prime⟩))
+    let new_val := x * c
+    if new_val.val = 0 then none
+    else some (m, new_val))
 
 -- 首一化：multiply by inv(lc) — 与 C++ polynomial_GCD 输出约定一致
 def makeMonic (f : SparsePolyZp) : SparsePolyZp :=
@@ -624,11 +2159,33 @@ def makeMonic (f : SparsePolyZp) : SparsePolyZp :=
     let lc_inv := f[0]!.snd.inv
     scalarMul lc_inv f
 
--- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)；最后首一化（与 C++ 一致）
--- partial def 因终止性依赖 deg(f mod g) < deg(g) 严格递减
-partial def gcdAux (f g : SparsePolyZp) : SparsePolyZp :=
-  if g.isEmpty then f
-  else gcdAux g (divmod f g).snd
+-- 欧几里得 GCD：gcd(f, g) = gcd(g, f mod g)；最后首一化（与 C++ 一致）。
+--
+-- 合法的规范形输入上，`divmodAux_snd_deg_lt` 保证余式为空或首项次数严格下降。
+-- `divmod` 对不满足其表示不变量的输入会走保守回退分支；这里也显式检查下降条件，
+-- 使实现对所有 Array 输入总化，同时在合法输入上保持原 Euclid 控制流不变。
+def gcdAux (f g : SparsePolyZp) : SparsePolyZp :=
+  if hg : g.isEmpty then f
+  else
+    let r := (divmod f g).snd
+    if hr : r.isEmpty then g
+    else if hd : r[0]!.fst.deg < g[0]!.fst.deg then gcdAux g r
+    else g
+termination_by if g.isEmpty then 0 else g[0]!.fst.deg + 1
+decreasing_by
+  simp_wf
+  have hg' : g ≠ #[] := by
+    intro h
+    subst g
+    simp at hg
+  have hr' : r ≠ #[] := by
+    intro h
+    apply hr
+    simp [h]
+  change (if r = #[] then 0 else r[0]!.fst.deg + 1) <
+    (if g = #[] then 0 else g[0]!.fst.deg + 1)
+  rw [if_neg hg', if_neg hr']
+  omega
 
 def gcd (f g : SparsePolyZp) : SparsePolyZp :=
   makeMonic (gcdAux f g)
@@ -674,15 +2231,15 @@ instance : HasPolyGCDEEA SparsePolyZp where
   polyGCDEEA := SparsePolyZp.extGcd
 
 -- #eval 数值验证（小例 over F_5）
+-- 注：divmodAux 现为真 WF 递归（decreasing_by 完整证明，0 admit，无 sorryAx），
+-- divmod 不再 sorry-tainted，#eval 已恢复。
 -- (x^2 - 1) / (x - 1) = x + 1, remainder 0
--- (1 - 1 = 0; x^2 ≡ x^2 mod 5)
 #eval SparsePolyZp.divmod
   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x^2 - 1
   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)  -- x - 1
 -- 期望: (#[(1, 1), (0, 1)], #[])  — q = x+1, r = 0
 
--- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除）
--- 实际返回的可能是 normalized 形式，待 normalization
+-- gcd(x^2 - 1, x - 1) = x - 1（因为 x-1 整除；F_5 下 -1 = 4）
 #eval SparsePolyZp.gcd
   (#[(⟨2⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
   (#[(⟨1⟩, Zp.ofInt 1 5), (⟨0⟩, Zp.ofInt (-1) 5)] : SparsePolyZp)
@@ -708,16 +2265,6 @@ instance : HasPolyGCDEEA SparsePolyZp where
 #eval (#[(⟨2⟩, Zp.ofInt 2 7), (⟨1⟩, Zp.ofInt 3 7)] : SparsePolyZp) *
       (#[] : SparsePolyZp)
 -- 期望: #[]
--- 用具体 array element 类型避免 abbrev 透明度问题
-instance instHMulSparsePolyZZ :
-    HMul (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hMul a b := a ++ b
-instance instHAddSparsePolyZZ :
-    HAdd (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hAdd a b := a ++ b
-instance instHSubSparsePolyZZ :
-    HSub (Array (UMonomial × Int)) (Array (UMonomial × Int)) (Array (UMonomial × Int)) where
-  hSub a b := a ++ b
 instance : HPow Int UInt64 Int where
   hPow base e := base ^ e.toNat
 instance : HPow ZZ UInt64 ZZ where
@@ -1023,6 +2570,30 @@ def ZZ.sizeinbase_nat (z : ZZ) (base : Nat) : Nat :=
 def ZZ.sizeinbase (z : ZZ) (base : Int32) : UInt64 :=
   (ZZ.sizeinbase_nat z base.toInt64.toNatClampNeg).toUInt64
 
+/-- 对称模运算 a mod m → [-m/2, m/2] -/
+def ZZ.symmetricMod (a m : ZZ) : ZZ :=
+  let r := a.fmod m
+  if r * 2 ≤ m then r else r - m
+
+/-- 二项式系数 C(n, k) — 由于 Lean 标准库可能无 Nat.choose，手动实现 -/
+def Nat.myChoose : Nat → Nat → Nat
+  | _, 0 => 1
+  | 0, _ => 0
+  | n+1, k+1 => Nat.myChoose n (k+1) + Nat.myChoose n k
+
+/-- 整数二项式系数 -/
+def ZZ.binomial (n k : ZZ) : ZZ :=
+  if 0 ≤ k ∧ k ≤ n then
+    (Nat.myChoose n.natAbs k.natAbs : ZZ)
+  else 0
+
+/-- 整数向上取整平方根 -/
+noncomputable def ZZ.isqrtCeil (n : ZZ) : ZZ :=
+  if n ≤ 0 then 0
+  else
+    -- TODO: implement Nat.sqrt for ZZ
+    n
+
 -- spec 1: 总是 ≥ 1
 theorem ZZ.sizeinbase_nat_pos (z : ZZ) (b : Nat) :
     1 ≤ ZZ.sizeinbase_nat z b := by
@@ -1096,27 +2667,30 @@ def gcd (a b : Int) : Int := Int.gcd a b
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp（实现移到 abbrev SparsePolyZZ 之后）
 -- 见下方 §5c 末尾
 
--- next_prime_64: 返回 > n 的最小素数（C++ clpoly/number/ZZ.hh:1036, GMP mpz_nextprime 包装）
--- Lean 端用 trial division（O(√n) 单次），足够 B2B 测试小素数场景
-def Nat.isPrime64 (n : Nat) : Bool :=
-  if n < 2 then false
-  else if n = 2 then true
-  else if n % 2 = 0 then false
-  else
-    let rec loop (d : Nat) (fuel : Nat) : Bool :=
-      match fuel with
-      | 0 => true
-      | fuel'+1 => if d * d > n then true
-                   else if n % d = 0 then false
-                   else loop (d + 2) fuel'
-    loop 3 n
+-- Compatibility denotations for the generated corpus.  The verified strict
+-- path uses `Generated.StrictPrimeEnumeration`, which preserves the C++
+-- exceptions.  These total functions select from the finite uint64 interval
+-- and contain no fuel-bounded primality approximation.
+def next_prime_64_scan (fallback : UInt64) (candidate : Nat) : UInt64 :=
+  if hbound : candidate < UInt64.size then
+    if Nat.Prime candidate then candidate.toUInt64
+    else next_prime_64_scan fallback (candidate + 1)
+  else fallback
+termination_by UInt64.size - candidate
+decreasing_by omega
+
 def next_prime_64 (p : UInt64) : UInt64 :=
-  let rec scan (cand : Nat) (fuel : Nat) : Nat :=
-    match fuel with
-    | 0 => cand
-    | fuel'+1 => if Nat.isPrime64 cand then cand else scan (cand + 1) fuel'
-  (scan (p.toNat + 1) 100000).toUInt64
-def prev_prime_64 (p : UInt64) : UInt64 := if p > 0 then p - 1 else 0
+  next_prime_64_scan p (p.toNat + 1)
+
+def prev_prime_64_scan (fallback : UInt64) (candidate : Nat) : UInt64 :=
+  if Nat.Prime candidate then candidate.toUInt64
+  else if candidate = 0 then fallback
+  else prev_prime_64_scan fallback (candidate - 1)
+termination_by candidate
+decreasing_by omega
+
+def prev_prime_64 (p : UInt64) : UInt64 :=
+  if p.toNat ≤ 2 then p else prev_prime_64_scan p (p.toNat - 1)
 -- leadcoeff: 1-arg / 2-arg overload (Pass 5 emit 都用同一名)
 -- 1-arg `leadcoeff p` 返回 ZZ；2-arg `leadcoeff p var` 返回 Poly
 -- Lean 端：2-arg 版本（多变量主用），1-arg 用 leadcoeff1 区分
@@ -1263,6 +2837,29 @@ instance : Coe Nat Int32 where coe n := n.toUInt32.toInt32
 instance : Coe UInt64 Int64 where coe u := u.toInt64
 instance : Coe UInt32 UInt64 where coe u := u.toUInt64
 instance : Coe ZZ Nat where coe z := z.toNat
+
+/-- For UInt64 values, the roundtrip through Int64 to Nat (via toNatClampNeg) is bounded above
+    by the direct UInt64.toNat. This is universally true because toNatClampNeg clamps negative
+    Int64 values to 0, and returns the original Nat for non-negative values.
+    Used in SquarefreeZp to bound degrees after UInt64 division. -/
+theorem UInt64_toInt64_toNatClampNeg_le_toNat (u : UInt64) : u.toInt64.toNatClampNeg ≤ u.toNat := by
+  -- toNatClampNeg = toInt.toNat；toInt64 保位，故 toInt = (toNat).bmod 2^64。
+  show (u.toInt64.toInt).toNat ≤ u.toNat
+  have h1 : u.toInt64.toInt = ((u.toNat : Int)).bmod (2 ^ 64) := by
+    show u.toBitVec.toInt = _
+    rw [BitVec.toInt_eq_toNat_bmod, UInt64.toNat_toBitVec]
+  rw [h1, Int.bmod_def]; omega
+
+/-- For UInt64 values less than 2^63, the roundtrip through Int64 to Nat preserves the value.
+    This is because toInt64 maps the value identically and toNatClampNeg returns the Nat value
+    for non-negative Int64. -/
+theorem UInt64_toInt64_toNatClampNeg_eq_toNat_of_lt {u : UInt64} (h : u.toNat < 2 ^ 63) : u.toInt64.toNatClampNeg = u.toNat := by
+  -- u.toNat < 2^63 ⇒ bmod 落在正区间，等于原值。
+  show (u.toInt64.toInt).toNat = u.toNat
+  have h1 : u.toInt64.toInt = ((u.toNat : Int)).bmod (2 ^ 64) := by
+    show u.toBitVec.toInt = _
+    rw [BitVec.toInt_eq_toNat_bmod, UInt64.toNat_toBitVec]
+  rw [h1, Int.bmod_def]; omega
 abbrev SparsePolyZZ := Array (UMonomial × Int)
 
 -- §5a2 迁移：SparsePolyZZ 操作（filterMap 等需要 SparsePolyZZ 已定义）
@@ -1336,7 +2933,7 @@ def SparsePolyZZ.normalization (f : SparsePolyZZ) : SparsePolyZZ :=
   -- step 2: drop zero coefficients
   let nonZero : SparsePolyZZ := grouped.filter (fun t => t.snd ≠ 0)
   -- step 3: sort descending by deg
-  nonZero.qsort (fun a b => a.fst.deg > b.fst.deg)
+  (nonZero.toList.mergeSort (fun a b => a.fst.deg > b.fst.deg)).toArray
 
 -- polynomial_mod: SparsePolyZZ + p → SparsePolyZp
 -- 数学定义：每个系数 mod p（用 Zp.ofInt 折回 [0, p)），剔除 0 系数
@@ -1366,6 +2963,23 @@ def SparsePolyZZ.addReal (f g : SparsePolyZZ) : SparsePolyZZ :=
 def SparsePolyZZ.subReal (f g : SparsePolyZZ) : SparsePolyZZ :=
   let neg_g := g.map (fun (m, c) => (m, -c))
   SparsePolyZZ.normalization (f ++ neg_g)
+
+-- 真乘法：枚举所有单项式乘积，再合并同次项。这是
+-- `basic_polynomial::operator*` / `pair_vec_multiplies` 的数学结果；
+-- 精化层还需要单独证明生成的 C++ 控制流产生该结果。
+def SparsePolyZZ.mulReal (f g : SparsePolyZZ) : SparsePolyZZ :=
+  SparsePolyZZ.normalization <|
+    f.flatMap fun (mf, cf) =>
+      g.map fun (mg, cg) => (⟨mf.deg + mg.deg⟩, cf * cg)
+
+instance instHMulSparsePolyZZ : HMul SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hMul := SparsePolyZZ.mulReal
+
+instance instHAddSparsePolyZZ : HAdd SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hAdd := SparsePolyZZ.addReal
+
+instance instHSubSparsePolyZZ : HSub SparsePolyZZ SparsePolyZZ SparsePolyZZ where
+  hSub := SparsePolyZZ.subReal
 
 -- 伪余数：lc(G)^k * F mod G, k = deg(F) - deg(G) + 1
 -- 通过迭代单步消首项实现（每步乘 lc(G) 然后消首项）

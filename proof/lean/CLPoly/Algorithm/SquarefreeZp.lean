@@ -116,7 +116,7 @@ decreasing_by
   omega
 
 /-- yunLoop 不增加 c 的 natDegree -/
-private lemma yunLoop_c_natDegree_le
+theorem yunLoop_c_natDegree_le
     (w c : Polynomial (ZMod p)) (i : ℕ)
     (acc : List (Polynomial (ZMod p) × ℕ))
     (hc : c ≠ 0) :
@@ -179,6 +179,61 @@ private lemma yunLoop_c_natDegree_le
           (if 0 < (normalize (w /ₘ y)).natDegree then acc ++ [(normalize (w /ₘ y), i)] else acc)
           hc'_ne rfl
       exact Nat.le_trans ih_result hc'_le
+
+/-- yunLoop 输出因子均非常数：构造只在 `0 < z.natDegree` 时追加 `(z, i)`。 -/
+private lemma yunLoop_factors_natDegree_pos
+    (w c : Polynomial (ZMod p)) (i : ℕ) (acc : List (Polynomial (ZMod p) × ℕ)) (hc : c ≠ 0)
+    (hacc : ∀ pr ∈ acc, 0 < pr.1.natDegree) :
+    ∀ pr ∈ (yunLoop w c i acc hc).1, 0 < pr.1.natDegree := by
+  suffices H : ∀ n, ∀ (w c : Polynomial (ZMod p)) i acc (hc : c ≠ 0),
+      (∀ pr ∈ acc, 0 < pr.1.natDegree) → n = w.natDegree + c.natDegree →
+      ∀ pr ∈ (yunLoop w c i acc hc).1, 0 < pr.1.natDegree from
+    H _ w c i acc hc hacc rfl
+  intro n
+  induction n using Nat.strongRecOn with
+  | ind n ih =>
+    intro w c i acc hc hacc hn
+    rw [yunLoop]
+    split
+    · intro pr hpr; exact hacc pr hpr
+    · rename_i hw
+      dsimp only
+      set y := normalize (EuclideanDomain.gcd w c)
+      set z := normalize (w /ₘ y) with hz_def
+      set c' := normalize (c /ₘ y) with hc'_def
+      have hw_ne : w ≠ 0 := by intro h; simp [h] at hw
+      have hgcd_ne : EuclideanDomain.gcd w c ≠ 0 := by
+        intro h; exact hw_ne (zero_dvd_iff.mp (h ▸ EuclideanDomain.gcd_dvd_left w c))
+      have hy_monic : Monic y := Polynomial.monic_normalize hgcd_ne
+      have hy_dvd_c : y ∣ c := normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right w c)
+      have hc'_ne : c' ≠ 0 := by
+        apply normalize_ne_zero_iff.mpr
+        exact divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
+      have hacc'_pos : ∀ pr ∈ (if 0 < z.natDegree then acc ++ [(z, i)] else acc),
+          0 < pr.1.natDegree := by
+        split
+        · rename_i hz_pos
+          intro pr hpr
+          rcases List.mem_append.mp hpr with h | h
+          · exact hacc pr h
+          · simp only [List.mem_singleton] at h; rw [h]; exact hz_pos
+        · exact hacc
+      -- measure decrease（与 yunLoop_c_natDegree_le 同）
+      have hcq_dvd : c /ₘ y ∣ c := by
+        have hmod := modByMonic_add_div c y
+        rw [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at hmod
+        exact ⟨y, by rw [mul_comm]; exact hmod.symm⟩
+      have hy_ne : y ≠ 0 := Monic.ne_zero hy_monic
+      have hq_ne : c /ₘ y ≠ 0 := divByMonic_ne_zero_of_ne_zero c y hy_monic hy_dvd_c hc
+      have hdeg_c := Polynomial.natDegree_mul hy_ne hq_ne
+      have hc_eq : y * (c /ₘ y) = c := by
+        have := modByMonic_add_div c y
+        rwa [(modByMonic_eq_zero_iff_dvd hy_monic).mpr hy_dvd_c, zero_add] at this
+      rw [hc_eq] at hdeg_c
+      have hdeg_norm_c := natDegree_normalize_eq (c /ₘ y)
+      have hmeas : y.natDegree + c'.natDegree < n := by
+        rw [hn, hc'_def, hdeg_norm_c, ← hdeg_c]; omega
+      exact ih _ hmeas y c' (i + 1) _ hc'_ne hacc'_pos rfl
 
 /-- yunLoop 只追加 acc，不删除：输入 acc 的元素都在输出 .1 中 -/
 private lemma yunLoop_acc_subset
@@ -1224,6 +1279,139 @@ private theorem yunLoop_correct
 -- 4. 主定理
 -- ============================================================
 
+private lemma normalize_gcd_normalize_left_local
+    (w c : Polynomial (ZMod p)) :
+    normalize (EuclideanDomain.gcd (normalize w) c) =
+      normalize (EuclideanDomain.gcd w c) := by
+  apply (normalize_eq_normalize_iff).mpr
+  constructor
+  · apply EuclideanDomain.dvd_gcd
+    · exact dvd_trans (EuclideanDomain.gcd_dvd_left _ _)
+        (normalize_associated w).dvd
+    · exact EuclideanDomain.gcd_dvd_right _ _
+  · apply EuclideanDomain.dvd_gcd
+    · exact dvd_trans (EuclideanDomain.gcd_dvd_left _ _)
+        (normalize_associated w).symm.dvd
+    · exact EuclideanDomain.gcd_dvd_right _ _
+
+private lemma normalize_divByMonic_normalize_left_local
+    (w y : Polynomial (ZMod p)) (hy : Monic y) (hydvd : y ∣ w) :
+    normalize (normalize w /ₘ y) = normalize (w /ₘ y) := by
+  have hydvd' : y ∣ normalize w :=
+    dvd_trans hydvd (normalize_associated w).symm.dvd
+  have hwprod : y * (w /ₘ y) = w := by
+    have h := modByMonic_add_div w y
+    rwa [(modByMonic_eq_zero_iff_dvd hy).mpr hydvd, zero_add] at h
+  have hnprod : y * (normalize w /ₘ y) = normalize w := by
+    have h := modByMonic_add_div (normalize w) y
+    rwa [(modByMonic_eq_zero_iff_dvd hy).mpr hydvd', zero_add] at h
+  have hassoc : Associated (normalize w /ₘ y) (w /ₘ y) := by
+    apply Associated.of_mul_left
+      (a := y) (b := normalize w /ₘ y) (c := y) (d := w /ₘ y)
+    · rw [hnprod, hwprod]
+      exact normalize_associated w
+    · exact Associated.refl y
+    · exact hy.ne_zero
+  exact (normalize_eq_normalize_iff.mpr ⟨hassoc.dvd, hassoc.symm.dvd⟩)
+
+/-- Yun 循环会在第一步将所有提取因子首一化，因而左输入先行
+    `normalize` 不改变结果。 -/
+theorem yunLoop_normalize_left
+    (w c : Polynomial (ZMod p)) (i : ℕ)
+    (acc : List (Polynomial (ZMod p) × ℕ)) (hc : c ≠ 0) :
+    yunLoop (normalize w) c i acc hc = yunLoop w c i acc hc := by
+  by_cases hw0 : w.natDegree = 0
+  · rw [yunLoop, yunLoop]
+    rw [dif_pos hw0, dif_pos (by simpa [natDegree_normalize_eq] using hw0)]
+  · rw [yunLoop, yunLoop]
+    rw [dif_neg hw0, dif_neg (by simpa [natDegree_normalize_eq] using hw0)]
+    dsimp only
+    have hyeq : normalize (EuclideanDomain.gcd (normalize w) c) =
+        normalize (EuclideanDomain.gcd w c) :=
+      normalize_gcd_normalize_left_local w c
+    simp only [hyeq]
+    let y := normalize (EuclideanDomain.gcd w c)
+    have hyne : EuclideanDomain.gcd w c ≠ 0 := by
+      intro h
+      have hwne : w ≠ 0 := by intro hz; simp [hz] at hw0
+      exact hwne (zero_dvd_iff.mp (h ▸ EuclideanDomain.gcd_dvd_left w c))
+    have hymonic : Monic y := Polynomial.monic_normalize hyne
+    have hydvd : y ∣ w :=
+      normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left w c)
+    have hzeq : normalize (normalize w /ₘ y) = normalize (w /ₘ y) :=
+      normalize_divByMonic_normalize_left_local w y hymonic hydvd
+    dsimp [y] at hzeq
+    simp only [hzeq]
+
+/-- Yun 平方自由分解从 `f / gcd(f,f')` 与 `gcd(f,f')` 启动时，
+    循环结束的残余多项式导数为零。该接口供 L1 精化证明复用。 -/
+theorem yunLoop_sqf_remainder_derivative_zero
+    (f : Polynomial (ZMod p)) (hf_ne : f ≠ 0)
+    (hc_ne : normalize (EuclideanDomain.gcd f (derivative f)) ≠ 0) :
+    derivative (yunLoop
+      (normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f))))
+      (normalize (EuclideanDomain.gcd f (derivative f))) 1 [] hc_ne).2 = 0 := by
+  let w₀ := normalize (f /ₘ normalize (EuclideanDomain.gcd f (derivative f)))
+  let c₀ := normalize (EuclideanDomain.gcd f (derivative f))
+  have hsqf_w := squarefree_div_gcd_derivative f hf_ne
+  have hY1_init : Associated f
+      ((List.map (fun (pr : Polynomial (ZMod p) × ℕ) => pr.1 ^ pr.2) []).prod *
+        w₀ ^ 1 * c₀) := by
+    simp only [List.map_nil, List.prod_nil, one_mul, pow_one]
+    have hc₀_monic : Monic c₀ := by
+      dsimp [c₀]
+      exact Polynomial.monic_normalize (by
+        intro h
+        exact hf_ne (zero_dvd_iff.mp ((normalize_eq_zero.mpr h) ▸
+          normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _))))
+    have hc₀_dvd : c₀ ∣ f := by
+      dsimp [c₀]
+      exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_left f _)
+    have hfc_eq : c₀ * (f /ₘ c₀) = f := by
+      have h := modByMonic_add_div f c₀
+      rwa [(modByMonic_eq_zero_iff_dvd hc₀_monic).mpr hc₀_dvd, zero_add] at h
+    exact ((normalize_associated (f /ₘ c₀)).mul_right c₀
+      |>.trans ⟨1, by simp [w₀, mul_comm]; exact hfc_eq⟩).symm
+  have hyun := yunLoop_correct w₀ c₀ 1 [] hc_ne f hY1_init hsqf_w (by omega)
+    (by simp) (by simp) (by simp) (by simp)
+  obtain ⟨hyun1, hyun4, hyun5, hyun10⟩ := hyun
+  let crem := (yunLoop w₀ c₀ 1 [] hc_ne).2
+  have hcrem_ne : crem ≠ 0 := yunLoop_c_ne_zero w₀ c₀ 1 [] hc_ne
+  let acc := (yunLoop w₀ c₀ 1 [] hc_ne).1
+  let P := (acc.map (fun pr => pr.1 ^ pr.2)).prod
+  have hf_decomp : Associated f (w₀ * c₀) := by
+    simpa only [List.map_nil, List.prod_nil, one_mul, pow_one] using hY1_init
+  have hc₀_dvd_f' : c₀ ∣ derivative f := by
+    dsimp [c₀]
+    exact normalize_dvd_iff.mpr (EuclideanDomain.gcd_dvd_right f _)
+  have hcop : IsCoprime P crem := by
+    suffices ∀ l : List (Polynomial (ZMod p) × ℕ),
+        (∀ pr ∈ l, IsCoprime pr.1 crem) →
+        IsCoprime (l.map (fun pr => pr.1 ^ pr.2)).prod crem from
+      this acc (fun pr hpr => hyun10 pr hpr)
+    intro l hl
+    induction l with
+    | nil => simp [isCoprime_one_left]
+    | cons hd tl ih =>
+        simp only [List.map_cons, List.prod_cons]
+        exact ((hl hd (by simp)).pow_left).mul_left
+          (ih (fun pr hpr => hl pr (by simp [hpr])))
+  have hextract : ∀ q : Polynomial (ZMod p), Irreducible q → q ∣ w₀ → q ∣ P := by
+    intro q hq_irr hq_w₀
+    obtain ⟨pr, hpr_mem, hq_pr⟩ :=
+      yunLoop_extracts_factor q w₀ c₀ 1 [] hc_ne hq_irr hq_w₀ hsqf_w
+    exact dvd_trans hq_pr (dvd_trans (dvd_pow_self pr.1
+      (Nat.one_le_iff_ne_zero.mp (hyun4 pr hpr_mem).2.2.2))
+      (List.dvd_prod (List.mem_map.mpr ⟨pr, hpr_mem, rfl⟩)))
+  have hpreserve : ∀ q : Polynomial (ZMod p), Irreducible q → ¬(q ∣ w₀) →
+      ∀ k, q ^ k ∣ c₀ → q ^ k ∣ crem := by
+    intro q hq_irr hq_nw₀ k hqk
+    exact yunLoop_preserves_pow_dvd q hq_irr w₀ c₀ 1 [] hc_ne hq_nw₀ k hqk
+  have hcrem_dvd_c₀ : crem ∣ c₀ := yunLoop_crem_dvd_c w₀ c₀ 1 [] hc_ne
+  exact derivative_of_yun_remainder_eq_zero f w₀ c₀ crem P
+    hf_ne hcrem_ne hsqf_w hf_decomp hc₀_dvd_f'
+    (by convert hyun1) hcop hextract hpreserve hcrem_dvd_c₀
+
 /-- SQF 顶层正确性 -/
 theorem sqf_correct
     (f : Polynomial (ZMod p)) (hf : f ≠ 0) :
@@ -1499,3 +1687,50 @@ theorem sqf_correct
                 rw [Polynomial.eq_C_of_natDegree_eq_zero hcrem_deg, h, map_zero]))))).mpr (Associated.refl _)).symm),
                   fun pr hpr => ⟨(hyun4 pr hpr).1, (hyun4 pr hpr).2.1⟩,
                   fun pr hpr => (hyun4 pr hpr).2.2.2, hyun5⟩
+
+
+/-- sqfZp 输出因子均非常数（Branch A/A' 复用 IH；Branch B 用 yunLoop_factors_natDegree_pos）。 -/
+lemma sqfZp_factor_natDegree_pos (f : Polynomial (ZMod p)) :
+    ∀ pr ∈ sqfZp f, 0 < pr.1.natDegree := by
+  induction f using sqfZp.induct with
+  | case1 => intro pr hpr; rename_i hdeg0; rw [sqfZp, dif_pos hdeg0] at hpr; simp at hpr
+  | case2 =>
+    intro pr hpr
+    rename_i ih
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_pos ‹derivative _ = 0›, List.mem_map] at hpr
+    obtain ⟨pr', hmem', heq'⟩ := hpr
+    rw [← heq']; exact ih pr' hmem'
+  | case3 =>
+    intro pr hpr
+    rename_i ih
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_neg ‹¬ derivative _ = 0›] at hpr
+    rw [if_pos ‹0 < _›, List.mem_append] at hpr
+    rcases hpr with h | h
+    · exact yunLoop_factors_natDegree_pos _ _ 1 [] _ (by simp) pr h
+    · simp only [List.mem_map] at h
+      obtain ⟨pr', hmem', heq'⟩ := h
+      rw [← heq']; exact ih pr' hmem'
+  | case4 =>
+    intro pr hpr
+    rw [sqfZp] at hpr
+    simp only [dif_neg ‹¬ _ = 0›, dif_neg ‹¬ derivative _ = 0›] at hpr
+    rw [if_neg ‹¬ 0 < _›] at hpr
+    exact yunLoop_factors_natDegree_pos _ _ 1 [] _ (by simp) pr hpr
+
+/-- sqfZp 输出重数 ≤ natDegree（因子非常数 + pr.1^pr.2 ∣ f）。 -/
+lemma sqfZp_exponent_le_natDegree (f : Polynomial (ZMod p)) :
+    ∀ pr ∈ sqfZp f, pr.2 ≤ f.natDegree := by
+  intro pr hpr
+  by_cases hf : f = 0
+  · subst hf; rw [sqfZp, dif_pos (by simp)] at hpr; simp at hpr
+  · obtain ⟨hassoc, _, _, _⟩ := sqf_correct f hf
+    have hmem : pr.1 ^ pr.2 ∈ (sqfZp f).map (fun pr => pr.1 ^ pr.2) :=
+      List.mem_map.mpr ⟨pr, hpr, rfl⟩
+    have hdvd : pr.1 ^ pr.2 ∣ f := (List.dvd_prod hmem).trans hassoc.symm.dvd
+    have hle : (pr.1 ^ pr.2).natDegree ≤ f.natDegree := Polynomial.natDegree_le_of_dvd hdvd hf
+    rw [Polynomial.natDegree_pow] at hle
+    have hpos : 0 < pr.1.natDegree := sqfZp_factor_natDegree_pos f pr hpr
+    calc pr.2 ≤ pr.2 * pr.1.natDegree := Nat.le_mul_of_pos_right _ hpos
+      _ ≤ f.natDegree := hle

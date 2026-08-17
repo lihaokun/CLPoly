@@ -17,6 +17,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <limits>
 #include <stdexcept>
 #include <cassert>
 #ifdef CLPOLY_PROFILE
@@ -319,6 +320,12 @@ namespace clpoly{
         int leaf_end;           // 叶子范围结束
     };
 
+    inline bool __hensel_factor_count_fits(size_t factor_count)
+    {
+        return factor_count <= static_cast<size_t>(
+            std::numeric_limits<int>::max());
+    }
+
     // ZZ 多项式乘法并 mod m
     inline upolynomial_<ZZ> __upoly_mul_mod(
         const upolynomial_<ZZ>& a,
@@ -394,6 +401,8 @@ namespace clpoly{
         uint64_t p)
     {
         assert(factors.size() >= 2);
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
         std::vector<__hensel_node> nodes;
         nodes.push_back({}); // root at index 0
         __hensel_tree_build_recursive(nodes, factors, p, 0, (int)factors.size(), 0);
@@ -543,6 +552,8 @@ namespace clpoly{
     {
         assert(factors.size() >= 2);
         assert(!f.empty());
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
 
         // 1. 确定提升精度
         ZZ target;
@@ -1218,7 +1229,6 @@ namespace clpoly{
         };
 
         LLLMatrix M = make_initial_M(r, U_exp);
-        int J_cur    = 0;
         // 先以 J_target=0 做一次对角 LLL（等价于 s=1 Zassenhaus，近零开销）：
         // 若所有模因子已各自对应真因子，可在不建 CLD 列的情况下提取所有因子；
         // 若对角 LLL 未提取全部因子，再增加 CLD 列重试（J_target → J0 → 2·J0 → …）。
@@ -1226,6 +1236,11 @@ namespace clpoly{
 
         while ((int)active.size() > 1)
         {
+            // Every retry must express the LLL transform in the coordinates
+            // of the current active lifted factors.  Reusing an already
+            // reduced M with a fresh local U would lose that provenance.
+            M = make_initial_M((int)active.size(), U_exp);
+
             // [M1] 计算当前活跃因子的 CLD 多项式（仅在需要添加列时才计算）
             std::vector<upolynomial_<ZZ>> active_lifted;
             for (int k : active)
@@ -1235,11 +1250,9 @@ namespace clpoly{
                 cld = __cld_polys(f_star, active_lifted, m);
 
             // [M2] 喂入 CLD 列（J_target=0 时跳过，矩阵保持纯对角）
-            int J_new = 0;
             if (J_target > 0)
             {
-                J_new = __build_cld_matrix(M, cld, J_cur, J_target, m);
-                J_cur += J_new;
+                __build_cld_matrix(M, cld, 0, J_target, m);
             }
 
             // [M3] LLL 规约
@@ -1308,7 +1321,7 @@ namespace clpoly{
                 int U_exp_n = (int)ZZ(r_new > 20 ? r_new : 20).sizeinbase(2);
                 B           = ZZ(r_new + 1) * (ZZ(1) << (2 * U_exp_n));
                 M           = make_initial_M(r_new, U_exp_n);
-                J_cur       = 0;
+                U_exp       = U_exp_n;
                 J_target    = 0;  // 找到因子后重置：新子问题先尝试对角 LLL
                 continue;
             }
@@ -1481,6 +1494,14 @@ namespace clpoly{
     //   低精度下运行 LLL 会导致格基规约需 O(n^4) 次迭代而非 O(n)，性能急剧下降。
     // ================================================================
 
+    inline bool __needs_zassenhaus_safety_net(
+        size_t result_count,
+        size_t modular_factor_count,
+        bool   at_full_precision)
+    {
+        return at_full_precision && result_count < modular_factor_count;
+    }
+
     inline std::vector<upolynomial_<ZZ>>
     __lll_factorize(
         const upolynomial_<ZZ>&              f,
@@ -1522,8 +1543,14 @@ namespace clpoly{
             __g_profile.phase2_recombine_ns += _PROF_NS(_t4, _t5);
             __g_profile.phase2_triggers++;
 #endif
+            if (__needs_zassenhaus_safety_net(
+                    result2.size(), factors.size(), true))
+                return __zassenhaus_recombine(f, lifted_mig, m_mig);
             return result2;
         }
+        if (__needs_zassenhaus_safety_net(
+                result.size(), factors.size(), a_h >= a_mig))
+            return __zassenhaus_recombine(f, lifted_h, m_h);
         return result;
     }
 

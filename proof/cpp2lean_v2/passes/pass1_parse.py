@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, ArrayType, PairType, TupleType, OptionType,
-    StdMapType, RefType, UnknownType, TypeIR,
+    StdMapType, RefType, PtrType, UnknownType, TypeIR,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
     BlockExpr, TupleExpr, ArrayLit, UnknownExpr, ExprIR,
@@ -94,9 +94,10 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         inner = parse_type(qt[:-1].strip())
         return RefType(inner, is_const, is_rvalue=False)
     if qt.endswith("*"):
-        # 指针（如 `const lex_<var_order>* comp_ptr`，CLPoly 仅 1 处）
+        # Raw pointers are values with allocation identity and offset; unlike
+        # references they must survive Pass 2.
         inner = parse_type(qt[:-1].strip())
-        return RefType(inner, is_const, is_rvalue=False, is_pointer=True)
+        return PtrType(inner, is_const=is_const)
 
     # C 数组 char[N]（字符串字面量）
     import re as _re
@@ -188,6 +189,9 @@ def parse_type(qt: str, desugared: str | None = None) -> TypeIR:
         "Zp": NamedType("Zp"),
         "variable": NamedType("Variable"),
         "umonomial": NamedType("UMonomial"),
+        "dense_upoly_zp": NamedType("DenseUPolyZp"),
+        "word3": NamedType("Word3"),
+        "hgcd_mat": NamedType("HgcdMat"),
         "less": NamedType("Less"),  # MonomialOrder tag
         "uless": NamedType("ULess"),
     }
@@ -428,11 +432,8 @@ def parse_param(parm_json: dict) -> HIRParam:
     # is_ref / is_const_ref 判断（指针单独处理）
     is_const_ref = False
     is_ref = False
-    is_pointer = False
     if isinstance(ty, RefType):
-        if ty.is_pointer:
-            is_pointer = True
-        elif ty.is_const:
+        if ty.is_const:
             is_const_ref = True
         else:
             is_ref = True
@@ -641,6 +642,8 @@ def parse_expr(node: Any) -> ExprIR:
         return UnknownExpr(kind)
 
     if kind == "CXXThisExpr":
+        if isinstance(ty, PtrType):
+            ty = ty.elem
         return Var(name="this", version=0, ty=ty)
 
     if kind == "CXXDefaultArgExpr":
@@ -695,6 +698,8 @@ def parse_expr(node: Any) -> ExprIR:
 
     if kind == "InitListExpr":
         elems = [parse_expr(c) for c in node.get("inner", [])]
+        if isinstance(ty, NamedType) and ty.name == "Word3" and len(elems) == 3:
+            return Call(callee="Word3.mk", args=elems, ty=ty)
         elem_ty = elems[0].ty if elems and hasattr(elems[0], "ty") else UnknownType("")
         return ArrayLit(elems=elems, elem_ty=elem_ty)
 
@@ -803,6 +808,32 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
             else:
                 stmts.append(s)
         return BlockStmt(stmts=stmts)
+
+    if kind == "GCCAsmStmt":
+        # Exact x86_64 semantics of dense_upoly_zp::_add_carry3:
+        #   addq b0, lo; adcq b1, mid; adcq 0, hi.
+        # Clang's JSON AST omits the template string but retains the three
+        # output lvalues followed by b0 and b1.  Recognize only that exact
+        # operand shape; every other asm statement remains UnknownStmt and is
+        # rejected by strict generation.
+        inner = node.get("inner", [])
+        if len(inner) == 5:
+            outputs = [parse_expr(x) for x in inner[:3]]
+            if (all(isinstance(x, FieldAccess) for x in outputs) and
+                    [x.field_name for x in outputs] == ["lo", "mid", "hi"] and
+                    outputs[0].obj == outputs[1].obj == outputs[2].obj):
+                state = outputs[0].obj
+                b0 = parse_expr(inner[3])
+                b1 = parse_expr(inner[4])
+                return AssignStmt(
+                    target=state,
+                    value=Call(
+                        callee="word3_addCarry_x86",
+                        args=[state, b1, b0],
+                        ty=NamedType("Word3"),
+                    ),
+                )
+        return UnknownStmt(kind="GCCAsmStmt")
 
     if kind == "DeclStmt":
         result = []
@@ -918,6 +949,46 @@ def parse_stmt(node: Any) -> StmtIR | list[StmtIR]:
         if len(inner) >= 2:
             cond = parse_expr(inner[0])
             body = _parse_stmts(inner[1])
+            # C/C++ permits an assignment as the controlling expression,
+            # e.g. `while ((c = a % b))`.  HIR expressions are pure, so make
+            # that sequencing explicit: initialize once before the loop and
+            # repeat the assignment at the bottom of each iteration.  This
+            # form is used only when the body has no `continue`, which would
+            # otherwise bypass the bottom assignment.
+            def assignment_core(e):
+                while isinstance(e, Cast):
+                    e = e.expr
+                if isinstance(e, BinOp) and e.op == "=" and isinstance(e.lhs, Var):
+                    return e.lhs, e.rhs
+                return None
+
+            def replace_assignment(e, lhs):
+                if isinstance(e, Cast):
+                    return Cast(expr=replace_assignment(e.expr, lhs),
+                                source_ty=e.source_ty, target_ty=e.target_ty,
+                                cast_kind=e.cast_kind)
+                if isinstance(e, BinOp) and e.op == "=":
+                    return lhs
+                return e
+
+            def has_continue(stmts):
+                for stmt in stmts:
+                    if isinstance(stmt, ContinueStmt):
+                        return True
+                    if isinstance(stmt, IfStmt) and (
+                        has_continue(stmt.then_body) or has_continue(stmt.else_body)):
+                        return True
+                    if isinstance(stmt, BlockStmt) and has_continue(stmt.stmts):
+                        return True
+                return False
+
+            core = assignment_core(cond)
+            if core is not None and not has_continue(body):
+                lhs, rhs = core
+                update = AssignStmt(target=lhs, value=rhs)
+                pure_cond = replace_assignment(cond, lhs)
+                return BlockStmt(stmts=[update,
+                    WhileStmt(cond=pure_cond, body=[*body, update])])
             return WhileStmt(cond=cond, body=body)
         return UnknownStmt(kind)
 
@@ -1217,16 +1288,19 @@ _DECOMP_COUNTER: int = 0  # B4 修复：__decomp 全局唯一 ID
 
 
 def parse_pass(ast_json: dict) -> HIRFunc:
-    """AST FunctionDecl 节点 → HIRFunc（HIR₀ 阶段）。
+    """AST free/member function node → HIRFunc（HIR₀ 阶段）。
 
-    前提：ast_json 是一个实例化的 FunctionDecl（mangledName 非空）。
+    普通入口是具体 `FunctionDecl`。C++ 类依赖闭包还会传入具体
+    `CXXMethodDecl`; 这时显式补入 `this` 参数，使后续纯函数化 pass 能把
+    receiver mutation 与普通 ref-out 参数统一处理。
     """
     if not isinstance(ast_json, dict):
         raise TranslationError("parse", "<unknown>", "AST not a dict")
-    if ast_json.get("kind") != "FunctionDecl":
+    decl_kind = ast_json.get("kind")
+    if decl_kind not in ("FunctionDecl", "CXXMethodDecl", "CXXConstructorDecl"):
         raise TranslationError(
             "parse", ast_json.get("name", "<unknown>"),
-            f"expected FunctionDecl, got {ast_json.get('kind')}",
+            f"expected function/method/constructor declaration, got {decl_kind}",
         )
 
     base_name = ast_json.get("name", "")
@@ -1235,18 +1309,31 @@ def parse_pass(ast_json: dict) -> HIRFunc:
 
     # 解析参数
     params = []
+    if decl_kind == "CXXMethodDecl" and ast_json.get("storageClass") != "static":
+        is_const_method = qual_type.rstrip().endswith(" const")
+        params.append(HIRParam(
+            name="this",
+            ty=NamedType("DenseUPolyZp"),
+            is_ref=not is_const_method,
+            is_const_ref=is_const_method,
+            is_output=not is_const_method,
+        ))
     body_node: Any = None
+    ctor_initializers: list[dict] = []
     for c in ast_json.get("inner", []):
         if not isinstance(c, dict):
             continue
         k = c.get("kind")
         if k == "ParmVarDecl":
             params.append(parse_param(c))
+        elif k == "CXXCtorInitializer":
+            ctor_initializers.append(c)
         elif k == "CompoundStmt":
             body_node = c
 
     # 返回类型
-    ret_ty = parse_return_type(qual_type)
+    ret_ty = (NamedType("DenseUPolyZp") if decl_kind == "CXXConstructorDecl"
+              else parse_return_type(qual_type))
 
     # body
     if body_node:
@@ -1259,6 +1346,55 @@ def parse_pass(ast_json: dict) -> HIRFunc:
             body = [body_stmt]
     else:
         body = []
+
+    if decl_kind == "CXXConstructorDecl":
+        this_var = Var(name="this", version=0, ty=NamedType("DenseUPolyZp"))
+        prefix: list[StmtIR] = [LetStmt(
+            var=this_var,
+            ty=NamedType("DenseUPolyZp"),
+            value=Call(callee="DenseUPolyZp.mk", args=[
+                ArrayLit(elems=[], elem_ty=BaseType.UINT64),
+                Lit(0, BaseType.UINT64), Lit(0, BaseType.UINT64),
+                Lit(0, BaseType.UINT32),
+            ], ty=NamedType("DenseUPolyZp")),
+        )]
+        for init in ctor_initializers:
+            field = (init.get("anyInit") or {}).get("name", "")
+            inners = init.get("inner", [])
+            if not field or not inners:
+                continue
+            field_decl = init.get("anyInit") or {}
+            field_type = parse_type(
+                (field_decl.get("type") or {}).get("qualType", ""),
+                (field_decl.get("type") or {}).get("desugaredQualType"))
+            init_expr = parse_expr(inners[0])
+            # A default-constructed std::vector<uint64_t> is the empty C++
+            # coefficient buffer.  Record that exact initializer directly;
+            # it is not an algorithmic replacement.
+            if field == "_coeffs" and isinstance(init_expr, Call) and not init_expr.args:
+                init_expr = ArrayLit(elems=[], elem_ty=BaseType.UINT64)
+            prefix.append(AssignStmt(
+                target=FieldAccess(obj=this_var, field_name=field, ty=field_type),
+                value=init_expr,
+            ))
+
+        def ctor_returns(stmts: list[StmtIR]) -> list[StmtIR]:
+            out: list[StmtIR] = []
+            for stmt in stmts:
+                if isinstance(stmt, ReturnStmt) and stmt.value is None:
+                    out.append(ReturnStmt(value=this_var))
+                elif isinstance(stmt, IfStmt):
+                    out.append(IfStmt(
+                        cond=stmt.cond,
+                        then_body=ctor_returns(stmt.then_body),
+                        else_body=ctor_returns(stmt.else_body)))
+                elif isinstance(stmt, BlockStmt):
+                    out.append(BlockStmt(stmts=ctor_returns(stmt.stmts)))
+                else:
+                    out.append(stmt)
+            return out
+
+        body = prefix + ctor_returns(body) + [ReturnStmt(value=this_var)]
 
     # 实例化 suffix（基于 qual_type）
     instance_suffix = _infer_instance_suffix(qual_type)

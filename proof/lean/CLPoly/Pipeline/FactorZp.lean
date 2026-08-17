@@ -4,7 +4,7 @@
   证明：若 SQF、DDF、EDF 各自满足规约，则组合结果满足 FactorZpCorrect。
   这是框架验证——不依赖算法实现，仅依赖规约间的逻辑衔接。
 
-  证明结构（全部无 sorry）：
+  证明结构（无占位符）：
     SQF: f ≈ ∏ gᵢ^eᵢ, 每个 gᵢ 首一无平方
     DDF: gᵢ = ∏ gd_j (首一 Associated → 相等)
     EDF: gd_j = ∏ q_k (首一 Associated → 相等)
@@ -37,7 +37,7 @@ private lemma poly_unit_eq_C
   exact eq_C_of_natDegree_eq_zero (natDegree_coe_units u)
 
 /-- 首一多项式的 Associated 即相等 -/
-private lemma eq_of_associated_monic
+lemma eq_of_associated_monic
     (a b : Polynomial (ZMod p)) (ha : Monic a) (hb : Monic b)
     (h : Associated a b) : a = b := by
   -- Associated a b → ∃ u, a * ↑u = b
@@ -55,7 +55,7 @@ private lemma eq_of_associated_monic
   exact hu
 
 /-- 首一多项式列表的积是首一 -/
-private lemma monic_list_prod
+lemma monic_list_prod
     (l : List (Polynomial (ZMod p))) (h : ∀ q ∈ l, Monic q) :
     Monic l.prod := by
   induction l with
@@ -66,7 +66,7 @@ private lemma monic_list_prod
       (ih (fun q hq => h q (List.mem_cons.mpr (.inr hq))))
 
 /-- (∏ aᵢ)^n = ∏(aᵢ^n) 在交换幺半群中成立 -/
-private lemma list_prod_pow
+lemma list_prod_pow
     (l : List (Polynomial (ZMod p))) (n : ℕ) :
     l.prod ^ n = (l.map (· ^ n)).prod := by
   induction l with
@@ -87,7 +87,7 @@ private lemma list_prod_flatMap {α : Type*}
 
 /-- 对单个首一无平方多项式，DDF + EDF 给出完整不可约分解。
     关键步骤：DDF 输出首一 + EDF 输出首一 → Associated 即相等 → 乘积精确匹配 -/
-private lemma ddf_edf_combine
+lemma ddf_edf_combine
     (g : Polynomial (ZMod p)) (hm : Monic g) (hsq : Squarefree g)
     (ddf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
     (hddf : Monic g → Squarefree g → DDFCorrect g (ddf g))
@@ -147,6 +147,61 @@ private lemma ddf_edf_combine
 -- 主定理：SQF + DDF + EDF → FactorZpCorrect
 -- ============================================================
 
+/-- Concrete-list form of the Zp pipeline theorem.  This is the composition
+boundary used by strict L1 refinement: `expanded ge` is the list returned by
+the actual DDF/EDF executions for the concrete SQF component `ge`, rather than
+an abstract factorization function or an existence witness. -/
+theorem factor_Zp_correct_of_concrete_components
+    (f : Polynomial (ZMod p))
+    (sqfResult : List (Polynomial (ZMod p) × ℕ))
+    (hsqf : SquarefreeDecomp f sqfResult)
+    (expanded : (ge : Polynomial (ZMod p) × ℕ) →
+      ge ∈ sqfResult → List (Polynomial (ZMod p)))
+    (hexpanded : ∀ ge hge,
+      ge.1 = (expanded ge hge).prod ∧
+      ∀ q ∈ expanded ge hge, Irreducible q ∧ Monic q) :
+    ∃ lc : ZMod p,
+      FactorZpCorrect f lc
+        (sqfResult.attach.flatMap fun tagged =>
+          (expanded tagged.1 tagged.2).map fun q => (q, tagged.1.2)) := by
+  obtain ⟨sqfAssoc, _, sqfMultiplicity, _⟩ := hsqf
+  let factors := sqfResult.attach.flatMap fun tagged =>
+    (expanded tagged.1 tagged.2).map fun q => (q, tagged.1.2)
+  have key : (factors.map (fun pr => pr.1 ^ pr.2)).prod =
+      (sqfResult.map (fun pr => pr.1 ^ pr.2)).prod := by
+    simp only [factors, List.map_flatMap, List.map_map, Function.comp_def,
+      list_prod_flatMap]
+    rw [show sqfResult.map (fun pr => pr.1 ^ pr.2) =
+        sqfResult.attach.map (fun tagged => tagged.1.1 ^ tagged.1.2) by
+      exact (List.attach_map_val
+        (l := sqfResult) (f := fun pr => pr.1 ^ pr.2)).symm]
+    congr 1
+    apply List.map_congr_left
+    intro tagged htagged
+    rw [← list_prod_pow, ← (hexpanded tagged.1 tagged.2).1]
+  have hassociated : Associated f
+      (factors.map (fun pr => pr.1 ^ pr.2)).prod := by
+    rw [key]
+    exact sqfAssoc
+  obtain ⟨unit, hunit⟩ := hassociated
+  obtain ⟨lc, _, hlc⟩ := poly_unit_eq_C unit⁻¹
+  refine ⟨lc, ?_, ?_⟩
+  · change f = C lc * (factors.map (fun pr => pr.1 ^ pr.2)).prod
+    calc
+      f = f * 1 := (mul_one f).symm
+      _ = f * ((↑unit : Polynomial (ZMod p)) * ↑(unit⁻¹)) := by simp
+      _ = f * ↑unit * ↑(unit⁻¹) := (mul_assoc _ _ _).symm
+      _ = (factors.map (fun pr => pr.1 ^ pr.2)).prod * ↑(unit⁻¹) := by
+        rw [hunit]
+      _ = (factors.map (fun pr => pr.1 ^ pr.2)).prod * C lc := by rw [hlc]
+      _ = C lc * (factors.map (fun pr => pr.1 ^ pr.2)).prod := mul_comm _ _
+  · intro pr hpr
+    change pr ∈ factors at hpr
+    simp only [factors, List.mem_flatMap, List.mem_map] at hpr
+    obtain ⟨tagged, _, q, hq, rfl⟩ := hpr
+    have hquality := (hexpanded tagged.1 tagged.2).2 q hq
+    exact ⟨hquality.1, hquality.2, sqfMultiplicity tagged.1 tagged.2⟩
+
 /-- Zp[x] 因式分解的顶层正确性：
     假设 SQF、DDF、EDF 各自正确，则组合结果是完整因式分解。
     证明逻辑完整，仅依赖 5 个辅助引理（见文件顶部）。-/
@@ -154,7 +209,7 @@ theorem factor_Zp_correct
     (f : Polynomial (ZMod p)) (hf : f ≠ 0)
     -- 假设各子过程存在且正确
     (sqf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
-    (hsqf : ∀ g, g ≠ 0 → SquarefreeDecomp g (sqf g))
+    (hsqf : SquarefreeDecomp f (sqf f))
     (ddf : Polynomial (ZMod p) → List (Polynomial (ZMod p) × ℕ))
     (hddf : ∀ g, Monic g → Squarefree g → DDFCorrect g (ddf g))
     (edf : Polynomial (ZMod p) → ℕ → List (Polynomial (ZMod p)))
@@ -164,7 +219,7 @@ theorem factor_Zp_correct
     : ∃ (lc : ZMod p) (factors : List (Polynomial (ZMod p) × ℕ)),
         FactorZpCorrect f lc factors := by
   -- Step 1: 展开 SQF 规约
-  have sqf_spec := hsqf f hf
+  have sqf_spec := hsqf
   obtain ⟨sqf_assoc, sqf_props, sqf_mult, _⟩ := sqf_spec
   -- Step 2: 对每个 SQF 分量 (gᵢ, eᵢ)，用 DDF+EDF 得到不可约因子
   have component_ok : ∀ ge ∈ sqf f,

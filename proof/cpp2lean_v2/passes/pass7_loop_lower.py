@@ -191,12 +191,36 @@ def _find_innermost_loop(cfg: CFG, idom: dict[int, int],
 # §C. Loop 提取
 # ============================================================
 
-def _collect_phi_targets_at(bb: BasicBlock) -> list[tuple[Var, TypeIR]]:
-    """收集块的所有 phi targets（loop-carried vars）。"""
+def _collect_phi_targets_at(bb: BasicBlock, cfg: CFG | None = None
+                            ) -> list[tuple[Var, TypeIR]]:
+    """收集块的所有 phi targets（loop-carried vars）。
+
+    C++ permits the same source name in disjoint lexical scopes.  Pass 6 still
+    indexes its provisional phi type table by the bare name, so a later loop
+    declaration can overwrite an earlier loop's type.  SSA definition
+    versions remain distinct, however.  Recover the phi type from its concrete
+    incoming versioned definitions instead of trusting that lossy table.
+    """
+    def_tys: dict[tuple[str, int], TypeIR] = {}
+    if cfg is not None:
+        for block in cfg.blocks.values():
+            for stmt in block.stmts:
+                if isinstance(stmt, LetStmt):
+                    def_tys[(stmt.var.name, stmt.var.version)] = stmt.ty
+                elif isinstance(stmt, PhiStmt) and stmt.target.version >= 0:
+                    def_tys.setdefault(
+                        (stmt.target.name, stmt.target.version), stmt.ty)
     out: list[tuple[Var, TypeIR]] = []
     for s in bb.stmts:
         if isinstance(s, PhiStmt):
-            out.append((s.target, s.ty))
+            source_tys = [def_tys.get((v.name, v.version))
+                          for v in s.sources.values()]
+            concrete = [t for t in source_tys
+                        if t is not None and not isinstance(t, UnknownType)]
+            ty = concrete[0] if concrete and all(t == concrete[0]
+                                                 for t in concrete) else s.ty
+            out.append((Var(name=s.target.name, version=s.target.version, ty=ty),
+                        ty))
     return out
 
 
@@ -543,7 +567,8 @@ def _build_loop_func(cfg: CFG, header: int, body_bbs: set[int],
     header_block = cfg.blocks[header]
 
     # 1. params: phi targets at header + free vars（含版本号编入 name）
-    phi_targets: list[tuple[Var, TypeIR]] = _collect_phi_targets_at(header_block)
+    phi_targets: list[tuple[Var, TypeIR]] = _collect_phi_targets_at(
+        header_block, cfg)
     phi_target_vars = [Var(name=t[0].name, version=t[0].version, ty=t[1])
                         for t in phi_targets]
     free_vars: list[Var] = _collect_loop_free_vars(cfg, body_bbs, phi_targets,

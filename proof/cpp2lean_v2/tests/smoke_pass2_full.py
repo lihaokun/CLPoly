@@ -70,6 +70,11 @@ def _get_factorize_instances() -> list[tuple[str, dict]]:
                     break
                 if cap and line.startswith(" "):
                     paths.append(f"-I{line.strip()}")
+            brew = subprocess.run(
+                ["brew", "--prefix"], capture_output=True, text=True,
+            )
+            if brew.returncode == 0 and brew.stdout.strip():
+                paths.append(f"-I{brew.stdout.strip()}/include")
             return paths
         except Exception:
             return []

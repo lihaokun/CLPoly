@@ -84,6 +84,40 @@ CLASS_MAP = {
         },
     },
 
+    "DenseUPolyZp": {
+        "lean_type": StructType("DenseUPolyZp", []),
+        # Constructor bodies are part of the strict generated GCD closure;
+        # these names must never be mapped to SparsePolyZp.gcd or another L2
+        # implementation.
+        "constructors": {},
+        "methods": {
+            "lead": ("method", "dense_upoly_zp_lead_ir"),
+            "empty": ("method", "dense_upoly_zp_empty_ir"),
+            "__strip": ("mutate", "dense_upoly_zp___strip_ir"),
+            "nmod_inv": ("method", "dense_upoly_zp_nmod_inv_ir"),
+            "nmod_mul": ("method", "dense_upoly_zp_nmod_mul_ir"),
+            "nmod_add": ("method", "dense_upoly_zp_nmod_add_ir"),
+            "nmod_sub": ("method", "dense_upoly_zp_nmod_sub_ir"),
+            "__precompute": ("mutate", "dense_upoly_zp___precompute_ir"),
+            "scalar_mul": ("mutate", "dense_upoly_zp_scalar_mul_ir"),
+            "deg": ("method", "dense_upoly_zp_deg_ir"),
+            "to_upoly": ("method", "dense_upoly_zp_to_upoly_ir"),
+            "_gcd_hgcd": ("method", "dense_upoly_zp__gcd_hgcd_ir"),
+            "_poly_divrem": ("method", "dense_upoly_zp__poly_divrem_ir"),
+            "_hgcd_recursive": ("method", "dense_upoly_zp__hgcd_recursive_ir"),
+            "_gcd_euclid": ("method", "dense_upoly_zp__gcd_euclid_ir"),
+            "_hgcd_iter": ("method", "dense_upoly_zp__hgcd_iter_ir"),
+            "_mul": ("method", "dense_upoly_zp__mul_ir"),
+            "_poly_sub": ("method", "dense_upoly_zp__poly_sub_ir"),
+            "_poly_add": ("method", "dense_upoly_zp__poly_add_ir"),
+            "_mat_mul": ("method", "dense_upoly_zp__mat_mul_ir"),
+            "_mat_row_update": ("method", "dense_upoly_zp__mat_row_update_ir"),
+            "_classical_mul": ("method", "dense_upoly_zp__classical_mul_ir"),
+            "_kar_mul": ("method", "dense_upoly_zp__kar_mul_ir"),
+            "_mat_mul_entry": ("method", "dense_upoly_zp__mat_mul_entry_ir"),
+        },
+    },
+
     "SparsePolyZp": {
         "lean_type": StructType("SparsePolyZp", []),
         "constructors": {
@@ -499,6 +533,13 @@ FUNC_MAP = {
     # 输出参数索引：从 0 开始的参数位置列表（C++ 调用中的位置）
 
     "derivative": ("derivative", "direct"),
+    "inv_prime": ("inv_prime_ir", "direct"),
+    "__preinvert_limb": ("dense_upoly_zp___preinvert_limb_ir", "direct"),
+    "_umul128": ("dense_upoly_zp__umul128_ir", "direct"),
+    "_add_carry3": ("dense_upoly_zp__add_carry3_ir", "direct"),
+    "_lll_mod_preinv": ("dense_upoly_zp__lll_mod_preinv_ir", "direct"),
+    "divrem": ("dense_upoly_zp_divrem_nonalias_ir", "direct"),
+    "__builtin_clzll": ("uint64_clz", "direct"),
     "polynomial_GCD": ("polynomial_GCD", "direct"),
     "polynomial_GCD_eea": ("polynomial_GCD_eea", "direct"),
     "pair_vec_div5": ("pair_vec_div5", "direct"),
@@ -694,6 +735,9 @@ CALL_OPERATOR_MAP = {
 # M2：TRANSLATION_SCOPE 中函数的输出参数（从 C++ 源码扫描）
 # func_name → [输出参数索引]（非 const 引用参数位置）
 TRANSLATION_SCOPE_OUTPUT_PARAMS = {
+    "_umul128": [0, 1],                 # hi, lo
+    "_add_carry3": [0],                 # word3 accumulator
+    "divrem": [0, 1],                   # dense quotient and remainder
     "__upoly_make_monic": [0],           # f
     "__upoly_mod_coeff": [0],            # f
     "__upoly_divmod_mod": [0, 1],        # q, r
@@ -783,6 +827,321 @@ def is_callee_nonvoid(callee: str, num_args: int) -> bool:
     return (f"{callee}#{num_args}" in TRANSLATION_SCOPE_NONVOID_REFOUT
             or callee in TRANSLATION_SCOPE_NONVOID_REFOUT)
 
+# ============================================================
+# REFINEMENT_MAP: L1 translated function → L2 algorithm model
+#
+# Each entry maps a TRANSLATION_SCOPE function (by base_name) to its
+# L2 mathematical model. The generator (Pass 9) uses this to emit
+# refinement theorem skeletons.
+#
+# Fields:
+#   l2_name        — L2 function name (in CLPoly.Algorithm.* or Model)
+#   l2_import      — Lean import path for the L2 module
+#   refinement_file — Output file name (without .lean)
+#   bridge         — Type bridge: "toPoly" | "toZMod" | "identity" | "toMathlib"
+#   result_kind    — Theorem shape (see pass9 docstring)
+#   cpp_source     — Original C++ source file (for docstring provenance)
+#   doc            — Human-readable description
+# ============================================================
+
+REFINEMENT_MAP = {
+    "__select_prime": {
+        "l1_name": "__select_prime_upoly_ir",
+        "l2_name": "SelectionCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "SelectPrime",
+        "result_kind": "conditional",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "为整数多项式选择模素数并完成模分解",
+        "verified_contract": {
+            "theorem_name": "__select_prime_raw_ir_refines_SelectionCorrect",
+            "proof_import": "CLPoly.Refinement.SelectPrime",
+            "proof_theorem": (
+                "Refinement.StrictSelectPrime."
+                "__select_prime_raw_ir_refines"
+            ),
+            "kind": "strict_select_prime",
+        },
+    },
+    "__factor_Zp": {
+        "l1_name": "__factor_Zp_ir",
+        "l2_name": "FactorZpCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "FactorZp",
+        "result_kind": "factor_zp_correct",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "Zp 上完整因式分解",
+        "verified_contract": {
+            "theorem_name": "__factor_Zp_raw_ir_refines_FactorZpCorrect",
+            "proof_import": "CLPoly.Refinement.FactorZp",
+            "proof_theorem": (
+                "Refinement.StrictFactorZp."
+                "__factor_Zp_raw_ir_refines_FactorZpCorrect"
+            ),
+            "kind": "strict_factor_zp",
+        },
+    },
+    "__factor_squarefree_primitive_ZZ": {
+        "l1_name": "__factor_squarefree_primitive_ZZ_raw_ir",
+        "l2_name": "FactorZZCorrect",
+        "l2_import": "CLPoly.Spec",
+        "refinement_file": "FactorZZ",
+        "result_kind": "factor_zz_correct",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "squarefree primitive integer polynomial factorization",
+        "verified_contract": {
+            "theorem_name": (
+                "__factor_squarefree_primitive_ZZ_raw_ir_refines_"
+                "FactorZZCorrect"
+            ),
+            "proof_import": "CLPoly.Refinement.FactorZZ",
+            "proof_theorem": (
+                "Refinement.StrictFactorZZ."
+                "concreteSelectHensel___factor_squarefree_primitive_ZZ_"
+                "raw_ir_refines"
+            ),
+            "kind": "strict_factor_zz",
+        },
+    },
+    "__squarefree_Zp": {
+        "l1_name": "__squarefree_Zp_ir",
+        "l2_name": "sqfZp",
+        "l2_call": "sqfZp (SparsePolyZp.toPoly p f)",
+        "l2_import": "CLPoly.Algorithm.SquarefreeZp",
+        "refinement_file": "SquarefreeZp",
+        "result_kind": "map_eq",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "无平方因子分解（Yun 算法）",
+        # Pass 9 emits this public, proved contract after the strict semantic
+        # implementation has been discharged in Refinement/SquarefreeZp.lean.
+        # Keep the original C++ spelling (including its leading `__`) in the
+        # theorem name so generated contracts remain mechanically traceable.
+        "verified_contract": {
+            "theorem_name": "__squarefree_Zp_raw_ir_refines_sqfZp",
+            "proof_import": "CLPoly.Refinement.SquarefreeZpEntry",
+            "proof_theorem": (
+                "Refinement.StrictSquarefreeEntry."
+                "__squarefree_Zp_raw_ir_refines_sqfZp"
+            ),
+            "kind": "strict_squarefree_zp",
+        },
+    },
+    "__ddf_Zp": {
+        "l1_name": "__ddf_Zp_ir",
+        "l2_name": "ddf",
+        "l2_call": "ddf (SparsePolyZp.toPoly p f)",
+        "l2_import": "CLPoly.Algorithm.DDF",
+        "refinement_file": "DDF",
+        "result_kind": "map_eq",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "不同度数因子分解",
+        "verified_contract": {
+            "theorem_name": "__ddf_Zp_raw_ir_refines_ddf",
+            "proof_import": "CLPoly.Refinement.DDF",
+            "proof_theorem": "Refinement.StrictDDF.strictDDFEntryIR_refines_ddf",
+            "kind": "strict_ddf_zp",
+        },
+    },
+    "__edf_Zp": {
+        "l1_name": "__edf_Zp_ir",
+        "l2_name": "EDFCorrect",
+        "l2_call": "EDFCorrect (SparsePolyZp.toPoly p f) d.toNat factors",
+        "l2_import": "CLPoly.Algorithm.EDF",
+        "refinement_file": "EDF",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_zp.hh",
+        "doc": "等次数因子分解（Cantor--Zassenhaus）",
+        "verified_contract": {
+            "theorem_name": "__edf_Zp_raw_ir_refines_edf",
+            "proof_import": "CLPoly.Refinement.EDF",
+            "proof_theorem": "Refinement.StrictEDF.strictEDFEntryIR_refines_edf",
+            "kind": "strict_edf_zp",
+        },
+    },
+    "polynomial_GCD_eea": {
+        "l1_name": "__polynomial_GCD_eea_raw_ir",
+        "l2_name": "GCDMonoid.gcd",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial.hh",
+        "doc": "extended Euclidean polynomial GCD used by Hensel tree construction",
+        "verified_contract": {
+            "theorem_name": "__polynomial_GCD_eea_raw_ir_refines_gcd",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "strictHenselEEAEntryIR_refines_gcd"
+            ),
+            "kind": "strict_hensel_eea",
+        },
+    },
+    "__hensel_step": {
+        "l1_name": "__hensel_step_raw_ir",
+        "l2_name": "HenselStepCorrect",
+        "l2_call": "HenselStepCorrect f m node output",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "二次 Hensel 提升步骤",
+        "verified_contract": {
+            "theorem_name": "__hensel_step_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel.__hensel_step_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_step",
+        },
+    },
+    "__hensel_lift_recursive": {
+        "l1_name": "__hensel_lift_recursive_raw_ir",
+        "l2_name": "HenselLiftRecursiveCorrect",
+        "l2_call": (
+            "HenselLiftRecursiveCorrect termination m tree nodes target output"
+        ),
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "自顶向下二次 Hensel 树递归",
+        "verified_contract": {
+            "theorem_name": "__hensel_lift_recursive_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "__hensel_lift_recursive_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_lift_recursive",
+        },
+    },
+    "__hensel_extract_factors": {
+        "l1_name": "__hensel_extract_factors_raw_ir",
+        "l2_name": "HenselExtractCorrect",
+        "l2_call": "HenselExtractCorrect tree nodes factors output",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "从 Hensel 树按左后右顺序提取叶子因子",
+        "verified_contract": {
+            "theorem_name": "__hensel_extract_factors_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "__hensel_extract_factors_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_extract_factors",
+        },
+    },
+    "__hensel_tree_build": {
+        "l1_name": "__hensel_tree_build_raw_ir",
+        "l2_name": "HenselExtractInvariant",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "construct the concrete Hensel tree in preorder",
+        "verified_contract": {
+            "theorem_name": "__hensel_tree_build_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "strictHenselTreeBuildRawIR_refines_topology_root"
+            ),
+            "kind": "strict_hensel_tree_build",
+        },
+    },
+    "__hensel_lift_upoly": {
+        "l1_name": "__hensel_lift_upoly_raw_ir",
+        "l2_name": "HenselLiftEntryCorrect",
+        "l2_import": "CLPoly.Algorithm.Hensel",
+        "refinement_file": "Hensel",
+        "result_kind": "predicate",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "complete quadratic Hensel lift over integer polynomials",
+        "verified_contract": {
+            "theorem_name": "__hensel_lift_upoly_raw_ir_refines",
+            "proof_import": "CLPoly.Refinement.Hensel",
+            "proof_theorem": (
+                "Refinement.StrictHensel."
+                "__hensel_lift_upoly_raw_ir_refines"
+            ),
+            "kind": "strict_hensel_lift_upoly",
+        },
+    },
+    "__make_zp": {
+        "l1_name": "__make_zp_ir",
+        "l2_name": "Zp.ofInt",
+        "l2_call": "Zp.ofInt val.toInt modulus",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "Zp 构造函数",
+    },
+    "__upoly_make_monic": {
+        "l1_name": "__upoly_make_monic_ir",
+        "l2_name": "SparsePolyZp.makeMonic",
+        "l2_call": "SparsePolyZp.makeMonic f",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "map_eq_pair",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "首一化：multiply by inv(lc)",
+    },
+    "__upoly_divmod": {
+        "l1_name": "__upoly_divmod_ir",
+        "l2_name": "SparsePolyZp.divmod",
+        "l2_call": "SparsePolyZp.divmod f g",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "pair_eq",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "多项式长除法：q = f / g, r = f mod g",
+    },
+    "__symmetric_mod": {
+        "l1_name": "__symmetric_mod_ir",
+        "l2_name": "ZZ.symmetricMod",
+        "l2_call": "ZZ.symmetricMod a m",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "对称模运算：a mod m → [-m/2, m/2]",
+    },
+    "__binomial": {
+        "l1_name": "__binomial_ir",
+        "l2_name": "ZZ.binomial",
+        "l2_call": "ZZ.binomial n k",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/polynomial_factorize_univar.hh",
+        "doc": "二项式系数 n choose k",
+    },
+    "__isqrt_ceil": {
+        "l1_name": "__isqrt_ceil_ir",
+        "l2_name": "ZZ.isqrtCeil",
+        "l2_call": "ZZ.isqrtCeil n",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZZArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/number/ZZ.hh",
+        "doc": "向上取整平方根 ceil(sqrt(n))",
+    },
+    "__upoly_mod": {
+        "l1_name": "__upoly_mod_ir",
+        "l2_name": "SparsePolyZp.divmod",
+        "l2_call": "(SparsePolyZp.divmod f g).snd",
+        "l2_import": "CLPoly.Model",
+        "refinement_file": "ZpArith",
+        "result_kind": "direct_eq",
+        "cpp_source": "clpoly/upolynomial.hh",
+        "doc": "多项式取模 remainder = f mod g",
+    },
+}
+
 TRANSLATION_SCOPE = {
     # Zp 模块 (13)
     "__make_zp", "__upoly_make_monic", "__upoly_mod", "__upoly_divmod",
@@ -819,8 +1178,8 @@ TRANSLATION_SCOPE = {
     "__select_eval_point", "__si_theta_array_eval",
     "__symmetric_mod_poly", "__taylor_coeff_zp",
     "__wang_core", "__wang_leading_coeff",
-    # GCD 模块：仅 sqf 翻译；polynomial_GCD/cont 等翻译路径试过但 survey_ast
-    # 单 template instance 限制 + dense_upoly_zp basis 缺口 → 不走翻译路线，
-    # 改 Phase F-impl-A（数学 spec + L1 placeholder/真实现）。详 docs/devlog
+    # GCD 模块：稀疏 SQF 入口仍单独提取；polynomial_GCD 必须经
+    # dense_upoly_zp 的显式 raw heap 闭包（StrictGCD/StrictHGCD）接回，禁止
+    # 映射到数学规格或 L1 占位实现。详 strict GCD/HGCD source gates。
     "squarefreefactorize",
 }

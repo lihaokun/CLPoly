@@ -1,0 +1,2295 @@
+/-
+  Semantic refinement of the fixed-width scalar operations used by the raw
+  dense-polynomial implementation.
+-/
+import CLPoly.Generated.StrictGCD
+import Mathlib.Tactic
+
+set_option autoImplicit false
+
+namespace CLPoly.Impl.StrictWordArithmetic
+
+open Generated.StrictGCD
+
+/-- Mathematical base of one C++ `uint64_t` limb. -/
+def limbBase : Nat := 2 ^ 64
+
+/-- Little-endian natural-number observation of the C++ three-limb word. -/
+def word3Value (s : Word3) : Nat :=
+  s.lo.toNat + limbBase * s.mid.toNat + limbBase ^ 2 * s.hi.toNat
+
+/-- The repeated two-limb quotient-estimate block in `_lll_mod_preinv`. -/
+def preinvQuotientPair (u1 u0 pinv : UInt64) : UInt64 × UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  (q1', q0')
+
+/-- One source-level normalized reduction round, retaining the generated
+`Int32 → Int64 → UInt64` carry conversion verbatim.  This definition is a
+factoring of the C++ machine operations, not a mathematical oracle. -/
+def preinvRoundIR (u1 u0 pn pinv : UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  let r' : UInt64 := if r > q0' then r + pn else r
+  if r' >= pn then r' - pn else r'
+
+/-- The same source round with its quotient/carry prefix shared through
+`preinvQuotientPair`; this is the form used by the arithmetic invariant. -/
+def preinvReduceNormalized (u1 u0 pn pinv : UInt64) : UInt64 :=
+  let q := preinvQuotientPair u1 u0 pinv
+  let r : UInt64 := u0 - ((q.1 + 1) * pn)
+  let r' : UInt64 := if r > q.2 then r + pn else r
+  if r' >= pn then r' - pn else r'
+
+/-- One complete two-limb step of `_lll_mod_preinv`: pack the adjacent limbs
+under the source normalization shift, run the exact preinverse block, then
+denormalize its canonical result. -/
+def preinvStepIR (hi lo p pinv : UInt64) (norm : UInt32) : UInt64 :=
+  let pn := p <<< norm
+  let h0 := hi <<< norm
+  let h := if norm > 0 then h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l := lo <<< norm
+  (preinvRoundIR h l pn pinv) >>> norm
+
+/-- Continuation form of the exact generated preinverse correction block.
+It mirrors cpp2lean's basic-block representation and exposes no specification
+operation. -/
+def preinvRoundCPS (u1 u0 pn pinv : UInt64) (k : UInt64 → UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  let r' : UInt64 := if r > q0' then r + pn else r
+  if r' >= pn then k (r' - pn) else k r'
+
+/-- Basic-block-distributed form emitted by cpp2lean. -/
+def preinvRoundCFG (u1 u0 pn pinv : UInt64) (k : UInt64 → UInt64) : UInt64 :=
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 :=
+    ((if q0' < u0 then (1 : Int32) else 0).toInt64.toUInt64)
+  let q1' : UInt64 := q1 + (u1 + carry)
+  let r : UInt64 := u0 - ((q1' + 1) * pn)
+  if r > q0' then
+    let r' := r + pn
+    if r' >= pn then k (r' - pn) else k r'
+  else if r >= pn then k (r - pn) else k r
+
+/-- Continuation form of one normalized limb step, matching the block layout
+emitted by cpp2lean. -/
+def preinvStepCPS (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 :=
+    if norm > 0 then h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm))
+
+/-- The second `_lll_mod_preinv` step has a UInt64 shift count in the
+cpp2lean CFG because the generated basic block receives `norm.toUInt64`. -/
+def preinvStepCPS64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32).toUInt64 - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm))
+
+/-- The first generated step uses UInt32 shifts for its initial splice but
+passes `norm.toUInt64` to the correction block and its continuation. -/
+def preinvFirstCPS (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (mid >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := mid <<< norm.toUInt64
+  preinvRoundCPS h l pn pinv (fun r => k (r >>> norm.toUInt64))
+
+def preinvStepCFG64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32).toUInt64 - norm)) else h0
+  let l : UInt64 := lo <<< norm
+  preinvRoundCFG h l pn pinv (fun r => k (r >>> norm))
+
+def preinvFirstCFG (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) : UInt64 :=
+  let pn : UInt64 := p <<< norm
+  let h0 : UInt64 := hi <<< norm
+  let h : UInt64 := if norm > 0 then
+    h0 ||| (mid >>> ((64 : UInt32) - norm)) else h0
+  let l : UInt64 := mid <<< norm.toUInt64
+  preinvRoundCFG h l pn pinv (fun r => k (r >>> norm.toUInt64))
+
+@[simp] theorem uint32_zero_toUInt64 : (0 : UInt32).toUInt64 = 0 := by
+  decide
+
+@[simp] theorem uint32_toUInt64_pos (n : UInt32) :
+    (0 : UInt64) < n.toUInt64 ↔ (0 : UInt32) < n := by
+  simp [UInt64.lt_iff_toNat_lt, UInt32.lt_iff_toNat_lt,
+    UInt32.toNat_toUInt64]
+
+@[simp] theorem uint64_shiftLeft_u32_eq_u64 (x : UInt64) (n : UInt32) :
+    x <<< n = x <<< n.toUInt64 := by rfl
+
+@[simp] theorem uint64_shiftRight_u32_eq_u64 (x : UInt64) (n : UInt32) :
+    x >>> n = x >>> n.toUInt64 := by rfl
+
+theorem uint32_sub_64_toUInt64 (n : UInt32) (hn : n.toNat ≤ 64) :
+    ((64 : UInt32) - n).toUInt64 = (64 : UInt64) - n.toUInt64 := by
+  apply UInt64.toNat_inj.mp
+  rw [UInt32.toNat_toUInt64]
+  have hn32 : n ≤ (64 : UInt32) := by
+    simpa [UInt32.le_iff_toNat_le] using hn
+  have hn64 : n.toUInt64 ≤ (64 : UInt64) := by
+    simp [UInt64.le_iff_toNat_le, UInt32.toNat_toUInt64, hn]
+  rw [UInt32.toNat_sub_of_le _ _ hn32, UInt64.toNat_sub_of_le _ _ hn64]
+  simp [UInt32.toNat_toUInt64]
+
+@[simp] theorem uint64_shiftLeft_zero (x : UInt64) :
+    x <<< (0 : UInt64) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x <<< (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftLeft_zero_u32 (x : UInt64) :
+    x <<< (0 : UInt32) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x <<< (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftRight_zero (x : UInt64) :
+    x >>> (0 : UInt64) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x >>> (0 : UInt64)).toNat = x.toNat
+  simp
+
+@[simp] theorem uint64_shiftRight_zero_u32 (x : UInt64) :
+    x >>> (0 : UInt32) = x := by
+  apply UInt64.toNat_inj.mp
+  change (x >>> (0 : UInt64)).toNat = x.toNat
+  simp
+
+theorem preinvRoundCPS_eq_early (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCPS u1 u0 pn pinv k = k (preinvRoundIR u1 u0 pn pinv) := by
+  simp [preinvRoundCPS, preinvRoundIR] <;> repeat' split <;> simp_all
+
+theorem preinvFirstCPS_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCPS hi lo p pinv norm k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvFirstCPS, preinvStepIR]
+  rw [preinvRoundCPS_eq_early]
+  rw [← uint64_shiftLeft_u32_eq_u64 lo norm]
+  rw [← uint64_shiftRight_u32_eq_u64]
+
+theorem preinvStepCPS64_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) (hn : norm.toNat ≤ 64) :
+    preinvStepCPS64 hi lo p pinv norm.toUInt64 k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvStepCPS64, preinvStepIR]
+  rw [preinvRoundCPS_eq_early]
+  simp only [uint64_shiftLeft_u32_eq_u64,
+    uint64_shiftRight_u32_eq_u64]
+  rw [uint32_sub_64_toUInt64 norm hn]
+  have h64 : (64 : UInt32).toUInt64 = (64 : UInt64) := by decide
+  rw [h64]
+  simp only [uint32_toUInt64_pos]
+
+theorem int32Carry_toUInt64 (c : Prop) [Decidable c] :
+    ((if c then (1 : Int32) else 0).toInt64.toUInt64) =
+      (if c then (1 : UInt64) else 0) := by
+  by_cases h : c <;> simp [h] <;> decide
+
+theorem int64_one_toUInt64 : (1 : Int64).toUInt64 = 1 := by
+  decide
+
+theorem int64_zero_toUInt64 : (0 : Int64).toUInt64 = 0 := by
+  decide
+
+theorem preinvRoundCPS_eq (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCPS u1 u0 pn pinv k = k (preinvRoundIR u1 u0 pn pinv) := by
+  simp [preinvRoundCPS, preinvRoundIR] <;> repeat' split <;> simp_all
+
+theorem preinvRoundCFG_eq_CPS (u1 u0 pn pinv : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvRoundCFG u1 u0 pn pinv k = preinvRoundCPS u1 u0 pn pinv k := by
+  simp [preinvRoundCFG, preinvRoundCPS] <;> repeat' split <;> simp_all
+
+theorem preinvStepCPS_eq (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvStepCPS hi lo p pinv norm k = k (preinvStepIR hi lo p pinv norm) := by
+  simp only [preinvStepCPS, preinvStepIR]
+  rw [preinvRoundCPS_eq]
+
+theorem preinvStepCFG64_eq_CPS64 (hi lo p pinv norm : UInt64)
+    (k : UInt64 → UInt64) :
+    preinvStepCFG64 hi lo p pinv norm k =
+      preinvStepCPS64 hi lo p pinv norm k := by
+  simp only [preinvStepCFG64, preinvStepCPS64]
+  rw [preinvRoundCFG_eq_CPS]
+
+theorem preinvFirstCFG_eq_CPS (hi mid p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCFG hi mid p pinv norm k =
+      preinvFirstCPS hi mid p pinv norm k := by
+  simp only [preinvFirstCFG, preinvFirstCPS]
+  rw [preinvRoundCFG_eq_CPS]
+
+theorem preinvFirstCFG_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) :
+    preinvFirstCFG hi lo p pinv norm k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  rw [preinvFirstCFG_eq_CPS, preinvFirstCPS_eq_step]
+
+theorem preinvStepCFG64_eq_step (hi lo p pinv : UInt64) (norm : UInt32)
+    (k : UInt64 → UInt64) (hn : norm.toNat ≤ 64) :
+    preinvStepCFG64 hi lo p pinv norm.toUInt64 k =
+      k (preinvStepIR hi lo p pinv norm) := by
+  rw [preinvStepCFG64_eq_CPS64, preinvStepCPS64_eq_step _ _ _ _ _ _ hn]
+
+/-- Bind the generated outer basic-block graph to the two typed CFG rounds.
+The only non-definitional splice is conversion of the source UInt32
+normalization count to the UInt64 count carried by the second block. -/
+theorem lll_mod_preinv_ir_eq_cfg (hi mid lo p pinv : UInt64)
+    (norm : UInt32) (hn : norm.toNat ≤ 64) :
+    dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm =
+      preinvFirstCFG hi mid p pinv norm
+        (fun r => preinvStepCFG64 r lo p pinv norm.toUInt64 id) := by
+  by_cases hnorm : norm > 0 <;>
+    simp [dense_upoly_zp__lll_mod_preinv_ir, preinvFirstCFG,
+      preinvStepCFG64, preinvRoundCFG, uint32_sub_64_toUInt64 norm hn,
+      hnorm]
+
+/-- The generated function is exactly the composition of the two source
+machine steps; this theorem contains no mathematical remainder operation. -/
+theorem lll_mod_preinv_ir_eq_steps (hi mid lo p pinv : UInt64)
+    (norm : UInt32) (hn : norm.toNat ≤ 64) :
+    dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm =
+      preinvStepIR (preinvStepIR hi mid p pinv norm) lo p pinv norm := by
+  rw [lll_mod_preinv_ir_eq_cfg hi mid lo p pinv norm hn]
+  rw [preinvFirstCFG_eq_step]
+  rw [preinvStepCFG64_eq_step _ _ _ _ norm id hn]
+  rfl
+
+/-
+  Natural-language proof.
+
+  The two definitions differ only in how the carry bit is written.  The C++
+  translation passes `0` or `1` through `Int32`, `Int64`, and `UInt64`, while
+  `preinvQuotientPair` constructs the same UInt64 bit directly.  Splitting on
+  the source comparison makes both conversions concrete; every subsequent
+  fixed-width operation and correction branch is then identical.
+-/
+theorem preinvRoundIR_eq_reduceNormalized (u1 u0 pn pinv : UInt64) :
+    preinvRoundIR u1 u0 pn pinv =
+      preinvReduceNormalized u1 u0 pn pinv := by
+  by_cases hcarry :
+      uint128_lo (uint128_of_uint64 u1 * uint128_of_uint64 pinv) + u0 < u0
+  · simp [preinvRoundIR, preinvReduceNormalized, preinvQuotientPair, hcarry,
+      int64_one_toUInt64]
+  · simp [preinvRoundIR, preinvReduceNormalized, preinvQuotientPair, hcarry,
+      int64_zero_toUInt64]
+
+/-
+  Natural-language proof.
+
+  Both operands are unsigned 64-bit words, hence each is below `2^64`; their
+  product is therefore below `2^128`.  The generated multiplication first
+  zero-extends both operands and multiplies them in `BitVec 128`, so its value
+  is the ordinary natural-number product rather than a wrapped product.  The
+  returned low word is the remainder modulo `2^64`, and shifting right by 64
+  before truncation returns the quotient.  The quotient/remainder identity
+  then reconstructs the original product.
+-/
+theorem umul128_reconstruct (a b : UInt64) :
+    let out := dense_upoly_zp__umul128_ir 0 0 a b
+    out.2.toNat + limbBase * out.1.toNat = a.toNat * b.toNat := by
+  simp only [dense_upoly_zp__umul128_ir, uint128_of_uint64, uint128_lo,
+    limbBase, BitVec.toNat_mul, BitVec.toNat_ofNat]
+  have ha : a.toNat < 2 ^ 64 := UInt64.toNat_lt a
+  have hb : b.toNat < 2 ^ 64 := UInt64.toNat_lt b
+  have ha128 : a.toNat < 2 ^ 128 := lt_trans ha (by norm_num)
+  have hb128 : b.toNat < 2 ^ 128 := lt_trans hb (by norm_num)
+  have hab : a.toNat * b.toNat < 2 ^ 128 := by
+    nlinarith [mul_nonneg (show 0 ≤ 2 ^ 64 - a.toNat by omega)
+      (show 0 ≤ 2 ^ 64 - b.toNat by omega)]
+  have hprod :
+      (BitVec.ofNat 128 a.toNat * BitVec.ofNat 128 b.toNat).toNat =
+        a.toNat * b.toNat := by
+    rw [BitVec.toNat_mul]
+    simp only [BitVec.toNat_ofNat]
+    rw [Nat.mod_eq_of_lt ha128, Nat.mod_eq_of_lt hb128,
+      Nat.mod_eq_of_lt hab]
+  have hshift :
+      ((BitVec.ofNat 128 a.toNat * BitVec.ofNat 128 b.toNat) >>>
+        (64 : UInt128)).toNat =
+        a.toNat * b.toNat / 2 ^ 64 := by
+    simp [hprod, Nat.shiftRight_eq_div_pow]
+  have hhi : a.toNat * b.toNat / 2 ^ 64 < 2 ^ 64 := by
+    rw [Nat.div_lt_iff_lt_mul (by positivity)]
+    simpa [← pow_add] using hab
+  simp only [Nat.mod_eq_of_lt ha128, Nat.mod_eq_of_lt hb128,
+    Nat.mod_eq_of_lt hab, UInt64.toNat_ofNat']
+  rw [hshift, Nat.mod_eq_of_lt hhi]
+  exact Nat.mod_add_div (a.toNat * b.toNat) (2 ^ 64)
+
+/-
+  Natural-language proof.
+
+  Any 128-bit word is below `2^128`.  Truncation to `UInt64` returns its
+  remainder modulo `2^64`; shifting right by 64 returns its quotient by that
+  base, which is already below `2^64`, so the second truncation is exact.  The
+  natural-number quotient/remainder identity reconstructs the original word.
+  This lemma is the common carry splitter used twice by `_add_carry3`.
+-/
+theorem uint128_split_reconstruct (x : UInt128) :
+    (uint128_lo x).toNat + limbBase *
+      (uint128_lo (x >>> (64 : UInt128))).toNat = x.toNat := by
+  have hx : x.toNat < 2 ^ 128 :=
+    BitVec.toNat_lt_twoPow_of_le (x := x) (Nat.le_refl 128)
+  have hshift : (x >>> (64 : UInt128)).toNat = x.toNat / 2 ^ 64 := by
+    simp [Nat.shiftRight_eq_div_pow]
+  have hhi : x.toNat / 2 ^ 64 < 2 ^ 64 := by
+    rw [Nat.div_lt_iff_lt_mul (by positivity)]
+    simpa [← pow_add] using hx
+  simp only [uint128_lo, limbBase, UInt64.toNat_ofNat']
+  rw [hshift, Nat.mod_eq_of_lt hhi]
+  exact Nat.mod_add_div x.toNat (2 ^ 64)
+
+/-
+  Natural-language proof.
+
+  Apply `uint128_split_reconstruct` to the two intermediate 128-bit sums.  The
+  first identity replaces low-limb addition by a low result plus one base times
+  its carry; the second does the same at the middle limb.  After multiplying
+  the second identity by the limb base, the carry terms telescope.  The final
+  `UInt64` addition wraps the high limb modulo the base, which is precisely a
+  wrap modulo `base^3` after weighting that limb by `base^2`.
+-/
+theorem addCarry3_modEq (s : Word3) (b1 b0 : UInt64) :
+    let out := dense_upoly_zp__add_carry3_ir s b1 b0
+    Nat.ModEq (limbBase ^ 3) (word3Value out)
+      (word3Value s + b0.toNat + limbBase * b1.toNat) := by
+  let sum0 : UInt128 := uint128_of_uint64 s.lo + uint128_of_uint64 b0
+  let carry0 : UInt64 := uint128_lo (sum0 >>> (64 : UInt128))
+  let sum1 : UInt128 := uint128_of_uint64 s.mid + uint128_of_uint64 b1 +
+    uint128_of_uint64 carry0
+  let carry1 : UInt64 := uint128_lo (sum1 >>> (64 : UInt128))
+  have hslo := UInt64.toNat_lt s.lo
+  have hsmid := UInt64.toNat_lt s.mid
+  have hb0 := UInt64.toNat_lt b0
+  have hb1 := UInt64.toNat_lt b1
+  have hcarry0 := UInt64.toNat_lt carry0
+  have hx0 : s.lo.toNat + b0.toNat < 2 ^ 128 := by omega
+  have hx1 : s.mid.toNat + b1.toNat + carry0.toNat < 2 ^ 128 := by omega
+  norm_num at hx0 hx1
+  have hsum0 : sum0.toNat = s.lo.toNat + b0.toNat := by
+    simp [sum0, uint128_of_uint64, BitVec.toNat_add, BitVec.toNat_ofNat,
+      Nat.mod_eq_of_lt hx0]
+  have hsum1 : sum1.toNat = s.mid.toNat + b1.toNat + carry0.toNat := by
+    simp [sum1, uint128_of_uint64, BitVec.toNat_add, BitVec.toNat_ofNat,
+      Nat.mod_eq_of_lt hx1]
+  have hsplit0 := uint128_split_reconstruct sum0
+  have hsplit1 := uint128_split_reconstruct sum1
+  have hcarry0eq : carry0.toNat =
+      (uint128_lo (sum0 >>> (64 : UInt128))).toNat := rfl
+  have hcarry1eq : carry1.toNat =
+      (uint128_lo (sum1 >>> (64 : UInt128))).toNat := rfl
+  have hhi : (s.hi + carry1).toNat =
+      (s.hi.toNat + carry1.toNat) % 2 ^ 64 := UInt64.toNat_add _ _
+  simp only [dense_upoly_zp__add_carry3_ir, word3_addCarry_x86,
+    word3Value, limbBase]
+  change Nat.ModEq ((2 ^ 64) ^ 3)
+    ((uint128_lo sum0).toNat + 2 ^ 64 * (uint128_lo sum1).toNat +
+      (2 ^ 64) ^ 2 * (s.hi + carry1).toNat)
+    (s.lo.toNat + 2 ^ 64 * s.mid.toNat + (2 ^ 64) ^ 2 * s.hi.toNat +
+      b0.toNat + 2 ^ 64 * b1.toNat)
+  simp only [limbBase] at hsplit0 hsplit1
+  norm_num [Nat.ModEq] at hsplit0 hsplit1 hcarry0eq hcarry1eq hhi ⊢
+  rw [hsum0] at hsplit0
+  rw [hsum1] at hsplit1
+  omega
+
+/-- Exact observation of the generated 128-bit multiply/reduce used by the
+extended-Euclid inverse loop. -/
+theorem uint128_mul_mod_u64_toNat (a b p : UInt64) (hp : p ≠ 0) :
+    (uint128_lo ((uint128_of_uint64 a * uint128_of_uint64 b) %
+      uint128_of_uint64 p)).toNat =
+      (a.toNat * b.toNat) % p.toNat := by
+  have hpNat : 0 < p.toNat := by
+    apply Nat.pos_of_ne_zero
+    intro hzero
+    apply hp
+    exact UInt64.toNat_inj.mp (by simpa using hzero)
+  have hab : a.toNat * b.toNat < 2 ^ 128 := by
+    have ha := UInt64.toNat_lt a
+    have hb := UInt64.toNat_lt b
+    norm_num at ha hb ⊢
+    nlinarith
+  have ha128 : a.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt a) (by norm_num)
+  have hb128 : b.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt b) (by norm_num)
+  have hp128 : p.toNat < 2 ^ 128 := lt_trans (UInt64.toNat_lt p) (by norm_num)
+  have hmod64 : (a.toNat * b.toNat) % p.toNat < UInt64.size := by
+    have := Nat.mod_lt (a.toNat * b.toNat) hpNat
+    exact lt_trans this (UInt64.toNat_lt p)
+  simp only [uint128_lo, uint128_of_uint64, BitVec.toNat_umod,
+    BitVec.toNat_mul, BitVec.toNat_ofNat]
+  rw [Nat.mod_eq_of_lt ha128, Nat.mod_eq_of_lt hb128,
+    Nat.mod_eq_of_lt hab, Nat.mod_eq_of_lt hp128]
+  rw [UInt64.toNat_ofNat', Nat.mod_eq_of_lt hmod64]
+
+/-- One coefficient update of the generated extended-Euclid loop is exactly
+modular subtraction. -/
+theorem invPrimeCoeffStep_cast (s1 s2 q p : UInt64)
+    (hp : p ≠ 0) :
+    let sq : UInt64 := uint128_lo
+      ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+    let s3 : UInt64 :=
+      if s1 ≥ sq then s1 - sq else (p - sq) + s1
+    (s3.toNat : ZMod p.toNat) =
+      (s1.toNat : ZMod p.toNat) -
+        (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+  dsimp only
+  let sq : UInt64 := uint128_lo
+    ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+  change ((if s1 ≥ sq then s1 - sq else (p - sq) + s1).toNat :
+      ZMod p.toNat) =
+    (s1.toNat : ZMod p.toNat) -
+      (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat)
+  have hsq : sq.toNat = (s2.toNat * q.toNat) % p.toNat := by
+    exact uint128_mul_mod_u64_toNat s2 q p hp
+  have hpNat : 0 < p.toNat := by
+    exact Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have hsqP : sq.toNat < p.toNat := by
+    rw [hsq]
+    exact Nat.mod_lt _ hpNat
+  by_cases hle : sq ≤ s1
+  · have hleNat : sq.toNat ≤ s1.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_sub_of_le _ _ hle]
+    rw [Nat.cast_sub hleNat, hsq]
+    simp
+  · have hltNat : s1.toNat < sq.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    have hsqLeP : sq ≤ p := by
+      simp [UInt64.le_iff_toNat_le, Nat.le_of_lt hsqP]
+    have hsum : (p - sq).toNat + s1.toNat < UInt64.size := by
+      rw [UInt64.toNat_sub_of_le _ _ hsqLeP]
+      apply lt_trans (b := p.toNat)
+      · omega
+      · exact UInt64.toNat_lt p
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_add, Nat.mod_eq_of_lt hsum,
+      UInt64.toNat_sub_of_le _ _ hsqLeP, hsq]
+    rw [Nat.cast_add,
+      Nat.cast_sub (Nat.le_of_lt (Nat.mod_lt (s2.toNat * q.toNat) hpNat))]
+    simp
+    ring
+
+theorem invPrimeCoeffStep_lt (s1 s2 q p : UInt64)
+    (hp : p ≠ 0) (hs1 : s1.toNat < p.toNat) :
+    let sq : UInt64 := uint128_lo
+      ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+    let s3 : UInt64 :=
+      if s1 ≥ sq then s1 - sq else (p - sq) + s1
+    s3.toNat < p.toNat := by
+  dsimp only
+  let sq : UInt64 := uint128_lo
+    ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+  change (if s1 ≥ sq then s1 - sq else (p - sq) + s1).toNat < p.toNat
+  have hsq : sq.toNat = (s2.toNat * q.toNat) % p.toNat :=
+    uint128_mul_mod_u64_toNat s2 q p hp
+  have hpNat : 0 < p.toNat :=
+    Nat.pos_of_ne_zero (fun h => hp (UInt64.toNat_inj.mp (by simpa using h)))
+  have hsqP : sq.toNat < p.toNat := by
+    rw [hsq]
+    exact Nat.mod_lt _ hpNat
+  by_cases hle : sq ≤ s1
+  · simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_sub_of_le _ _ hle]
+    omega
+  · have hltNat : s1.toNat < sq.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using hle
+    have hsqLeP : sq ≤ p := by
+      simp [UInt64.le_iff_toNat_le, Nat.le_of_lt hsqP]
+    have hsumP : (p - sq).toNat + s1.toNat < p.toNat := by
+      rw [UInt64.toNat_sub_of_le _ _ hsqLeP]
+      omega
+    have hsumB : (p - sq).toNat + s1.toNat < UInt64.size :=
+      lt_trans hsumP (UInt64.toNat_lt p)
+    simp only [hle, ↓reduceIte]
+    rw [UInt64.toNat_add, Nat.mod_eq_of_lt hsumB]
+    exact hsumP
+
+/-- Well-founded semantic invariant for the exact generated extended-Euclid
+loop.  The returned coefficient represents `gcd(a,b)` modulo `p`. -/
+theorem loop_inv_prime_ir_refines (input p s2 s1 c b a : UInt64)
+    (hp : p ≠ 0) (hb : b ≠ 0)
+    (hc : c.toNat = a.toNat % b.toNat)
+    (hs1lt : s1.toNat < p.toNat) (hs2lt : s2.toNat < p.toNat)
+    (hs1 : (s1.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+      (a.toNat : ZMod p.toNat))
+    (hs2 : (s2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+      (b.toNat : ZMod p.toNat)) :
+    let out := Generated.StrictGCD._loop_inv_prime_0_ir s2 s1 c b a p
+    out.2.toNat < p.toNat ∧
+      (out.2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+        (Nat.gcd a.toNat b.toNat : ZMod p.toNat) := by
+  induction hmeasure : c.toNat using Nat.strong_induction_on generalizing
+    s2 s1 c b a with
+  | h measure ih =>
+    rw [Generated.StrictGCD._loop_inv_prime_0_ir]
+    split
+    next hcnz =>
+      have hcNe : c ≠ 0 := by simpa using hcnz
+      have hcPos : 0 < c.toNat := by
+        exact Nat.pos_of_ne_zero (fun hz => hcNe (UInt64.toNat_inj.mp (by simpa using hz)))
+      let q : UInt64 := a / b
+      let sq : UInt64 := uint128_lo
+        ((uint128_of_uint64 s2 * uint128_of_uint64 q) % uint128_of_uint64 p)
+      let s3 : UInt64 := if s1 ≥ sq then s1 - sq else (p - sq) + s1
+      let c' : UInt64 := b % c
+      have hq : q.toNat = a.toNat / b.toNat := by
+        simp [q, UInt64.toNat_div]
+      have hc' : c'.toNat = b.toNat % c.toNat := by
+        simp [c', UInt64.toNat_mod]
+      have hc'lt : c'.toNat < measure := by
+        rw [← hmeasure, hc']
+        exact Nat.mod_lt _ hcPos
+      have hs3lt : s3.toNat < p.toNat := by
+        exact invPrimeCoeffStep_lt s1 s2 q p hp hs1lt
+      have hstep : (s3.toNat : ZMod p.toNat) =
+          (s1.toNat : ZMod p.toNat) -
+            (s2.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+        exact invPrimeCoeffStep_cast s1 s2 q p hp
+      have hac : a.toNat = c.toNat + b.toNat * q.toNat := by
+        rw [hc, hq]
+        nlinarith [Nat.mod_add_div a.toNat b.toNat]
+      have hs3 : (s3.toNat : ZMod p.toNat) *
+          (input.toNat : ZMod p.toNat) = (c.toNat : ZMod p.toNat) := by
+        calc
+          (s3.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) =
+              (s1.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat) -
+                ((s2.toNat : ZMod p.toNat) * (input.toNat : ZMod p.toNat)) *
+                  (q.toNat : ZMod p.toNat) := by rw [hstep]; ring
+          _ = (a.toNat : ZMod p.toNat) -
+                (b.toNat : ZMod p.toNat) * (q.toNat : ZMod p.toNat) := by
+                rw [hs1, hs2]
+          _ = (c.toNat : ZMod p.toNat) := by
+                rw [← Nat.cast_mul, ← Nat.cast_sub]
+                · congr 1
+                  omega
+                · rw [hq]
+                  exact Nat.mul_div_le a.toNat b.toNat
+      have hrec := ih c'.toNat hc'lt s3 s2 c' c b hcNe hc'
+        hs2lt hs3lt hs2 hs3 rfl
+      have hgcd : Nat.gcd b.toNat c.toNat = Nat.gcd a.toNat b.toNat := by
+        calc
+          Nat.gcd b.toNat c.toNat = Nat.gcd c.toNat b.toNat := Nat.gcd_comm _ _
+          _ = Nat.gcd (a.toNat % b.toNat) b.toNat := by rw [← hc]
+          _ = Nat.gcd b.toNat a.toNat := (Nat.gcd_rec b.toNat a.toNat).symm
+          _ = Nat.gcd a.toNat b.toNat := Nat.gcd_comm _ _
+      simpa [q, sq, s3, c', hgcd] using hrec
+    next hcz =>
+      have hcZero : c = 0 := by simpa using hcz
+      have hmodZero : a.toNat % b.toNat = 0 := by simpa [hcZero] using hc.symm
+      have hdvd : b.toNat ∣ a.toNat := Nat.dvd_of_mod_eq_zero hmodZero
+      simp only
+      refine ⟨hs2lt, ?_⟩
+      rw [Nat.gcd_eq_right hdvd]
+      exact hs2
+
+/-- Correctness of the exact generated inverse entry for a nonzero residue
+modulo a prime. -/
+theorem inv_prime_ir_correct (i p : UInt64)
+    (hprime : Nat.Prime p.toNat)
+    (hiPos : 0 < i.toNat) (hiP : i.toNat < p.toNat) :
+    let out := Generated.StrictGCD.inv_prime_ir i p
+    out.toNat < p.toNat ∧
+      (out.toNat : ZMod p.toNat) * (i.toNat : ZMod p.toNat) = 1 := by
+  have hp : p ≠ 0 := by
+    intro hzero
+    subst p
+    simpa using hprime.ne_zero
+  have hi : i ≠ 0 := by
+    intro hzero
+    subst i
+    simpa using hiPos
+  have hs1 : ((0 : UInt64).toNat : ZMod p.toNat) *
+      (i.toNat : ZMod p.toNat) = (p.toNat : ZMod p.toNat) := by simp
+  have hs2 : ((1 : UInt64).toNat : ZMod p.toNat) *
+      (i.toNat : ZMod p.toNat) = (i.toNat : ZMod p.toNat) := by simp
+  have hloop := loop_inv_prime_ir_refines i p 1 0 (p % i) i p hp hi
+    (by simp [UInt64.toNat_mod]) (by simpa using hprime.pos)
+    (by simpa using hprime.one_lt) hs1 hs2
+  have hcoprime : Nat.Coprime p.toNat i.toNat := by
+    apply (hprime.coprime_iff_not_dvd).2
+    intro hdvd
+    exact (not_le_of_gt hiP) (Nat.le_of_dvd hiPos hdvd)
+  have hgcd : Nat.gcd p.toNat i.toNat = 1 := hcoprime.gcd_eq_one
+  simpa [Generated.StrictGCD.inv_prime_ir, hgcd] using hloop
+
+theorem dense_upoly_zp_nmod_inv_ir_correct (this : DenseUPolyZp)
+    (a : UInt64) (hprime : Nat.Prime this._p.toNat)
+    (haPos : 0 < a.toNat) (haP : a.toNat < this._p.toNat) :
+    let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+    out.toNat < this._p.toNat ∧
+      (out.toNat : ZMod this._p.toNat) *
+        (a.toNat : ZMod this._p.toNat) = 1 := by
+  simpa [Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir] using
+    inv_prime_ir_correct a this._p hprime haPos haP
+
+theorem dense_upoly_zp_nmod_inv_ir_mul_mod (this : DenseUPolyZp)
+    (a : UInt64) (hprime : Nat.Prime this._p.toNat)
+    (haPos : 0 < a.toNat) (haP : a.toNat < this._p.toNat) :
+    let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+    out.toNat < this._p.toNat ∧
+      (out.toNat * a.toNat) % this._p.toNat = 1 := by
+  let out := Generated.StrictGCD.dense_upoly_zp_nmod_inv_ir this a
+  have hcorrect := dense_upoly_zp_nmod_inv_ir_correct this a hprime haPos haP
+  dsimp only at hcorrect ⊢
+  refine ⟨hcorrect.1, ?_⟩
+  have hcast : ((out.toNat * a.toNat : Nat) : ZMod this._p.toNat) =
+      ((1 : Nat) : ZMod this._p.toNat) := by
+    simpa [out, Nat.cast_mul] using hcorrect.2
+  have hmodEq : Nat.ModEq this._p.toNat (out.toNat * a.toNat) 1 :=
+    (ZMod.natCast_eq_natCast_iff _ _ _).mp hcast
+  exact Nat.mod_eq_of_modEq hmodEq hprime.one_lt
+
+/-- One exact generated multiply/add step adds the mathematical limb product
+to the three-limb accumulator, modulo its `2^192` machine width. -/
+theorem addMulWord3_modEq (s : Word3) (a b : UInt64) :
+    let product := dense_upoly_zp__umul128_ir 0 0 a b
+    let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+    Nat.ModEq (limbBase ^ 3) (word3Value out)
+      (word3Value s + a.toNat * b.toNat) := by
+  let product := dense_upoly_zp__umul128_ir 0 0 a b
+  have hproduct := umul128_reconstruct a b
+  have hadd := addCarry3_modEq s product.1 product.2
+  dsimp only at hproduct hadd ⊢
+  have hproduct' : product.2.toNat + limbBase * product.1.toNat =
+      a.toNat * b.toNat := by simpa [product] using hproduct
+  have hrhs : word3Value s + product.2.toNat +
+      limbBase * product.1.toNat = word3Value s + a.toNat * b.toNat := by
+    omega
+  rw [hrhs] at hadd
+  simpa [product] using hadd
+
+theorem word3Value_lt (s : Word3) : word3Value s < limbBase ^ 3 := by
+  have hlo := UInt64.toNat_lt s.lo
+  have hmid := UInt64.toNat_lt s.mid
+  have hhi := UInt64.toNat_lt s.hi
+  dsimp [word3Value]
+  norm_num [limbBase] at hlo hmid hhi ⊢
+  nlinarith
+
+theorem word3_hi_lt_of_value_lt (s : Word3) (p : UInt64)
+    (hvalue : word3Value s < p.toNat * limbBase ^ 2) :
+    s.hi.toNat < p.toNat := by
+  dsimp [word3Value] at hvalue
+  have hlo : 0 ≤ s.lo.toNat := Nat.zero_le _
+  have hmid : 0 ≤ s.mid.toNat := Nat.zero_le _
+  nlinarith
+
+/-- Capacity inequality behind lazy three-limb accumulation. -/
+theorem lazyAccumulation_budget (B p count initial : Nat)
+    (hB : 1 < B) (hp : 1 < p) (hpB : p < B)
+    (hcount : count < B) (hinitial : initial < p) :
+    initial + count * (p - 1) ^ 2 < p * B ^ 2 := by
+  have hc : count ≤ B - 1 := by omega
+  have hi : initial ≤ p - 1 := by omega
+  have hpm : p - 1 < B := by omega
+  have hsq : (p - 1) ^ 2 < p * B := by
+    rw [pow_two]
+    exact Nat.mul_lt_mul_of_lt_of_le (by omega) (Nat.le_of_lt hpm) (by omega)
+  have hmul : count * (p - 1) ^ 2 ≤ (B - 1) * (p * B) :=
+    Nat.mul_le_mul hc (Nat.le_of_lt hsq)
+  calc
+    initial + count * (p - 1) ^ 2 ≤
+        (p - 1) + (B - 1) * (p * B) := Nat.add_le_add hi hmul
+    _ < p * B ^ 2 := by
+      calc
+        (p - 1) + (B - 1) * (p * B) <
+            p * B + (B - 1) * (p * B) := by
+              apply Nat.add_lt_add_right
+              nlinarith
+        _ = p * B ^ 2 := by
+          calc
+            p * B + (B - 1) * (p * B) = p * B * (1 + (B - 1)) := by ring
+            _ = p * B * B := by congr 2 <;> omega
+            _ = p * B ^ 2 := by ring
+
+theorem lazyAccumulation_word3_budget (p : UInt64) (count initial : Nat)
+    (hp : 1 < p.toNat) (hcount : count < limbBase)
+    (hinitial : initial < p.toNat) :
+    initial + count * (p.toNat - 1) ^ 2 < p.toNat * limbBase ^ 2 := by
+  apply lazyAccumulation_budget limbBase p.toNat count initial
+  · norm_num [limbBase]
+  · exact hp
+  · simpa [limbBase] using UInt64.toNat_lt p
+  · exact hcount
+  · exact hinitial
+
+/-- Under the no-overflow bound supplied by the C++ `size_t` accumulation
+count, the generated three-limb update is ordinary exact addition. -/
+theorem addMulWord3_exact (s : Word3) (a b : UInt64)
+    (hbound : word3Value s + a.toNat * b.toNat < limbBase ^ 3) :
+    let product := dense_upoly_zp__umul128_ir 0 0 a b
+    let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+    word3Value out = word3Value s + a.toNat * b.toNat := by
+  let product := dense_upoly_zp__umul128_ir 0 0 a b
+  let out := dense_upoly_zp__add_carry3_ir s product.1 product.2
+  have hmod : Nat.ModEq (limbBase ^ 3) (word3Value out)
+      (word3Value s + a.toNat * b.toNat) := by
+    simpa [product, out] using addMulWord3_modEq s a b
+  exact hmod.eq_of_lt_of_lt (word3Value_lt out) hbound
+
+/-
+  Natural-language proof.
+
+  The generated numerator places `~pn` in the high limb and an all-one word
+  in the low limb.  As a 128-bit bitvector this is exactly the all-one
+  128-bit word minus `pn * 2^64`.  Since `pn < 2^64`, that subtraction is
+  nonnegative and the shifted product is below `2^128`; converting to `Nat`
+  therefore yields `2^128 - 1 - pn*2^64` without modular wrap.
+-/
+theorem preinvert_numerator_value (pn : UInt64) :
+    let num : UInt128 :=
+      ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+        uint128_of_uint64 (~~~(0 : UInt64))
+    num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase := by
+  let num : UInt128 :=
+    ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+      uint128_of_uint64 (~~~(0 : UInt64))
+  change num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase
+  have hpn := UInt64.toNat_lt pn
+  have h64 : (64 : UInt128).toNat = 64 := by decide
+  have hhigh :
+      (2 ^ 64 - 1 - pn.toNat) <<< 64 < 2 ^ 128 := by
+    rw [Nat.shiftLeft_eq]
+    calc
+      (2 ^ 64 - 1 - pn.toNat) * 2 ^ 64 < (2 ^ 64) * 2 ^ 64 :=
+        Nat.mul_lt_mul_of_pos_right (by omega) (by positivity)
+      _ = 2 ^ 128 := by rw [← pow_add]
+  have hlow : 2 ^ 64 - 1 < 2 ^ 64 := by omega
+  have hor := Nat.shiftLeft_add_eq_or_of_lt hlow
+    (2 ^ 64 - 1 - pn.toNat)
+  dsimp [num, uint128_of_uint64]
+  simp only [BitVec.toNat_shiftLeft,
+    BitVec.toNat_ofNat, UInt64.toNat_not, UInt64.size]
+  norm_num [Nat.shiftLeft_eq, limbBase] at hhigh hor hpn ⊢
+  rw [Nat.mod_eq_of_lt hhigh]
+  rw [← hor]
+  omega
+
+/-
+  Natural-language proof.
+
+  By `preinvert_numerator_value`, the generated dividend is
+  `N = B^2 - 1 - pn*B`.  Normalization gives `pn ≥ B/2`, hence `N < pn*B`, so
+  `N/pn < B` and truncating the quotient to one limb is exact.  Finally
+  `B^2 - 1 = N + pn*B`; division by `pn` and `Nat.add_mul_div_left` give
+  `(B^2 - 1)/pn = N/pn + B`, which is the FLINT preinverse equation.
+-/
+theorem preinvert_limb_spec (pn : UInt64)
+    (hnorm : limbBase / 2 ≤ pn.toNat) :
+    limbBase + (dense_upoly_zp___preinvert_limb_ir pn).toNat =
+      (limbBase ^ 2 - 1) / pn.toNat := by
+  have hpnlt : pn.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt pn
+  have hpnpos : 0 < pn.toNat := by
+    have hhalf : 0 < limbBase / 2 := by norm_num [limbBase]
+    omega
+  let num : UInt128 :=
+    ((uint128_of_uint64 (~~~pn)) <<< (64 : UInt128)) |||
+      uint128_of_uint64 (~~~(0 : UInt64))
+  have hnum : num.toNat = limbBase ^ 2 - 1 - pn.toNat * limbBase :=
+    preinvert_numerator_value pn
+  have hdecomp :
+      limbBase ^ 2 - 1 = num.toNat + pn.toNat * limbBase := by
+    rw [hnum]
+    norm_num [limbBase] at hpnlt ⊢
+    omega
+  have hnumlt : num.toNat < pn.toNat * limbBase := by
+    rw [hnum]
+    norm_num [limbBase] at hnorm hpnlt ⊢
+    omega
+  have hquotlt : num.toNat / pn.toNat < limbBase := by
+    rw [Nat.div_lt_iff_lt_mul hpnpos]
+    simpa [Nat.mul_comm] using hnumlt
+  change limbBase + (uint128_lo (num / uint128_of_uint64 pn)).toNat = _
+  simp only [uint128_lo, uint128_of_uint64, UInt64.toNat_ofNat',
+    BitVec.toNat_udiv, BitVec.toNat_ofNat]
+  rw [Nat.mod_eq_of_lt (lt_trans hpnlt (by norm_num [limbBase]))]
+  change limbBase + (num.toNat / pn.toNat) % limbBase = _
+  rw [Nat.mod_eq_of_lt hquotlt]
+  calc
+    limbBase + num.toNat / pn.toNat = num.toNat / pn.toNat + limbBase :=
+      Nat.add_comm _ _
+    _ = (num.toNat + pn.toNat * limbBase) / pn.toNat := by
+      rw [Nat.add_mul_div_left num.toNat limbBase hpnpos]
+    _ = (limbBase ^ 2 - 1) / pn.toNat := by rw [hdecomp]
+
+/-
+  Natural-language proof.
+
+  Put `x = B^2 - 1` and `m = x / pn`, using `preinvert_limb_spec` to identify
+  `m` with `B + pinv`.  Euclidean division gives `m*pn ≤ x`.  Since
+  `x < B^2`, this is the strict lower approximation.  Also `m < m+1`; the
+  division comparison theorem yields `x < (m+1)*pn`, hence
+  `B^2 ≤ (m+1)*pn`.  These are exactly the two bounds consumed by the
+  Granlund--Möller reduction step.
+-/
+theorem preinverse_mul_bounds (pn : UInt64)
+    (hnorm : limbBase / 2 ≤ pn.toNat) :
+    let pinv := dense_upoly_zp___preinvert_limb_ir pn
+    let m := limbBase + pinv.toNat
+    m * pn.toNat < limbBase ^ 2 ∧
+      limbBase ^ 2 ≤ (m + 1) * pn.toNat := by
+  have hspec := preinvert_limb_spec pn hnorm
+  have hpnpos : 0 < pn.toNat := by
+    have hhalf : 0 < limbBase / 2 := by norm_num [limbBase]
+    omega
+  let pinv := dense_upoly_zp___preinvert_limb_ir pn
+  let m := limbBase + pinv.toNat
+  have hm : m = (limbBase ^ 2 - 1) / pn.toNat := by
+    simpa [m, pinv] using hspec
+  have hlo : m * pn.toNat ≤ limbBase ^ 2 - 1 := by
+    rw [hm]
+    exact Nat.div_mul_le_self _ _
+  have hupper : limbBase ^ 2 - 1 < (m + 1) * pn.toNat := by
+    rw [← Nat.div_lt_iff_lt_mul hpnpos, ← hm]
+    exact Nat.lt_succ_self m
+  change m * pn.toNat < limbBase ^ 2 ∧
+    limbBase ^ 2 ≤ (m + 1) * pn.toNat
+  have hBpos : 0 < limbBase ^ 2 := by norm_num [limbBase]
+  exact ⟨by omega, by omega⟩
+
+/-
+  Natural-language proof.
+
+  For nonzero `p`, the count-leading-zeros result `n` is strictly below 64.
+  The bit immediately following those `n` zeroes is set, giving
+  `2^(63-n) ≤ p`; the definition of `clz` also gives `p < 2^(64-n)`.
+  Multiplying both inequalities by `2^n` and using `n ≤ 63` yields
+  `2^63 ≤ p*2^n < 2^64`.  The strict upper bound also proves that the C++
+  left shift is an exact natural-number multiplication, not a wrapped value.
+-/
+theorem clz_normalizes_uint64 (p : UInt64) (hp : p ≠ 0) :
+    let n := p.toBitVec.clz.toNat
+    n < 64 ∧ limbBase / 2 ≤ p.toNat * 2 ^ n ∧
+      p.toNat * 2 ^ n < limbBase := by
+  let n := p.toBitVec.clz.toNat
+  have hpBits : p.toBitVec ≠ (0#64) := by
+    intro h
+    apply hp
+    exact UInt64.toNat_inj.mp (by simpa using congrArg BitVec.toNat h)
+  have hn : n < 64 := by
+    simpa [n] using (BitVec.clz_lt_iff_ne_zero (x := p.toBitVec)).2 hpBits
+  have hlo0 : 2 ^ (64 - 1 - n) ≤ p.toNat := by
+    simpa [n] using BitVec.two_pow_sub_clz_le_toNat_of_ne_zero
+      (x := p.toBitVec) (by omega : 0 < 64) hpBits
+  have hhi0 : p.toNat < 2 ^ (64 - n) := by
+    simpa [n] using BitVec.toNat_lt_two_pow_sub_clz (x := p.toBitVec)
+  have hlo : 2 ^ 63 ≤ p.toNat * 2 ^ n := by
+    have := Nat.mul_le_mul_right (2 ^ n) hlo0
+    rw [← pow_add] at this
+    have hexp : 64 - 1 - n + n = 63 := by omega
+    rw [hexp] at this
+    exact this
+  have hhi : p.toNat * 2 ^ n < 2 ^ 64 := by
+    have := Nat.mul_lt_mul_of_pos_right hhi0 (by positivity : 0 < 2 ^ n)
+    rw [← pow_add] at this
+    have hexp : 64 - n + n = 64 := by omega
+    rw [hexp] at this
+    exact this
+  exact ⟨hn, by simpa [limbBase] using hlo, by simpa [limbBase] using hhi⟩
+
+/-- Exact machine value assigned to `_norm` by dense C++ precomputation. -/
+def denseNorm (p : UInt64) : UInt32 := UInt32.ofNat p.toBitVec.clz.toNat
+
+/-- Exact normalized limb `p << _norm` used by generated preinverse code. -/
+def denseNormalizedModulus (p : UInt64) : UInt64 := p <<< denseNorm p
+
+/-
+  Natural-language proof.
+
+  `clz_normalizes_uint64` supplies `n<64` and the no-overflow product bound.
+  Therefore converting `n` through `UInt32` and then through the generated
+  shift instance preserves it exactly.  The machine left shift consequently
+  has natural value `p*2^n`, which lies in the normalized half-open interval.
+-/
+theorem denseNormalizedModulus_spec (p : UInt64) (hp : p ≠ 0) :
+    let n := p.toBitVec.clz.toNat
+    (denseNorm p).toNat = n ∧
+      (denseNormalizedModulus p).toNat = p.toNat * 2 ^ n ∧
+      limbBase / 2 ≤ (denseNormalizedModulus p).toNat := by
+  let n := p.toBitVec.clz.toNat
+  have hnorm := clz_normalizes_uint64 p hp
+  have hn : n < 64 := hnorm.1
+  have hn32 : n < UInt32.size := lt_trans hn (by norm_num [UInt32.size])
+  have hnormNat : (denseNorm p).toNat = n := by
+    simp [denseNorm, n, UInt32.toNat_ofNat', Nat.mod_eq_of_lt hn32]
+  have hprodlt : p.toNat * 2 ^ n < limbBase := hnorm.2.2
+  have hshift : (denseNormalizedModulus p).toNat = p.toNat * 2 ^ n := by
+    unfold denseNormalizedModulus
+    change (p <<< (denseNorm p).toUInt64).toNat = p.toNat * 2 ^ n
+    rw [UInt64.toNat_shiftLeft]
+    have hprodlt' : p.toNat * 2 ^ n < UInt64.size := by
+      simpa [limbBase, UInt64.size] using hprodlt
+    have hnorm64 : (denseNorm p).toUInt64.toNat = n := by
+      rw [UInt32.toNat_toUInt64]
+      exact hnormNat
+    rw [hnorm64, Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+    exact Nat.mod_eq_of_lt hprodlt'
+  exact ⟨hnormNat, hshift, hshift ▸ hnorm.2.1⟩
+
+/-- The three field relationships established by the dense C++ modulus
+constructor.  This is representation state, not an arithmetic oracle. -/
+def DensePreinvConfigured (this : DenseUPolyZp) : Prop :=
+  this._p ≠ 0 ∧
+  this._norm = denseNorm this._p ∧
+  this._ninv = dense_upoly_zp___preinvert_limb_ir
+    (this._p <<< this._norm)
+
+/-- All arithmetic side conditions consumed by generated preinverse reduction
+follow from the actual dense-object precomputation fields. -/
+theorem densePreinvConfigured_conditions (this : DenseUPolyZp)
+    (hcfg : DensePreinvConfigured this) :
+    this._norm.toNat < 64 ∧
+    (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat ∧
+    this._p.toNat * 2 ^ this._norm.toNat < limbBase ∧
+    limbBase ≤ 2 * (this._p <<< this._norm).toNat ∧
+    (limbBase + this._ninv.toNat) *
+        (this._p <<< this._norm).toNat < limbBase ^ 2 ∧
+    limbBase ^ 2 ≤
+      (limbBase + this._ninv.toNat + 1) *
+        (this._p <<< this._norm).toNat := by
+  rcases hcfg with ⟨hp, hnormField, hinvField⟩
+  have hclz := clz_normalizes_uint64 this._p hp
+  have hspec := denseNormalizedModulus_spec this._p hp
+  let n := this._p.toBitVec.clz.toNat
+  have hnormNat : this._norm.toNat = n := by
+    rw [hnormField]
+    exact hspec.1
+  have hn : this._norm.toNat < 64 := by
+    rw [hnormNat]
+    exact hclz.1
+  have hpn : (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat := by
+    rw [hnormField]
+    simpa [denseNormalizedModulus, hspec.1] using hspec.2.1
+  have hpnB : this._p.toNat * 2 ^ this._norm.toNat < limbBase := by
+    rw [hnormNat]
+    exact hclz.2.2
+  have hhalf : limbBase / 2 ≤ (this._p <<< this._norm).toNat := by
+    rw [hnormField]
+    exact hspec.2.2
+  have hnorm : limbBase ≤ 2 * (this._p <<< this._norm).toNat := by
+    have hEven : 2 * (limbBase / 2) = limbBase := by
+      norm_num [limbBase]
+    nlinarith
+  have hbounds := preinverse_mul_bounds (this._p <<< this._norm) hhalf
+  rw [hinvField]
+  exact ⟨hn, hpn, hpnB, hnorm, hbounds.1, by simpa [Nat.add_assoc] using hbounds.2⟩
+
+/-
+  Natural-language proof.
+
+  Split the exact 128-bit product `u1*pinv` into `(q1,q0)`.  Adding `u0` to
+  the low limb produces `q0'` and the comparison `q0'<u0` is exactly its carry
+  bit.  Adding `u1+carry` to the high limb completes a two-limb addition.
+  Reconstructing both limbs cancels the carry; only overflow beyond the high
+  limb is discarded, hence equality modulo `B^2`.
+-/
+theorem preinvQuotientPair_modEq (u1 u0 pinv : UInt64) :
+    let out := preinvQuotientPair u1 u0 pinv
+    Nat.ModEq (limbBase ^ 2)
+      (out.2.toNat + limbBase * out.1.toNat)
+      (u1.toNat * pinv.toNat + u0.toNat + limbBase * u1.toNat) := by
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  have hprod : q0.toNat + limbBase * q1.toNat =
+      u1.toNat * pinv.toNat := by
+    simpa [qm, q0, q1, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct u1 pinv
+  have hq0 := UInt64.toNat_lt q0
+  have hu0 := UInt64.toNat_lt u0
+  have hu1 := UInt64.toNat_lt u1
+  norm_num [limbBase] at hq0 hu0 hu1
+  have hcarry : carry.toNat = (q0.toNat + u0.toNat) / limbBase := by
+    by_cases hov : q0' < u0
+    · have hwrap : limbBase ≤ q0.toNat + u0.toNat := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      have hsumlt : q0.toNat + u0.toNat < 2 * limbBase := by
+        norm_num [limbBase]
+        omega
+      simp [carry, hov, UInt64.toNat_ofNat, limbBase]
+      norm_num [limbBase] at hwrap hsumlt ⊢
+      omega
+    · have hnowrap : q0.toNat + u0.toNat < limbBase := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      simp [carry, hov, Nat.div_eq_of_lt hnowrap]
+  have hq0' : q0'.toNat = (q0.toNat + u0.toNat) % limbBase := by
+    simp [q0', UInt64.toNat_add, limbBase]
+  have hq1' : q1'.toNat =
+      (q1.toNat + u1.toNat + carry.toNat) % limbBase := by
+    simp [q1', UInt64.toNat_add, limbBase, Nat.add_assoc]
+  change Nat.ModEq (limbBase ^ 2)
+    (q0'.toNat + limbBase * q1'.toNat)
+    (u1.toNat * pinv.toNat + u0.toNat + limbBase * u1.toNat)
+  simp only [limbBase] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
+  norm_num [Nat.ModEq] at hprod hq0 hu0 hu1 hcarry hq0' hq1' ⊢
+  omega
+
+/-
+  Natural-language proof.
+
+  The low output is the low product limb plus `u0`, hence the remainder of
+  `u1*pinv+u0` modulo `B`.  Its wrap comparison is exactly the quotient (zero
+  or one) of that limb addition by `B`.  Adding the product high limb, `u1`,
+  and that carry therefore gives the quotient of `u1*pinv+u0` by `B`, plus
+  `u1`, with the final UInt64 wrap represented by `% B`.
+-/
+theorem preinvQuotientPair_components (u1 u0 pinv : UInt64) :
+    let out := preinvQuotientPair u1 u0 pinv
+    out.2.toNat = (u1.toNat * pinv.toNat + u0.toNat) % limbBase ∧
+      out.1.toNat =
+        ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+          limbBase := by
+  let qm : UInt128 := uint128_of_uint64 u1 * uint128_of_uint64 pinv
+  let q1 : UInt64 := uint128_lo (qm >>> (64 : UInt128))
+  let q0 : UInt64 := uint128_lo qm
+  let q0' : UInt64 := q0 + u0
+  let carry : UInt64 := if q0' < u0 then 1 else 0
+  let q1' : UInt64 := q1 + (u1 + carry)
+  have hprod : q0.toNat + limbBase * q1.toNat =
+      u1.toNat * pinv.toNat := by
+    simpa [qm, q0, q1, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct u1 pinv
+  have hq0 := UInt64.toNat_lt q0
+  have hu0 := UInt64.toNat_lt u0
+  norm_num [limbBase] at hq0 hu0
+  have hcarry : carry.toNat = (q0.toNat + u0.toNat) / limbBase := by
+    by_cases hov : q0' < u0
+    · have hwrap : limbBase ≤ q0.toNat + u0.toNat := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      have hsumlt : q0.toNat + u0.toNat < 2 * limbBase := by
+        norm_num [limbBase]
+        omega
+      simp [carry, hov, UInt64.toNat_ofNat, limbBase]
+      norm_num [limbBase] at hwrap hsumlt ⊢
+      omega
+    · have hnowrap : q0.toNat + u0.toNat < limbBase := by
+        simp only [q0', UInt64.lt_iff_toNat_lt, UInt64.toNat_add] at hov
+        norm_num [limbBase] at hov ⊢
+        omega
+      simp [carry, hov, Nat.div_eq_of_lt hnowrap]
+  have hlow : q0'.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) % limbBase := by
+    simp only [q0', UInt64.toNat_add]
+    rw [← hprod]
+    simp [limbBase, Nat.add_mod]
+  have hquot : (u1.toNat * pinv.toNat + u0.toNat) / limbBase =
+      q1.toNat + carry.toNat := by
+    rw [← hprod]
+    rw [show q0.toNat + limbBase * q1.toNat + u0.toNat =
+      (q0.toNat + u0.toNat) + limbBase * q1.toNat by omega]
+    rw [Nat.add_mul_div_left _ _ (by norm_num [limbBase])]
+    omega
+  have hhigh : q1'.toNat =
+      ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+        limbBase := by
+    have hq1lt : q1.toNat < limbBase := by
+      simpa [limbBase] using UInt64.toNat_lt q1
+    calc
+      q1'.toNat =
+          (q1.toNat + (u1.toNat + carry.toNat) % limbBase) % limbBase := by
+            simp [q1', UInt64.toNat_add, limbBase]
+      _ = (q1.toNat + (u1.toNat + carry.toNat)) % limbBase := by
+            rw [Nat.add_mod]
+            simp [Nat.mod_eq_of_lt hq1lt]
+      _ = ((u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat) %
+          limbBase := by rw [hquot]; congr 1 <;> omega
+  change q0'.toNat = _ ∧ q1'.toNat = _
+  exact ⟨hlow, hhigh⟩
+
+/-
+  Natural-language proof.
+
+  Write `m = B + pinv`.  The quotient estimate is exactly
+  `(u1*m+u0)/B`: adding `u1` after division accounts for the `u1*B` part.
+  Since `u1 < pn`, multiplying `u1+1 ≤ pn` by `m` and using
+  `m*pn < B²` leaves at least `m ≥ B` below `B²`; the low limb `u0 < B`
+  fits in that gap.  Thus the numerator is below `B²`, so the estimate is
+  strictly below `B` and its UInt64 representation cannot wrap.
+-/
+theorem preinv_estimate_lt_base (B pn pinv u1 u0 : Nat)
+    (hB : 0 < B) (hu0 : u0 < B) (hu1 : u1 < pn)
+    (hmul : (B + pinv) * pn < B ^ 2) :
+    (u1 * pinv + u0) / B + u1 < B := by
+  let m := B + pinv
+  have humul : (u1 + 1) * m ≤ pn * m :=
+    Nat.mul_le_mul_right m (Nat.succ_le_iff.mpr hu1)
+  have hmcomm : pn * m < B ^ 2 := by
+    simpa [m, Nat.mul_comm] using hmul
+  have hmB : B ≤ m := by simp [m]
+  have hnum : u1 * m + u0 < B ^ 2 := by
+    nlinarith
+  have hrewrite : (u1 * pinv + u0) / B + u1 =
+      (u1 * m + u0) / B := by
+    rw [show u1 * m + u0 = (u1 * pinv + u0) + B * u1 by
+      simp [m]; ring]
+    rw [Nat.add_mul_div_left _ _ hB]
+  rw [hrewrite]
+  exact (Nat.div_lt_iff_lt_mul hB).2 (by simpa [pow_two] using hnum)
+
+/-
+  Natural-language proof.
+
+  The component theorem says that the machine high limb is the mathematical
+  estimate modulo `B`.  Under the normalized preinverse multiplication bound
+  and `u1 < pn`, the preceding theorem proves that estimate is already below
+  `B`; consequently the modulo operation is the identity.  This rules out the
+  high-limb wrap that would otherwise invalidate the quotient invariant.
+-/
+theorem preinvQuotientPair_high_noWrap (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2) :
+    (preinvQuotientPair u1 u0 pinv).1.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat := by
+  have hest := preinv_estimate_lt_base limbBase pn.toNat pinv.toNat
+    u1.toNat u0.toNat (by norm_num [limbBase])
+    (by simpa [limbBase] using UInt64.toNat_lt u0) hu1 hmul
+  have hcomp := (preinvQuotientPair_components u1 u0 pinv).2
+  simpa [Nat.mod_eq_of_lt hest] using hcomp
+
+/-
+  Natural-language proof.
+
+  Put `X=u1*m+u0`, `t=X/B`, and `q=t+1`.  Euclidean division gives
+  `t*B ≤ X < q*B`.  The upper preinverse inequality `m*d < B²` implies
+  `X*d ≤ (u1*B+u0)*B`, hence `t*d ≤ N` and `q*d ≤ N+d`.
+  Conversely `B² ≤ (m+1)*d`, together with `u1<d`, `u0<B`, and `d≤B`,
+  bounds `N*B` by `X*d+B²`; combining this with `X*d<q*B*d` yields
+  `N<q*d+B`.  Thus the estimated multiple lies at most one modulus above
+  the numerator and less than one machine base below it—the exact window
+  handled by the two C++ correction tests.
+-/
+theorem preinv_estimated_multiple_bounds (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hu0 : u0 < B) (hu1 : u1 < d)
+    (hupper : m * d < B ^ 2) (hlower : B ^ 2 ≤ (m + 1) * d) :
+    let q := (u1 * m + u0) / B + 1
+    let N := u1 * B + u0
+    q * d ≤ N + d ∧ N < q * d + B := by
+  dsimp
+  let X := u1 * m + u0
+  let t := X / B
+  have hd : 0 < d := by omega
+  have hrem : X % B < B := Nat.mod_lt X hB
+  have hdecomp : B * t + X % B = X := by
+    simpa [t] using Nat.div_add_mod X B
+  have htd : t * d ≤ u1 * B + u0 := by
+    have h1 : t * B ≤ X := by
+      calc
+        t * B = B * t := Nat.mul_comm _ _
+        _ ≤ B * t + X % B := Nat.le_add_right _ _
+        _ = X := hdecomp
+    have h1' : t * B * d ≤ X * d := Nat.mul_le_mul_right d h1
+    have hm : u1 * (m * d) ≤ u1 * (B ^ 2) :=
+      Nat.mul_le_mul_left u1 (Nat.le_of_lt hupper)
+    have hu : u0 * d ≤ u0 * B := Nat.mul_le_mul_left u0 hdB
+    dsimp [X] at h1' ⊢
+    nlinarith
+  constructor
+  · change (t + 1) * d ≤ u1 * B + u0 + d
+    simpa [Nat.add_mul] using Nat.add_le_add_right htd d
+  · have hXq : X < (t + 1) * B := by
+      calc
+        X = B * t + X % B := hdecomp.symm
+        _ < B * t + B := Nat.add_lt_add_left hrem _
+        _ = (t + 1) * B := by ring
+    have hXqd : X * d < (t + 1) * B * d :=
+      Nat.mul_lt_mul_of_pos_right hXq hd
+    have hgap : (u1 * B + u0) * B ≤ X * d + B ^ 2 := by
+      dsimp [X]
+      nlinarith [sq_nonneg (d - u1), sq_nonneg (B - u0),
+        sq_nonneg (B - d)]
+    dsimp [t, X] at hXqd ⊢
+    nlinarith
+
+/-
+  Natural-language proof.
+
+  Every UInt64 value is below `B`.  If it is already below the normalized
+  modulus, the conditional subtraction returns it unchanged.  Otherwise the
+  machine subtraction cannot underflow; because normalization gives
+  `B ≤ 2*d`, subtracting `d` from a value below `B` leaves a value below `d`.
+-/
+theorem uint64_condSub_lt (x d : UInt64)
+    (hnorm : limbBase ≤ 2 * d.toNat) :
+    (if x ≥ d then x - d else x).toNat < d.toNat := by
+  by_cases h : x ≥ d
+  · simp only [h, ↓reduceIte]
+    have hdle : d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    rw [UInt64.toNat_sub_of_le x d h]
+    have hx := UInt64.toNat_lt x
+    norm_num [limbBase] at hx hnorm
+    have hsub : x.toNat - d.toNat + d.toNat = x.toNat :=
+      Nat.sub_add_cancel hdle
+    omega
+  · simp only [h, ↓reduceIte]
+    have hnot : ¬d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    omega
+
+/-
+  Natural-language proof.
+
+  The first correction branch may change the intermediate UInt64 value, but
+  the final source operation is exactly a conditional subtraction of the
+  normalized modulus.  The preceding machine-word lemma applies to that value
+  without needing any unproved assumption about which first branch fired.
+  Consequently every generated reduction round returns a canonical limb
+  below `pn` whenever `pn` has its top bit set.
+-/
+theorem preinvReduceNormalized_lt (u1 u0 pn pinv : UInt64)
+    (hnorm : limbBase ≤ 2 * pn.toNat) :
+    (preinvReduceNormalized u1 u0 pn pinv).toNat < pn.toNat := by
+  unfold preinvReduceNormalized
+  dsimp only
+  exact uint64_condSub_lt _ pn hnorm
+
+/-- The canonical-range result transferred back to the verbatim generated
+carry/correction block. -/
+theorem preinvRoundIR_lt (u1 u0 pn pinv : UInt64)
+    (hnorm : limbBase ≤ 2 * pn.toNat) :
+    (preinvRoundIR u1 u0 pn pinv).toNat < pn.toNat := by
+  rw [preinvRoundIR_eq_reduceNormalized]
+  exact preinvReduceNormalized_lt u1 u0 pn pinv hnorm
+
+/-
+  Natural-language proof.
+
+  For a value below `2*d`, one conditional subtraction of `d` computes its
+  canonical remainder: values below `d` stay fixed, while values in
+  `[d,2*d)` lose exactly one copy of `d`.
+-/
+theorem nat_condSub_eq_mod (x d : Nat) (hx : x < 2 * d) :
+    (if d ≤ x then x - d else x) = x % d := by
+  by_cases h : d ≤ x
+  · simp only [h, ↓reduceIte]
+    rw [Nat.mod_eq_sub_mod h]
+    apply (Nat.mod_eq_of_lt ?_).symm
+    omega
+  · simp only [h, ↓reduceIte]
+    exact (Nat.mod_eq_of_lt (by omega)).symm
+
+/-
+  Natural-language proof.
+
+  This lemma isolates the exact remaining detector obligation of the C++
+  algorithm.  If the estimated multiple is above `N`, the wrapped subtraction
+  is `B-(qd-N)` and the source comparison must request the add-back.  If it is
+  below `N`, the subtraction is `N-qd`; whenever the comparison nevertheless
+  requests an add-back, that sum must not wrap.  Under those two detector
+  facts and the already proved estimate window, the first correction produces
+  either the signed difference made nonnegative or that value plus one `d`.
+  The final conditional subtraction is therefore exactly `N % d`.
+-/
+theorem preinv_correction_of_detector (B d qd N q0 : Nat)
+    (hdB : d < B) (hB2d : B ≤ 2 * d)
+    (hdiv : d ∣ qd) (habove : qd ≤ N + d) (hbelow : N < qd + B)
+    (hdetectNeg : N < qd → q0 < B - (qd - N))
+    (hdetectPos : qd ≤ N → q0 < N - qd → N - qd + d < B) :
+    let r := if qd ≤ N then N - qd else B - (qd - N)
+    let r' := if q0 < r then (r + d) % B else r
+    (if d ≤ r' then r' - d else r') = N % d := by
+  dsimp
+  by_cases hle : qd ≤ N
+  · simp only [hle, ↓reduceIte]
+    let delta := N - qd
+    have hdeltaB : delta < B := by
+      dsimp [delta]
+      omega
+    have hN : N = qd + delta := by
+      dsimp [delta]
+      omega
+    have hmod : delta % d = N % d := by
+      rw [hN, Nat.add_mod, Nat.mod_eq_zero_of_dvd hdiv]
+      simp
+    by_cases hadd : q0 < delta
+    · simp only [delta, hadd, ↓reduceIte]
+      have hsumB : delta + d < B := hdetectPos hle hadd
+      rw [Nat.mod_eq_of_lt hsumB]
+      rw [nat_condSub_eq_mod (delta + d) d (lt_of_lt_of_le hsumB hB2d)]
+      simpa [Nat.add_mod] using hmod
+    · simp only [delta, hadd, ↓reduceIte]
+      rw [nat_condSub_eq_mod delta d (lt_of_lt_of_le hdeltaB hB2d)]
+      exact hmod
+  · have hlt : N < qd := by omega
+    simp only [hle, ↓reduceIte, hdetectNeg hlt]
+    let k := qd - N
+    have hkpos : 0 < k := by dsimp [k]; omega
+    have hkle : k ≤ d := by dsimp [k]; omega
+    have hkB : k < B := lt_of_le_of_lt hkle hdB
+    have haddEq : B - k + d = B + (d - k) := by omega
+    rw [show qd - N = k by rfl, haddEq, Nat.add_comm B, Nat.add_mod_right]
+    have hdkB : d - k < B := lt_of_le_of_lt (Nat.sub_le d k) hdB
+    rw [Nat.mod_eq_of_lt hdkB]
+    have hdkd : d - k < d := by omega
+    simp only [show ¬d ≤ d - k by omega, ↓reduceIte]
+    rcases hdiv with ⟨z, hz⟩
+    cases z with
+    | zero =>
+        simp at hz
+        omega
+    | succ z =>
+        have hz' : qd = d * z + d := by
+          simpa [Nat.mul_succ] using hz
+        have hkN : k + N = qd := by
+          dsimp [k]
+          omega
+        have hN : N = d * z + (d - k) := by omega
+        rw [hN, Nat.add_mod]
+        simp [Nat.mod_eq_of_lt hdkd]
+
+/-
+  Natural-language proof.
+
+  In the negative-error case write `k=qd-N`.  The preinverse remainder
+  identity has the form `B*k + A = d*(B-q0)` with `A≥0`.  Hence
+  `B*k ≤ d*(B-q0)`.  Since `d<B` and `q0<B`, the right side is strictly below
+  `B*(B-q0)`, so cancellation gives `k<B-q0`, equivalently
+  `q0<B-k`.  Thus the actual C++ comparison necessarily detects the wrapped
+  negative subtraction and takes the add-back branch.
+-/
+theorem preinv_negative_detector (B d q0 k A : Nat)
+    (hdB : d < B) (hq0 : q0 < B)
+    (hbalance : B * k + A = d * (B - q0)) :
+    q0 < B - k := by
+  have hgap : 0 < B - q0 := by omega
+  have hBk : B * k ≤ d * (B - q0) := by omega
+  have hstrict : d * (B - q0) < B * (B - q0) :=
+    Nat.mul_lt_mul_of_pos_right hdB hgap
+  have hk : k < B - q0 :=
+    Nat.lt_of_mul_lt_mul_left (lt_of_le_of_lt hBk hstrict)
+  omega
+
+/-
+  Natural-language proof.
+
+  For nonnegative error `delta=N-qd`, the same remainder identity is
+  `B*delta + d*(B-q0)=A`.  If the comparison asks for an add-back, its safety
+  reduces to the strict source bound `A+d*q0<B²`.  Substituting the balance
+  identity cancels the `d*B` terms and yields `B*(delta+d)<B²`; positivity of
+  `B` then gives `delta+d<B`.  This is exactly the no-wrap fact required by
+  the positive detector branch.
+-/
+theorem preinv_positive_add_noWrap (B d q0 delta A : Nat)
+    (hq0 : q0 < B)
+    (hbalance : B * delta + d * (B - q0) = A)
+    (hsource : A + d * q0 < B ^ 2) :
+    delta + d < B := by
+  have hq0B : q0 ≤ B := Nat.le_of_lt hq0
+  have hsub : B - q0 + q0 = B := Nat.sub_add_cancel hq0B
+  nlinarith [sq_nonneg (B - delta - d)]
+
+/-
+  Natural-language proof.
+
+  The concrete source term is `A=u1*e+(B-d)*u0`, where the preinverse deficit
+  satisfies `e≤d`.  Bounding `u1≤d-1` and `u0≤B-1` gives the strict headroom
+  needed by the positive detector.  If `delta+d≥B` while `q0<delta`, the
+  balance equation forces its left side above that maximal source term, a
+  contradiction.  Hence a requested positive add-back is always below `B`.
+-/
+theorem preinv_positive_detector_bound (B d e u1 u0 q0 delta : Nat)
+    (hdB : d < B) (hu1 : u1 < d) (hu0 : u0 < B) (he : e ≤ d)
+    (hq0 : q0 < delta) (hdeltaB : delta < B)
+    (hbalance : B * delta + d * (B - q0) =
+      u1 * e + (B - d) * u0) :
+    delta + d < B := by
+  have hd : 0 < d := by omega
+  have hu1le : u1 ≤ d - 1 := by omega
+  have hu0le : u0 ≤ B - 1 := by omega
+  have hu1e : u1 * e ≤ (d - 1) * d := Nat.mul_le_mul hu1le he
+  have hu0p : (B - d) * u0 ≤ (B - d) * (B - 1) :=
+    Nat.mul_le_mul_left (B - d) hu0le
+  have hdsub : B - d + d = B := Nat.sub_add_cancel (Nat.le_of_lt hdB)
+  have hdm : d - 1 + 1 = d := by omega
+  have hBm : B - 1 + 1 = B := by omega
+  have hdel : B - delta + delta = B :=
+    Nat.sub_add_cancel (Nat.le_of_lt hdeltaB)
+  by_contra hn
+  have hBd : B - d ≤ delta := by omega
+  have hgap : B - delta + 1 ≤ B - q0 := by omega
+  have hgapmul : d * (B - delta + 1) ≤ d * (B - q0) :=
+    Nat.mul_le_mul_left d hgap
+  ring_nf at hbalance hu1e hu0p hgapmul hdsub hdm hBm hdel
+  nlinarith [sq_nonneg (B - d), sq_nonneg (delta - (B - d))]
+
+/-
+  Natural-language proof.
+
+  The strict lower product bound makes the deficit `B²-m*d` positive.  The
+  upper bound `B²≤(m+1)*d=m*d+d` makes that same deficit at most one modulus.
+-/
+theorem preinv_deficit_bounds (B d m : Nat)
+    (hupper : m * d < B ^ 2) (hlower : B ^ 2 ≤ (m + 1) * d) :
+    0 < B ^ 2 - m * d ∧ B ^ 2 - m * d ≤ d := by
+  have hle : m * d ≤ B ^ 2 := Nat.le_of_lt hupper
+  have hsplit : m * d + (B ^ 2 - m * d) = B ^ 2 :=
+    Nat.add_sub_of_le hle
+  ring_nf at hlower
+  omega
+
+/-
+  Natural-language proof.
+
+  Euclidean division of `X=u1*m+u0` gives `X=B*t+q0`.  Writing the
+  preinverse deficit as `e=B²-m*d`, multiplication and collection of terms
+  yields one unsigned identity:
+
+      B*N + d*(B-q0) = B*((t+1)*d) + u1*e + (B-d)*u0.
+
+  This identity contains no truncated subtraction.  It is therefore the safe
+  bridge from the generated quotient limbs to the positive and negative
+  detector balance equations used above.
+-/
+theorem preinv_balance_identity (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hmd : m * d ≤ B ^ 2) :
+    let X := u1 * m + u0
+    let t := X / B
+    let q0 := X % B
+    let q := t + 1
+    let N := u1 * B + u0
+    let e := B ^ 2 - m * d
+    let A := u1 * e + (B - d) * u0
+    B * N + d * (B - q0) = B * (q * d) + A := by
+  dsimp
+  let X := u1 * m + u0
+  let t := X / B
+  let q0 := X % B
+  have hq0 : q0 < B := Nat.mod_lt X hB
+  have hX : B * t + q0 = X := by
+    simpa [t, q0] using Nat.div_add_mod X B
+  have he : m * d + (B ^ 2 - m * d) = B ^ 2 := Nat.add_sub_of_le hmd
+  dsimp [X, t, q0] at hX hq0 ⊢
+  have hdsub : B - d + d = B := Nat.sub_add_cancel hdB
+  have hqsub : B - q0 + q0 = B := Nat.sub_add_cancel (Nat.le_of_lt hq0)
+  dsimp [q0, X] at hqsub
+  have hXd := congrArg (fun z : Nat => d * z) hX
+  have heu := congrArg (fun z : Nat => u1 * z) he
+  have hq := congrArg (fun z : Nat => d * z) hqsub
+  have hdu := congrArg (fun z : Nat => u0 * z) hdsub
+  ring_nf at hXd heu hq hdu ⊢
+  omega
+
+/-
+  Natural-language proof.
+
+  The unsigned balance identity can now be oriented according to the actual
+  comparison between `q*d` and `N`.  In the nonnegative case it yields the
+  positive detector equation; in the negative case it yields the wrapped
+  detector equation.  Multiplication is monotone, so both natural-number
+  subtractions are known not to truncate before they are introduced.
+-/
+theorem preinv_balance_cases (B d m u1 u0 : Nat)
+    (hB : 0 < B) (hdB : d ≤ B) (hmd : m * d ≤ B ^ 2) :
+    let X := u1 * m + u0
+    let t := X / B
+    let q0 := X % B
+    let qd := (t + 1) * d
+    let N := u1 * B + u0
+    let A := u1 * (B ^ 2 - m * d) + (B - d) * u0
+    (qd ≤ N → B * (N - qd) + d * (B - q0) = A) ∧
+      (N < qd → B * (qd - N) + A = d * (B - q0)) := by
+  dsimp
+  have hmaster := preinv_balance_identity B d m u1 u0 hB hdB hmd
+  dsimp at hmaster
+  constructor
+  · intro hle
+    have hmul : B * (((u1 * m + u0) / B + 1) * d) ≤
+        B * (u1 * B + u0) := by
+      exact Nat.mul_le_mul_left B hle
+    rw [Nat.mul_sub_left_distrib]
+    have hcancel :
+        B * (u1 * B + u0) - B * (((u1 * m + u0) / B + 1) * d) +
+          B * (((u1 * m + u0) / B + 1) * d) = B * (u1 * B + u0) :=
+      Nat.sub_add_cancel hmul
+    omega
+  · intro hlt
+    have hmul : B * (u1 * B + u0) ≤
+        B * (((u1 * m + u0) / B + 1) * d) := by
+      exact Nat.mul_le_mul_left B (Nat.le_of_lt hlt)
+    rw [Nat.mul_sub_left_distrib]
+    have hcancel :
+        B * (((u1 * m + u0) / B + 1) * d) - B * (u1 * B + u0) +
+          B * (u1 * B + u0) =
+            B * (((u1 * m + u0) / B + 1) * d) :=
+      Nat.sub_add_cancel hmul
+    omega
+
+/-
+  Natural-language proof.
+
+  A UInt subtraction observes `(B-(Q%B)+(N%B))%B`.  When `Q≤N` and the
+  difference is below `B`, modular subtraction has a unique representative
+  below `B`, namely `N-Q`.  The proof performs the subtraction only after
+  adding one `B` to both representatives, so no natural-number subtraction is
+  silently truncated.
+-/
+theorem baseMod_sub_eq_positive (B N Q : Nat) (hB : 0 < B)
+    (hle : Q ≤ N) (hdiff : N - Q < B) :
+    (B - (Q % B) + (N % B)) % B = N - Q := by
+  have hqr : Q % B < B := Nat.mod_lt Q hB
+  have hmodN : Nat.ModEq B (N + B) (N % B + B) := by simp [Nat.ModEq]
+  have hmodQ : Nat.ModEq B Q (Q % B) := by simp [Nat.ModEq]
+  have hs := hmodN.sub (by omega) (by omega) hmodQ
+  have hl : N + B - Q = N - Q + B := by omega
+  have hr : N % B + B - Q % B = B - Q % B + N % B := by omega
+  rw [hl, hr] at hs
+  change (N - Q + B) % B = (B - Q % B + N % B) % B at hs
+  rw [Nat.add_mod_right, Nat.mod_eq_of_lt hdiff] at hs
+  exact hs.symm
+
+/-
+  Natural-language proof.
+
+  When `N<Q` but `Q-N<B`, the same machine subtraction is the wrapped
+  representative `B-(Q-N)`.  Adding one base before applying modular
+  subtraction again avoids any illicit truncated subtraction, and the strict
+  error bound makes the resulting representative uniquely below `B`.
+-/
+theorem baseMod_sub_eq_negative (B N Q : Nat) (hB : 0 < B)
+    (hlt : N < Q) (hdiff : Q - N < B) :
+    (B - (Q % B) + (N % B)) % B = B - (Q - N) := by
+  have hqr : Q % B < B := Nat.mod_lt Q hB
+  have hqle : Q ≤ N + B := by omega
+  have hmodN : Nat.ModEq B (N + B) (N % B + B) := by simp [Nat.ModEq]
+  have hmodQ : Nat.ModEq B Q (Q % B) := by simp [Nat.ModEq]
+  have hs := hmodN.sub hqle (by omega) hmodQ
+  have hl : N + B - Q = B - (Q - N) := by omega
+  have hr : N % B + B - Q % B = B - Q % B + N % B := by omega
+  rw [hl, hr] at hs
+  change (B - (Q - N)) % B = (B - Q % B + N % B) % B at hs
+  have hkpos : 0 < Q - N := by omega
+  have hres : B - (Q - N) < B := by omega
+  rw [Nat.mod_eq_of_lt hres] at hs
+  exact hs.symm
+
+/-
+  Natural-language proof.
+
+  UInt64 successor and multiplication each reduce modulo `B`; composing the
+  two reductions is the same as reducing the mathematical product once.  In
+  particular this theorem covers the important `q=B` case, where `q` wraps to
+  zero before multiplication in C++.
+-/
+theorem uint64_succ_mul_mod (q d : UInt64) :
+    ((q + 1) * d).toNat = ((q.toNat + 1) * d.toNat) % limbBase := by
+  simp [UInt64.toNat_mul, UInt64.toNat_add, limbBase, Nat.mul_mod]
+
+/-
+  Natural-language proof.
+
+  The machine subtrahend is the estimated multiple modulo `B`, while `u0` is
+  the two-limb numerator modulo `B`.  The positive modular-subtraction lemma
+  and the strict estimate window therefore identify the UInt64 subtraction
+  with the ordinary nonnegative error `N-Q`.
+-/
+theorem uint64_sub_observe_positive (u0 prod : UInt64) (N Q : Nat)
+    (hu0 : u0.toNat = N % limbBase) (hprod : prod.toNat = Q % limbBase)
+    (hle : Q ≤ N) (hdiff : N - Q < limbBase) :
+    (u0 - prod).toNat = N - Q := by
+  rw [UInt64.toNat_sub, hu0, hprod]
+  simpa [limbBase] using
+    baseMod_sub_eq_positive limbBase N Q (by norm_num [limbBase]) hle hdiff
+
+/-
+  Natural-language proof.
+
+  Under negative error, the same UInt64 subtraction is uniquely the wrapped
+  representative `B-(Q-N)`.  This is the exact value consumed by the source
+  `r>q0` detector; no claim that machine subtraction equals Nat subtraction is
+  made.
+-/
+theorem uint64_sub_observe_negative (u0 prod : UInt64) (N Q : Nat)
+    (hu0 : u0.toNat = N % limbBase) (hprod : prod.toNat = Q % limbBase)
+    (hlt : N < Q) (hdiff : Q - N < limbBase) :
+    (u0 - prod).toNat = limbBase - (Q - N) := by
+  rw [UInt64.toNat_sub, hu0, hprod]
+  simpa [limbBase] using
+    baseMod_sub_eq_negative limbBase N Q (by norm_num [limbBase]) hlt hdiff
+
+/-
+  Natural-language proof.
+
+  In the two-limb numerator `N=u1*B+u0`, the high term is divisible by `B`
+  and the low limb is already below `B`; therefore `u0` is exactly `N%B`.
+-/
+theorem twoLimb_low_mod (u1 u0 : UInt64) :
+    u0.toNat = (u1.toNat * limbBase + u0.toNat) % limbBase := by
+  have hu0 : u0.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt u0
+  simp [Nat.add_mod, Nat.mod_eq_of_lt hu0]
+
+/-
+  Natural-language proof.
+
+  The no-wrap quotient theorem identifies the generated high estimate with
+  `(u1*pinv+u0)/B+u1`, which is algebraically
+  `(u1*(B+pinv)+u0)/B`.  The preceding UInt64 successor/multiplication theorem
+  then identifies the exact machine subtrahend with the estimated multiple
+  modulo `B`, including the possible wrap of the added one.
+-/
+theorem preinv_estimated_product_mod (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2) :
+    (((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat =
+      ((((u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase) + 1) *
+        pn.toNat) % limbBase := by
+  have hhigh := preinvQuotientPair_high_noWrap u1 u0 pn pinv hu1 hmul
+  rw [uint64_succ_mul_mod, hhigh]
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hrewrite :
+      (u1.toNat * pinv.toNat + u0.toNat) / limbBase + u1.toNat =
+        (u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase := by
+    rw [show u1.toNat * (limbBase + pinv.toNat) + u0.toNat =
+      (u1.toNat * pinv.toNat + u0.toNat) + limbBase * u1.toNat by ring]
+    rw [Nat.add_mul_div_left _ _ hB]
+  rw [hrewrite]
+
+/-
+  Natural-language proof.
+
+  Let `Q` be the mathematical estimated multiple.  The generated subtrahend
+  has value `Q%B`, and the low input limb has value `N%B`.  The preinverse
+  estimate window gives both `Q≤N+d` and `N<Q+B`.  Consequently, according to
+  the actual ordering of `Q` and `N`, the UInt64 subtraction is uniquely
+  observed as either `N-Q` or the wrapped value `B-(Q-N)`.
+-/
+theorem preinv_initial_subtraction_cases (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    let N := u1.toNat * limbBase + u0.toNat
+    let Q :=
+      (((u1.toNat * (limbBase + pinv.toNat) + u0.toNat) / limbBase) + 1) *
+        pn.toNat
+    let prod := ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn
+    (Q ≤ N → (u0 - prod).toNat = N - Q) ∧
+      (N < Q → (u0 - prod).toNat = limbBase - (Q - N)) := by
+  dsimp
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hpnB : pn.toNat ≤ limbBase := by
+    have := UInt64.toNat_lt pn
+    norm_num [limbBase] at this ⊢
+    omega
+  have hpnlt : pn.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt pn
+  have hu0B : u0.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt u0
+  have hbounds := preinv_estimated_multiple_bounds limbBase pn.toNat
+    (limbBase + pinv.toNat) u1.toNat u0.toNat hB hpnB hu0B hu1 hmul hlower
+  have hu0mod := twoLimb_low_mod u1 u0
+  have hprod := preinv_estimated_product_mod u1 u0 pn pinv hu1 hmul
+  constructor
+  · intro hle
+    apply uint64_sub_observe_positive _ _ _ _ hu0mod hprod hle
+    exact (Nat.sub_lt_iff_lt_add hle).2 (by simpa [Nat.add_comm] using hbounds.2)
+  · intro hlt
+    apply uint64_sub_observe_negative _ _ _ _ hu0mod hprod hlt
+    apply (Nat.sub_lt_iff_lt_add' (Nat.le_of_lt hlt)).2
+    exact lt_of_le_of_lt hbounds.1 (Nat.add_lt_add_left hpnlt _)
+
+/-
+  Natural-language proof.
+
+  The component theorem gives `q0=(u1*pinv+u0)%B`.  Adding the omitted
+  `u1*B` term does not change a remainder modulo `B`, so this is also exactly
+  `(u1*(B+pinv)+u0)%B`, the `q0` used by the balance identities.
+-/
+theorem preinvQuotientPair_low_source_mod (u1 u0 pinv : UInt64) :
+    (preinvQuotientPair u1 u0 pinv).2.toNat =
+      (u1.toNat * (limbBase + pinv.toNat) + u0.toNat) % limbBase := by
+  have hlow := (preinvQuotientPair_components u1 u0 pinv).1
+  rw [hlow]
+  rw [show u1.toNat * (limbBase + pinv.toNat) + u0.toNat =
+    (u1.toNat * pinv.toNat + u0.toNat) + limbBase * u1.toNat by ring]
+  simp [Nat.add_mod]
+
+/-- Exact Nat observation of a UInt64 conditional subtraction. -/
+theorem uint64_condSub_toNat (x d : UInt64) :
+    (if x ≥ d then x - d else x).toNat =
+      if d.toNat ≤ x.toNat then x.toNat - d.toNat else x.toNat := by
+  by_cases h : d ≤ x
+  · have hn : d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    simp only [h, hn, ↓reduceIte]
+    exact UInt64.toNat_sub_of_le x d h
+  · have hn : ¬d.toNat ≤ x.toNat := by
+      simpa [UInt64.le_iff_toNat_le] using h
+    simp only [h, hn, ↓reduceIte]
+
+/-
+  Natural-language proof.
+
+  Expanding the shared source round, the first comparison is exactly the Nat
+  comparison of UInt64 observations.  If it fires, UInt64 addition observes
+  `(r+pn)%B`; otherwise it observes `r`.  The final comparison likewise is the
+  Nat ordering, and in its true branch subtraction cannot underflow, so it
+  observes ordinary Nat subtraction.  This theorem exposes the complete
+  machine correction block without assuming its arithmetic correctness.
+-/
+theorem preinvReduceNormalized_toNat_model (u1 u0 pn pinv : UInt64) :
+    let q := preinvQuotientPair u1 u0 pinv
+    let prod := (q.1 + 1) * pn
+    let r := u0 - prod
+    let rNat := r.toNat
+    let corrected :=
+      if q.2.toNat < rNat then (rNat + pn.toNat) % limbBase else rNat
+    (preinvReduceNormalized u1 u0 pn pinv).toNat =
+      if pn.toNat ≤ corrected then corrected - pn.toNat else corrected := by
+  dsimp only
+  unfold preinvReduceNormalized
+  dsimp only
+  by_cases hadd :
+      u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn >
+        (preinvQuotientPair u1 u0 pinv).2
+  · have haddNat :
+        (preinvQuotientPair u1 u0 pinv).2.toNat <
+          (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat := by
+      simpa [UInt64.lt_iff_toNat_lt] using hadd
+    simp only [hadd, haddNat, ↓reduceIte]
+    let corrected :=
+      u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn + pn
+    have hc : corrected.toNat =
+        ((u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat +
+          pn.toNat) % limbBase := by
+      simp [corrected, UInt64.toNat_add, limbBase]
+    rw [← hc]
+    exact uint64_condSub_toNat corrected pn
+  · have haddNat : ¬
+        (preinvQuotientPair u1 u0 pinv).2.toNat <
+          (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat := by
+      simpa [UInt64.lt_iff_toNat_lt] using hadd
+    simp only [hadd, haddNat, ↓reduceIte]
+    exact uint64_condSub_toNat
+      (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn) pn
+
+/-
+  Natural-language proof.
+
+  Set `m=B+pinv`, `N=u1*B+u0`, and let `Q` be the estimated multiple.  The
+  quotient-limb theorems identify the generated `q0` and product with the Nat
+  model, while the machine-subtraction theorem identifies `r` with `N-Q` or
+  `B-(Q-N)` according to the actual ordering.  The preinverse bounds provide
+  the estimate window and deficit bound; the balance identities then prove
+  both detector obligations.  Applying the already verified correction
+  control flow yields `N%pn`.  Every equality used here has been established
+  from the generated fixed-width operations—there is no modular oracle.
+-/
+theorem preinvReduceNormalized_correct (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hnorm : limbBase ≤ 2 * pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    (preinvReduceNormalized u1 u0 pn pinv).toNat =
+      (u1.toNat * limbBase + u0.toNat) % pn.toNat := by
+  let B := limbBase
+  let d := pn.toNat
+  let m := B + pinv.toNat
+  let X := u1.toNat * m + u0.toNat
+  let q0 := X % B
+  let Q := (X / B + 1) * d
+  let N := u1.toNat * B + u0.toNat
+  let e := B ^ 2 - m * d
+  let A := u1.toNat * e + (B - d) * u0.toNat
+  let qp := preinvQuotientPair u1 u0 pinv
+  let prod := (qp.1 + 1) * pn
+  let r := u0 - prod
+  have hB : 0 < B := by simp [B, limbBase]
+  have hdB : d < B := by
+    simpa [d, B, limbBase] using UInt64.toNat_lt pn
+  have hu0 : u0.toNat < B := by
+    simpa [B, limbBase] using UInt64.toNat_lt u0
+  have hbounds : Q ≤ N + d ∧ N < Q + B := by
+    simpa [B, d, m, X, Q, N] using
+      preinv_estimated_multiple_bounds B d m u1.toNat u0.toNat hB
+        (Nat.le_of_lt hdB) hu0 hu1 hmul hlower
+  have hdeficit : 0 < e ∧ e ≤ d := by
+    simpa [B, d, m, e] using preinv_deficit_bounds B d m hmul hlower
+  have hbalances := preinv_balance_cases B d m u1.toNat u0.toNat hB
+    (Nat.le_of_lt hdB) (Nat.le_of_lt hmul)
+  have hbalancePos : Q ≤ N → B * (N - Q) + d * (B - q0) = A := by
+    simpa [X, Q, N, q0, A, e] using hbalances.1
+  have hbalanceNeg : N < Q → B * (Q - N) + A = d * (B - q0) := by
+    simpa [X, Q, N, q0, A, e] using hbalances.2
+  have hq0 : qp.2.toNat = q0 := by
+    simpa [qp, q0, X, m, B] using
+      preinvQuotientPair_low_source_mod u1 u0 pinv
+  have hrCases :
+      (Q ≤ N → r.toNat = N - Q) ∧
+        (N < Q → r.toNat = B - (Q - N)) := by
+    simpa [B, d, m, X, Q, N, qp, prod, r] using
+      preinv_initial_subtraction_cases u1 u0 pn pinv hu1 hmul hlower
+  have hr : r.toNat = if Q ≤ N then N - Q else B - (Q - N) := by
+    by_cases hle : Q ≤ N
+    · simp [hle, hrCases.1 hle]
+    · have hlt : N < Q := by omega
+      simp [hle, hrCases.2 hlt]
+  have hdetectNeg : N < Q → q0 < B - (Q - N) := by
+    intro hlt
+    exact preinv_negative_detector B d q0 (Q - N) A hdB
+      (Nat.mod_lt X hB) (hbalanceNeg hlt)
+  have hdetectPos : Q ≤ N → q0 < N - Q → N - Q + d < B := by
+    intro hle hcmp
+    have hdeltaB : N - Q < B :=
+      (Nat.sub_lt_iff_lt_add hle).2 (by simpa [Nat.add_comm] using hbounds.2)
+    exact preinv_positive_detector_bound B d e u1.toNat u0.toNat q0
+      (N - Q) hdB hu1 hu0 hdeficit.2 hcmp hdeltaB (hbalancePos hle)
+  have hcorrect := preinv_correction_of_detector B d Q N q0 hdB
+    (by simpa [B, d] using hnorm) (dvd_mul_left d (X / B + 1))
+    hbounds.1 hbounds.2 hdetectNeg hdetectPos
+  dsimp only at hcorrect
+  have hmodel := preinvReduceNormalized_toNat_model u1 u0 pn pinv
+  dsimp only at hmodel
+  rw [show (preinvQuotientPair u1 u0 pinv).2.toNat = q0 by simpa [qp] using hq0]
+    at hmodel
+  rw [show
+      (u0 - ((preinvQuotientPair u1 u0 pinv).1 + 1) * pn).toNat =
+        (if Q ≤ N then N - Q else B - (Q - N)) by simpa [qp, prod, r] using hr]
+    at hmodel
+  exact hmodel.trans (by simpa [B, d, N] using hcorrect)
+
+/-- Single-round modular correctness transferred to the verbatim generated
+carry and correction block. -/
+theorem preinvRoundIR_correct (u1 u0 pn pinv : UInt64)
+    (hu1 : u1.toNat < pn.toNat)
+    (hnorm : limbBase ≤ 2 * pn.toNat)
+    (hmul : (limbBase + pinv.toNat) * pn.toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * pn.toNat) :
+    (preinvRoundIR u1 u0 pn pinv).toNat =
+      (u1.toNat * limbBase + u0.toNat) % pn.toNat := by
+  rw [preinvRoundIR_eq_reduceNormalized]
+  exact preinvReduceNormalized_correct u1 u0 pn pinv hu1 hnorm hmul hlower
+
+/-
+  Natural-language proof.
+
+  Multiplication by the common positive scale commutes with remainder:
+  `(x*s)%(p*s)=(x%p)*s`.  Dividing the result by `s` therefore recovers
+  `x%p`.  This is the mathematical normalization/denormalization identity
+  used by generated nmod multiplication.
+-/
+theorem scaled_mod_div (x p s : Nat) (hs : 0 < s) :
+    ((x * s) % (p * s)) / s = x % p := by
+  rw [Nat.mul_mod_mul_right, Nat.mul_div_left _ hs]
+
+/-
+  Natural-language proof.
+
+  UInt64 left shift observes multiplication by `2^n` modulo `B`.  If `n<64`
+  and the scaled value is already below `B`, both the shift-count reduction
+  and the value reduction are identities.
+-/
+theorem uint64_shiftLeft_toNat_of_mul_lt (x : UInt64) (n : UInt32)
+    (hn : n.toNat < 64) (hscaled : x.toNat * 2 ^ n.toNat < limbBase) :
+    (x <<< n).toNat = x.toNat * 2 ^ n.toNat := by
+  change (x <<< n.toUInt64).toNat = _
+  rw [UInt64.toNat_shiftLeft, UInt32.toNat_toUInt64]
+  rw [Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+  have hscaled' : x.toNat * 2 ^ n.toNat < UInt64.size := by
+    simpa [limbBase, UInt64.size] using hscaled
+  exact Nat.mod_eq_of_lt hscaled'
+
+/-
+  Natural-language proof.
+
+  UInt64 right shift by `n<64` observes division by `2^n`; the shift count is
+  not truncated because it is already in range.
+-/
+theorem uint64_shiftRight_toNat_of_lt (x : UInt64) (n : UInt32)
+    (hn : n.toNat < 64) :
+    (x >>> n).toNat = x.toNat / 2 ^ n.toNat := by
+  change (x >>> n.toUInt64).toNat = _
+  rw [UInt64.toNat_shiftRight, UInt32.toNat_toUInt64]
+  rw [Nat.mod_eq_of_lt hn, Nat.shiftRight_eq_div_pow]
+
+/-- The normalization splice used by `_lll_mod_preinv` preserves the exact
+two-limb value after multiplication by `2^norm`. -/
+theorem preinv_normalized_pair_value (hi lo p : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : p.toNat * 2 ^ norm.toNat < limbBase) :
+    let h0 := hi <<< norm
+    let h := if norm > 0 then
+      h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+    let l := lo <<< norm
+    h.toNat * limbBase + l.toNat =
+      (hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat := by
+  dsimp only
+  by_cases hz : norm = 0
+  · subst norm
+    simp [limbBase]
+  · have hnpos : 0 < norm.toNat := Nat.pos_of_ne_zero (by
+      intro h
+      apply hz
+      exact UInt32.toNat_inj.mp (by simpa using h))
+    have hnormPos : (0 : UInt32) < norm := by
+      simpa [UInt32.lt_iff_toNat_lt] using hnpos
+    simp only [hnormPos, ↓reduceIte]
+    have hhiScaled : hi.toNat * 2 ^ norm.toNat < limbBase := by
+      have hs : 0 < 2 ^ norm.toNat := by positivity
+      have := Nat.mul_lt_mul_of_pos_right hhi hs
+      omega
+    rw [UInt64.toNat_or]
+    rw [uint64_shiftLeft_toNat_of_mul_lt hi norm hn hhiScaled]
+    have hnle : norm.toNat ≤ 64 := Nat.le_of_lt hn
+    rw [uint64_shiftRight_u32_eq_u64]
+    rw [uint32_sub_64_toUInt64 norm hnle]
+    have hsubNat : ((64 : UInt64) - norm.toUInt64).toNat =
+        64 - norm.toNat := by
+      have hle : norm.toUInt64 ≤ (64 : UInt64) := by
+        simp [UInt64.le_iff_toNat_le, UInt32.toNat_toUInt64, hnle]
+      rw [UInt64.toNat_sub_of_le _ _ hle]
+      simp [UInt32.toNat_toUInt64]
+    rw [UInt64.toNat_shiftRight, hsubNat]
+    have hsub64 : 64 - norm.toNat < 64 := by omega
+    rw [Nat.mod_eq_of_lt hsub64, Nat.shiftRight_eq_div_pow]
+    rw [uint64_shiftLeft_u32_eq_u64]
+    rw [UInt64.toNat_shiftLeft, UInt32.toNat_toUInt64,
+      Nat.mod_eq_of_lt hn, Nat.shiftLeft_eq]
+    have htail : lo.toNat / 2 ^ (64 - norm.toNat) < 2 ^ norm.toNat := by
+      have hlo : lo.toNat < 2 ^ 64 := by simpa using UInt64.toNat_lt lo
+      exact (Nat.div_lt_iff_lt_mul (by positivity)).2 (by
+        have heq : 2 ^ norm.toNat * 2 ^ (64 - norm.toNat) = 2 ^ 64 := by
+          rw [← pow_add]
+          congr 1
+          omega
+        simpa [heq] using hlo)
+    have hor := Nat.shiftLeft_add_eq_or_of_lt htail hi.toNat
+    rw [Nat.shiftLeft_eq] at hor
+    rw [← hor]
+    have hpow : 2 ^ (64 - norm.toNat) * 2 ^ norm.toNat = limbBase := by
+      rw [← pow_add]
+      simp [limbBase, Nat.sub_add_cancel hnle]
+    have hloDiv := Nat.div_add_mod lo.toNat (2 ^ (64 - norm.toNat))
+    have hloMod : lo.toNat % 2 ^ (64 - norm.toNat) <
+        2 ^ (64 - norm.toNat) := Nat.mod_lt _ (by positivity)
+    have hmod : lo.toNat * 2 ^ norm.toNat % limbBase =
+        lo.toNat % 2 ^ (64 - norm.toNat) * 2 ^ norm.toNat := by
+      rw [← hpow, Nat.mul_mod_mul_right]
+    norm_num [limbBase] at hmod
+    rw [hmod]
+    norm_num [limbBase] at hpow ⊢
+    nlinarith
+
+/-- Semantic correctness of one complete source `_lll_mod_preinv` step,
+including normalization, the generated preinverse round, and denormalization. -/
+theorem preinvStepIR_correct (hi lo p pinv : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (preinvStepIR hi lo p pinv norm).toNat =
+      (hi.toNat * limbBase + lo.toNat) % p.toNat := by
+  let pn := p <<< norm
+  let h0 := hi <<< norm
+  let h := if norm > 0 then
+    h0 ||| (lo >>> ((64 : UInt32) - norm)) else h0
+  let l := lo <<< norm
+  let r := preinvRoundIR h l pn pinv
+  have hs : 0 < 2 ^ norm.toNat := by positivity
+  have hpair : h.toNat * limbBase + l.toNat =
+      (hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat := by
+    simpa [h, h0, l] using
+      preinv_normalized_pair_value hi lo p norm hn hhi hpnB
+  have hloB : lo.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt lo
+  have hlB : l.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt l
+  have hpPos : 0 < p.toNat := by
+    have : 0 < (p <<< norm).toNat := by omega
+    omega
+  have hhpn : h.toNat < pn.toNat := by
+    have hvalue : hi.toNat * limbBase + lo.toNat < p.toNat * limbBase := by
+      nlinarith
+    dsimp [pn]
+    rw [hpn]
+    nlinarith
+  have hr : r.toNat =
+      ((hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat) %
+        (p.toNat * 2 ^ norm.toNat) := by
+    have hround := preinvRoundIR_correct h l pn pinv hhpn hnorm hmul hlower
+    dsimp [r]
+    rw [hround, hpair]
+    change ((hi.toNat * limbBase + lo.toNat) * 2 ^ norm.toNat) %
+      (p <<< norm).toNat = _
+    rw [hpn]
+  have hrlt : r.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt r
+  unfold preinvStepIR
+  change (r >>> norm).toNat = _
+  rw [uint64_shiftRight_toNat_of_lt r norm hn, hr]
+  exact scaled_mod_div (hi.toNat * limbBase + lo.toNat) p.toNat
+    (2 ^ norm.toNat) hs
+
+/-- Mathematical correctness of the two source-exact steps performed by
+`_lll_mod_preinv` on a three-limb accumulator. -/
+theorem preinvTwoSteps_correct (hi mid lo p pinv : UInt64) (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (preinvStepIR (preinvStepIR hi mid p pinv norm) lo p pinv norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % p.toNat := by
+  let r1 := preinvStepIR hi mid p pinv norm
+  have hp : 0 < p.toNat := by
+    have : 0 < (p <<< norm).toNat := by omega
+    omega
+  have hfirst : r1.toNat =
+      (hi.toNat * limbBase + mid.toNat) % p.toNat :=
+    preinvStepIR_correct hi mid p pinv norm hn hhi hpn hpnB hnorm hmul hlower
+  have hr1 : r1.toNat < p.toNat := by
+    rw [hfirst]
+    exact Nat.mod_lt _ hp
+  rw [preinvStepIR_correct r1 lo p pinv norm hn hr1 hpn hpnB
+    hnorm hmul hlower, hfirst]
+  have hmod := Nat.mod_modEq (hi.toNat * limbBase + mid.toNat) p.toNat
+  have hcongr := (hmod.mul_right limbBase).add_right lo.toNat
+  change (((hi.toNat * limbBase + mid.toNat) % p.toNat) * limbBase +
+      lo.toNat) % p.toNat = _
+  rw [hcongr]
+  congr 1
+  simp only [word3Value]
+  ring
+
+/-- Final semantic theorem for the actual cpp2lean-generated
+`_lll_mod_preinv` entry. -/
+theorem lll_mod_preinv_ir_correct (hi mid lo p pinv : UInt64)
+    (norm : UInt32)
+    (hn : norm.toNat < 64)
+    (hhi : hi.toNat < p.toNat)
+    (hpn : (p <<< norm).toNat = p.toNat * 2 ^ norm.toNat)
+    (hpnB : p.toNat * 2 ^ norm.toNat < limbBase)
+    (hnorm : limbBase ≤ 2 * (p <<< norm).toNat)
+    (hmul : (limbBase + pinv.toNat) * (p <<< norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + pinv.toNat + 1) * (p <<< norm).toNat) :
+    (dense_upoly_zp__lll_mod_preinv_ir hi mid lo p pinv norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % p.toNat := by
+  rw [lll_mod_preinv_ir_eq_steps hi mid lo p pinv norm (Nat.le_of_lt hn)]
+  exact preinvTwoSteps_correct hi mid lo p pinv norm hn hhi hpn hpnB
+    hnorm hmul hlower
+
+theorem lll_mod_preinv_ir_correct_of_configured (this : DenseUPolyZp)
+    (hi mid lo : UInt64)
+    (hcfg : DensePreinvConfigured this)
+    (hhi : hi.toNat < this._p.toNat) :
+    (dense_upoly_zp__lll_mod_preinv_ir hi mid lo this._p this._ninv
+      this._norm).toNat =
+      word3Value { hi := hi, mid := mid, lo := lo } % this._p.toNat := by
+  rcases densePreinvConfigured_conditions this hcfg with
+    ⟨hn, hpn, hpnB, hnorm, hmul, hlower⟩
+  exact lll_mod_preinv_ir_correct hi mid lo this._p this._ninv this._norm
+    hn hhi hpn hpnB hnorm hmul hlower
+
+/-- Structural factoring of generated nmod multiplication through the exact
+source-level preinverse round. -/
+theorem nmod_mul_eq_preinvRoundIR_core (this : DenseUPolyZp) (a b : UInt64) :
+    dense_upoly_zp_nmod_mul_ir this a b =
+      let prod : UInt128 :=
+        uint128_of_uint64 (a <<< this._norm) * uint128_of_uint64 b
+      (preinvRoundIR
+        (uint128_lo (prod >>> (64 : UInt128)))
+        (uint128_lo prod)
+        (this._p <<< this._norm) this._ninv) >>> this._norm := by
+  simp [dense_upoly_zp_nmod_mul_ir, preinvRoundIR] <;>
+    repeat' split <;> simp_all
+
+/-
+  Natural-language proof.
+
+  The generated function first scales `a`, forms the exact UInt128 product,
+  splits it into limbs, performs the now-certified preinverse round modulo the
+  scaled modulus, and shifts the canonical result back down.  The input bound
+  `a<p` proves the scaled input is below `pn`, while the high product limb is
+  below `pn` because the other UInt64 operand is below `B`.  The final scaled
+  remainder identity then yields `(a*b)%p`.
+-/
+theorem nmod_mul_ir_correct (this : DenseUPolyZp) (a b : UInt64)
+    (hn : this._norm.toNat < 64)
+    (hpn : (this._p <<< this._norm).toNat =
+      this._p.toNat * 2 ^ this._norm.toNat)
+    (hnorm : limbBase ≤ 2 * (this._p <<< this._norm).toNat)
+    (hmul : (limbBase + this._ninv.toNat) *
+      (this._p <<< this._norm).toNat < limbBase ^ 2)
+    (hlower : limbBase ^ 2 ≤
+      (limbBase + this._ninv.toNat + 1) *
+        (this._p <<< this._norm).toNat)
+    (ha : a.toNat < this._p.toNat) :
+    (dense_upoly_zp_nmod_mul_ir this a b).toNat =
+      (a.toNat * b.toNat) % this._p.toNat := by
+  let pn := this._p <<< this._norm
+  let ashift := a <<< this._norm
+  let prod : UInt128 := uint128_of_uint64 ashift * uint128_of_uint64 b
+  let hi := uint128_lo (prod >>> (64 : UInt128))
+  let lo := uint128_lo prod
+  let reduced := preinvRoundIR hi lo pn this._ninv
+  have hB : 0 < limbBase := by norm_num [limbBase]
+  have hpnB : pn.toNat < limbBase := by
+    simpa [pn, limbBase] using UInt64.toNat_lt pn
+  have hscalePos : 0 < 2 ^ this._norm.toNat := pow_pos (by omega) _
+  have hascaled : a.toNat * 2 ^ this._norm.toNat < limbBase := by
+    have : a.toNat * 2 ^ this._norm.toNat <
+        this._p.toNat * 2 ^ this._norm.toNat :=
+      Nat.mul_lt_mul_of_pos_right ha hscalePos
+    rw [← hpn] at this
+    exact lt_trans this (by simpa [pn] using hpnB)
+  have hashift : ashift.toNat = a.toNat * 2 ^ this._norm.toNat := by
+    exact uint64_shiftLeft_toNat_of_mul_lt a this._norm hn hascaled
+  have hashiftPn : ashift.toNat < pn.toNat := by
+    rw [hashift, hpn]
+    exact Nat.mul_lt_mul_of_pos_right ha hscalePos
+  have hprod : lo.toNat + limbBase * hi.toNat = ashift.toNat * b.toNat := by
+    simpa [ashift, prod, hi, lo, dense_upoly_zp__umul128_ir] using
+      umul128_reconstruct ashift b
+  have hbB : b.toNat < limbBase := by
+    simpa [limbBase] using UInt64.toNat_lt b
+  have hprodlt : ashift.toNat * b.toNat < pn.toNat * limbBase :=
+    Nat.mul_lt_mul_of_lt_of_le hashiftPn (Nat.le_of_lt hbB) hB
+  have hhi : hi.toNat < pn.toNat := by
+    apply Nat.lt_of_mul_lt_mul_right (a := limbBase)
+    calc
+      hi.toNat * limbBase ≤ lo.toNat + limbBase * hi.toNat := by
+        nlinarith
+      _ = ashift.toNat * b.toNat := hprod
+      _ < pn.toNat * limbBase := hprodlt
+  have hround : reduced.toNat =
+      (hi.toNat * limbBase + lo.toNat) % pn.toNat := by
+    exact preinvRoundIR_correct hi lo pn this._ninv hhi hnorm hmul hlower
+  rw [nmod_mul_eq_preinvRoundIR_core]
+  change (reduced >>> this._norm).toNat = _
+  rw [uint64_shiftRight_toNat_of_lt reduced this._norm hn, hround]
+  rw [show hi.toNat * limbBase + lo.toNat = ashift.toNat * b.toNat by
+    nlinarith [hprod]]
+  rw [hashift, hpn]
+  rw [show a.toNat * 2 ^ this._norm.toNat * b.toNat =
+    (a.toNat * b.toNat) * 2 ^ this._norm.toNat by ring]
+  exact scaled_mod_div (a.toNat * b.toNat) this._p.toNat
+    (2 ^ this._norm.toNat) hscalePos
+
+theorem nmod_mul_ir_correct_of_configured (this : DenseUPolyZp)
+    (a b : UInt64) (hcfg : DensePreinvConfigured this)
+    (ha : a.toNat < this._p.toNat) :
+    (dense_upoly_zp_nmod_mul_ir this a b).toNat =
+      (a.toNat * b.toNat) % this._p.toNat := by
+  rcases densePreinvConfigured_conditions this hcfg with
+    ⟨hn, hpn, hpnB, hnorm, hmul, hlower⟩
+  exact nmod_mul_ir_correct this a b hn hpn hnorm hmul hlower ha
+
+/-- The coefficient computed by the actual generated inverse and multiply
+eliminates the current leading residue. -/
+theorem quotientCoeff_eliminates_lead (this : DenseUPolyZp)
+    (r lead : UInt64) (hcfg : DensePreinvConfigured this)
+    (hprime : Nat.Prime this._p.toNat)
+    (hr : r.toNat < this._p.toNat)
+    (hleadPos : 0 < lead.toNat) (hlead : lead.toNat < this._p.toNat) :
+    let invLc := dense_upoly_zp_nmod_inv_ir this lead
+    let qi := dense_upoly_zp_nmod_mul_ir this r invLc
+    qi.toNat < this._p.toNat ∧
+      (qi.toNat * lead.toNat) % this._p.toNat = r.toNat := by
+  let invLc := dense_upoly_zp_nmod_inv_ir this lead
+  let qi := dense_upoly_zp_nmod_mul_ir this r invLc
+  have hpPos : 0 < this._p.toNat := hprime.pos
+  have hmul : qi.toNat = (r.toNat * invLc.toNat) % this._p.toNat := by
+    exact nmod_mul_ir_correct_of_configured this r invLc hcfg hr
+  have hinv := dense_upoly_zp_nmod_inv_ir_correct this lead hprime
+    hleadPos hlead
+  have hqi : qi.toNat < this._p.toNat := by
+    rw [hmul]
+    exact Nat.mod_lt _ hpPos
+  refine ⟨hqi, ?_⟩
+  have hcast : ((qi.toNat * lead.toNat : Nat) : ZMod this._p.toNat) =
+      (r.toNat : ZMod this._p.toNat) := by
+    rw [Nat.cast_mul, hmul]
+    simp only [ZMod.natCast_mod]
+    rw [Nat.cast_mul]
+    rw [mul_assoc, hinv.2, mul_one]
+  have hmodEq : Nat.ModEq this._p.toNat
+      (qi.toNat * lead.toNat) r.toNat :=
+    (ZMod.natCast_eq_natCast_iff _ _ _).mp hcast
+  exact Nat.mod_eq_of_modEq hmodEq hr
+
+/-
+  Natural-language proof.
+
+  The generated C++ multiplication first shifts `a`, forms its exact UInt128
+  product with `b`, and splits that product into high and low limbs.  The
+  remaining quotient estimate, carry conversion, two correction branches and
+  final denormalising shift are exactly `preinvRoundIR`.  Unfolding both
+  definitions therefore gives the same fixed-width program; no `% p`, L2
+  multiplication, or specification oracle is introduced.
+-/
+theorem nmod_mul_eq_preinvRoundIR (this : DenseUPolyZp) (a b : UInt64) :
+    dense_upoly_zp_nmod_mul_ir this a b =
+      let prod : UInt128 :=
+        uint128_of_uint64 (a <<< this._norm) * uint128_of_uint64 b
+      (preinvRoundIR
+        (uint128_lo (prod >>> (64 : UInt128)))
+        (uint128_lo prod)
+        (this._p <<< this._norm) this._ninv) >>> this._norm :=
+  nmod_mul_eq_preinvRoundIR_core this a b
+
+end CLPoly.Impl.StrictWordArithmetic

@@ -84,7 +84,7 @@ M1: Karatsuba mul                M2: 惰性归约 divrem
 static constexpr size_t KARATSUBA_THRESHOLD = 16;  // 初始值，需 A/B 调优
 
 // Karatsuba 核心递归
-// C[0..2n-2] = A[0..n-1] × B[0..n-1]，scratch 为预分配临时空间
+// C[0..2n-2] = A[0..n-1] × B[0..n-1]，scratch 为预分配临时空间（至少 7n）
 void _kar_mul(uint64_t* C, const uint64_t* A, const uint64_t* B,
               size_t n, uint64_t* scratch) const;
 
@@ -109,7 +109,7 @@ static void mul(dense_upoly_zp& C,
     } else {
         // Karatsuba
         // 1. 零填充 A, B 到相同长度 n
-        // 2. 分配 scratch: vector<uint64_t>(6 * n)
+        // 2. 分配 scratch: vector<uint64_t>(7 * n)
         // 3. 调用 _kar_mul(C._coeffs.data(), ...)
         // 4. __strip()
     }
@@ -147,7 +147,7 @@ _kar_mul(C, A, B, n, scratch):
 
 **复杂度**：O(n^{log₂3}) = O(n^{1.585}) 次模乘 + O(n·log n) 次模加
 
-**Scratch 空间**：T(n) = 2h + (2m-1) + (2h-1) + T(h) ≈ 3n + T(n/2) = O(n)。外层分配 6n 足够。
+**Scratch 空间**：T(n) = 2h + (2m-1) + (2h-1) + T(h) ≈ 3n + T(n/2) = O(n)。为覆盖连续奇数分割的离散项，外层分配 7n。
 
 #### M1 不等长处理
 
@@ -330,7 +330,7 @@ gcd(G, A, B):
   - C: uint64_t* 输出数组，长度 2n-1（调用方预分配）
   - A, B: const uint64_t* 输入数组，长度 n（零填充后等长）
   - n: size_t 输入长度
-  - scratch: uint64_t* 临时空间，长度 >= 6n（调用方预分配）
+  - scratch: uint64_t* 临时空间，长度 >= 7n（调用方预分配）
 
 协议约定：
   - 调用方保证 C 与 A, B, scratch 不重叠
@@ -382,11 +382,11 @@ _add_carry3(s, b1, b0):
 
 ### 决策 3：Scratch 空间外层一次性分配
 
-**选择**：在 `mul` 入口分配 `vector<uint64_t>(6 * n)`，传指针给递归。
+**选择**：在 `mul` 入口分配 `vector<uint64_t>(7 * n)`，传指针给递归。
 
 **理由**：
 - 避免递归中反复 malloc/free
-- 6n 足够（T(n) ≈ 3n + T(n/2) → 收敛到 6n）
+- 7n 足够；6n 的渐近估算忽略了连续奇数分割累计的离散余量，不能作为全范围容量合同
 - `vector` 管理生命周期，无泄漏风险
 
 ### 决策 4：逐系数 negmod + `_add_carry3` 累加

@@ -51,3 +51,41 @@ The axiom report for both final theorems contains only Lean/Mathlib's standard
 `propext`, `Classical.choice`, and `Quot.sound`.  Executable B2B support lives
 under `proof/lean/B2B`; an isolation check prevents its test-only erased proof
 fields from entering `Generated`, `Refinement`, or `Pipeline`.
+
+## C++ implementation issues exposed by refinement
+
+The formalization was not merely a proof of an unchanged model.  Following
+source-level obligations through the strict L1 semantics exposed the following
+production C++ defects, all of which were corrected in C++, mirrored in the
+generated Lean program, and covered by native or C++/Lean B2B regression tests:
+
+- **Large-prime signed narrowing in DDF/EDF.**  Constructing `-1 mod p` as
+  `(int64_t)(p - 1)` overflowed for primes above `2^63` and could make EDF fail
+  to terminate.  The implementation now constructs the residue through the
+  unsigned `Zp(p - 1, p)` path; large-prime factorization cases exercise the
+  corrected branch.
+- **Insufficient Karatsuba scratch storage.**  The unequal-length dense
+  multiplication path allocated `6*n` words for a recursive routine whose
+  verified workspace bound is `7*n`.  The production allocation and its HGCD
+  caller accounting were increased to the proved bound.
+- **Van-Hoeij coordinate provenance and final-precision safety.**  A failed
+  CLD retry reused an already reduced lattice while interpreting a fresh local
+  transform in the original lifted-factor coordinates.  In addition, a
+  reduced-cardinality result could be accepted at full Mignotte precision
+  without running the exhaustive Zassenhaus safety path.  The controller now
+  rebuilds the canonical lattice for each retry and routes the full-precision
+  reduced case through the concrete Zassenhaus execution.  Native recombination
+  tests and the `__needs_zassenhaus_safety_net` B2B vectors cover the change.
+- **Unchecked Hensel factor-count narrowing.**  A `size_t` factor count was
+  converted to the signed indices used by the Hensel tree without first proving
+  it was at most `INT_MAX`.  Both production entry points now reject an
+  out-of-range count before conversion.  Boundary tests cover `INT_MAX`,
+  `INT_MAX + 1`, and `UINT64_MAX`, and the Lean refinement derives the bound
+  from successful execution rather than assuming it at prime selection.
+
+The detailed records are in
+[`formal-proof-ddf-edf.md`](../../../../docs/design/factorization/formal-proof-ddf-edf.md),
+[`2026-08-08-strict-mul-lowering.md`](../../../../docs/devlog/2026-08-08-strict-mul-lowering.md),
+[`2026-08-17-vanhoeij-coordinate-and-safety-fix-plan.md`](../../../../docs/devlog/2026-08-17-vanhoeij-coordinate-and-safety-fix-plan.md),
+and
+[`2026-08-17-hensel-factor-count-guard.md`](../../../docs/devlog/2026-08-17-hensel-factor-count-guard.md).

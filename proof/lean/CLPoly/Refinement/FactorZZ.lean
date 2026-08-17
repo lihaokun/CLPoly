@@ -5768,66 +5768,6 @@ theorem concreteHenselLift_success_of_selection {State : Type}
   exact concreteHenselLift_success engine provider f selection.factors
     selection.prime aTarget hp hinvariant output hrun
 
-/-- Outer refinement with both source callees instantiated: prime selection
-executes the generated modular pipeline and Hensel lifting executes the
-generated tree-build/quadratic-lift/extract/normalize pipeline.  The only
-Hensel premise left here is its execution-readiness invariant over actual
-intermediate results; no abstract Hensel function or result oracle remains. -/
-theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
-    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
-    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
-    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
-    (hinitialPrimeCorrect : Nat.Prime
-      (if useLargePrime then
-        ((18446744073709551615 : UInt64) - 58).toNat
-      else (2 : UInt64).toNat))
-    (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
-      (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
-      let candidate := provider.physical selection.prime hp
-      @HenselLiftRuntimeReadiness candidate.dense
-        StrictHensel.concreteDivmodTermination candidate.providers.mul
-        f selection.factors aTarget)
-    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
-    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
-    (hnonempty : 0 < f.size)
-    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
-    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
-    (hdegree63 : f[0].1.deg < 2 ^ 63)
-    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
-    (output : Array SparsePolyZZ)
-    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
-      (concreteRecombineFactorZZRawOps
-        (concreteSelectPrime engine provider initialRng)
-        (concreteHenselLift engine provider))
-      useLargePrime f = .ok output) :
-    FactorZZCorrect (SparsePolyZZ.toPoly f)
-      (output.toList.map SparsePolyZZ.toPoly) := by
-  exact concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
-    engine provider initialRng (concreteHenselLift engine provider)
-    useLargePrime f hinitialPrimeCorrect
-    (by
-      intro selection hp hselection hphysical aTarget henselOutput hhenselRun
-      have hleadingSemantic : ∀ sourceLeading,
-          f[0]? = some sourceLeading →
-          (sourceLeading.2 : ZMod selection.prime.toNat) =
-            (SparsePolyZZ.toPoly f).leadingCoeff := by
-        intro sourceLeading hsourceLeading
-        have hfront : f[0] = sourceLeading := by
-          rw [Array.getElem?_eq_getElem hnonempty] at hsourceLeading
-          exact Option.some.inj hsourceLeading
-        rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
-          hnonempty, hfront]
-      exact concreteHenselLift_success_of_selection engine provider f selection
-        hp aTarget hselection hphysical hleadingSemantic hnonempty hdegree63
-        (hhenselInvariant selection hp aTarget) henselOutput hhenselRun)
-    (by
-      intro selection hp aTarget henselOutput hhenselRun
-      exact concreteHenselLift_factorCountFits_of_success engine provider f
-        selection.factors selection.prime aTarget hp henselOutput
-        hhenselRun)
-    hcanonical hprimitive hnonempty hdegree hdegree62 hdegree63 leading
-    hleading output hrun
-
 /-- The literal generated Zassenhaus attempt extracts the genuine legal
 Hensel candidate.  Every intermediate result is obtained from the source
 execution theorems above, including exact long division and quotient
@@ -6136,6 +6076,67 @@ theorem henselFactors_mod_pairwise_coprime
       getElem!_pos adjusted j hjAdjusted] using hadjustedCoprime
   simpa [getElem!_pos output.1 i hi, getElem!_pos output.1 j hj] using
     hnormalizeRel.isCoprime hi hj hextractedCoprime
+
+/-- Final internal end-to-end refinement with both source callees instantiated:
+prime selection executes the generated modular pipeline and Hensel lifting
+executes the generated tree-build/quadratic-lift/extract/normalize pipeline.
+The only Hensel premise is execution readiness over actual intermediate
+results; no abstract Hensel function or result oracle remains.  Pass 9 wraps
+this theorem as the public generated contract. -/
+theorem concreteSelectHensel___factor_squarefree_primitive_ZZ_raw_ir_refines
+    {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
+    (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
+    (initialRng : State) (useLargePrime : Bool) (f : SparsePolyZZ)
+    (hinitialPrimeCorrect : Nat.Prime
+      (if useLargePrime then
+        ((18446744073709551615 : UInt64) - 58).toNat
+      else (2 : UInt64).toNat))
+    (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
+      (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
+      let candidate := provider.physical selection.prime hp
+      @HenselLiftRuntimeReadiness candidate.dense
+        StrictHensel.concreteDivmodTermination candidate.providers.mul
+        f selection.factors aTarget)
+    (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
+    (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
+    (hnonempty : 0 < f.size)
+    (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
+    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
+    (hdegree63 : f[0].1.deg < 2 ^ 63)
+    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (output : Array SparsePolyZZ)
+    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+      (concreteRecombineFactorZZRawOps
+        (concreteSelectPrime engine provider initialRng)
+        (concreteHenselLift engine provider))
+      useLargePrime f = .ok output) :
+    FactorZZCorrect (SparsePolyZZ.toPoly f)
+      (output.toList.map SparsePolyZZ.toPoly) := by
+  exact concreteSelect___factor_squarefree_primitive_ZZ_raw_ir_refines
+    engine provider initialRng (concreteHenselLift engine provider)
+    useLargePrime f hinitialPrimeCorrect
+    (by
+      intro selection hp hselection hphysical aTarget henselOutput hhenselRun
+      have hleadingSemantic : ∀ sourceLeading,
+          f[0]? = some sourceLeading →
+          (sourceLeading.2 : ZMod selection.prime.toNat) =
+            (SparsePolyZZ.toPoly f).leadingCoeff := by
+        intro sourceLeading hsourceLeading
+        have hfront : f[0] = sourceLeading := by
+          rw [Array.getElem?_eq_getElem hnonempty] at hsourceLeading
+          exact Option.some.inj hsourceLeading
+        rw [StrictRecombine.sparsePolyZZ_leadingCoeff_eq_head f hcanonical
+          hnonempty, hfront]
+      exact concreteHenselLift_success_of_selection engine provider f selection
+        hp aTarget hselection hphysical hleadingSemantic hnonempty hdegree63
+        (hhenselInvariant selection hp aTarget) henselOutput hhenselRun)
+    (by
+      intro selection hp aTarget henselOutput hhenselRun
+      exact concreteHenselLift_factorCountFits_of_success engine provider f
+        selection.factors selection.prime aTarget hp henselOutput
+        hhenselRun)
+    hcanonical hprimitive hnonempty hdegree hdegree62 hdegree63 leading
+    hleading output hrun
 
 end StrictFactorZZ
 

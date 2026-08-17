@@ -3,7 +3,7 @@ import CLPoly.Refinement.SquarefreeZp
 
 set_option autoImplicit false
 
-namespace Refinement.StrictSquarefreeGenerated
+namespace Refinement.StrictSquarefreeEntry
 
 open CLPoly.Math
 open CLPoly.Impl.StrictPolynomialGCDRefinement
@@ -1342,4 +1342,4 @@ theorem __squarefree_Zp_raw_ir_refines_sqfZp
     hnotEmpty]
   simpa [hentry] using hrun
 
-end Refinement.StrictSquarefreeGenerated
+end Refinement.StrictSquarefreeEntry

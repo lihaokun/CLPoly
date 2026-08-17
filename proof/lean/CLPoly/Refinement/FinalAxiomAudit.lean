@@ -1,3 +1,4 @@
+-- Kernel-axiom report for the public strict C++ L1 → Lean L2 contracts.
 import CLPoly.Refinement.Generated
 import CLPoly.Refinement.FactorZZ
 import CLPoly.Refinement.Recombine

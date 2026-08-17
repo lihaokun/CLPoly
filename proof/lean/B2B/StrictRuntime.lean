@@ -168,8 +168,8 @@ unsafe def sqfOps (this : DenseUPolyZp)
     erasedValue
   { derivative := Refinement.StrictSquarefreeZp.derivativeIR this
     extractPthRoot := Refinement.StrictSquarefreeZp.extractPthRootIR
-    makeMonic := Refinement.StrictSquarefreeGenerated.makeMonicRawIR this
-    gcd := Refinement.StrictSquarefreeGenerated.gcdRawIR this hcfg
+    makeMonic := Refinement.StrictSquarefreeEntry.makeMonicRawIR this
+    gcd := Refinement.StrictSquarefreeEntry.gcdRawIR this hcfg
       (fun left right => yunRawGCDWorkspace this hcfg left right)
     exactDiv := Refinement.StrictSquarefreeZp.pairVecDivIR this
     EntryInvariant := fun _ => True

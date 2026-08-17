@@ -234,7 +234,7 @@ theorem strictSQFStage
       source ≤ 2 ^ 63) :
     ∃ factors,
       Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
-          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+          (Refinement.StrictSquarefreeEntry.strictSQFRawOps
             this hcfg physical)
           source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
             hbound⟩) = .ok factors ∧
@@ -289,7 +289,7 @@ theorem strictSQFStage_preparesDDF
       (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 62) :
     ∃ factors,
       Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
-          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+          (Refinement.StrictSquarefreeEntry.strictSQFRawOps
             this hcfg physical)
           source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
             hbound⟩) = .ok factors ∧
@@ -380,7 +380,7 @@ theorem strictSQFStage_runsDDF
       (SparsePolyZp.toPoly this._p.toNat source).natDegree < 2 ^ 62) :
     ∃ factors,
       Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
-          (Refinement.StrictSquarefreeGenerated.strictSQFRawOps
+          (Refinement.StrictSquarefreeEntry.strictSQFRawOps
             this hcfg physical)
           source (fun _ => ⟨hcanonical, hmonic, hnonempty, hpositive,
             hbound⟩) = .ok factors ∧

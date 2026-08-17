@@ -918,9 +918,9 @@ REFINEMENT_MAP = {
         # theorem name so generated contracts remain mechanically traceable.
         "verified_contract": {
             "theorem_name": "__squarefree_Zp_raw_ir_refines_sqfZp",
-            "proof_import": "CLPoly.Refinement.StrictSquarefreeGenerated",
+            "proof_import": "CLPoly.Refinement.SquarefreeZpEntry",
             "proof_theorem": (
-                "Refinement.StrictSquarefreeGenerated."
+                "Refinement.StrictSquarefreeEntry."
                 "__squarefree_Zp_raw_ir_refines_sqfZp"
             ),
             "kind": "strict_squarefree_zp",

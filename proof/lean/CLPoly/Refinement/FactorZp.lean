@@ -7,7 +7,7 @@
   an executable fallback.
 -/
 import CLPoly.Generated.StrictFactorZp
-import CLPoly.Refinement.StrictSquarefreeGenerated
+import CLPoly.Refinement.SquarefreeZpEntry
 import CLPoly.Refinement.DDF
 import CLPoly.Refinement.EDF
 import CLPoly.Pipeline.FactorZp
@@ -351,7 +351,7 @@ noncomputable def strictSQFCall
   classical
   exact if hready : SQFReady this source then
     Generated.StrictSquarefreeZp.__squarefree_Zp_raw_ir
-      (StrictSquarefreeGenerated.strictSQFRawOps this hcfg physical) source
+      (StrictSquarefreeEntry.strictSQFRawOps this hcfg physical) source
       (fun _ => ⟨hready.canonical, hready.monic, hready.nonempty,
         hready.degreePositive, hready.denseBound⟩)
   else .error .assertionFailure
@@ -366,7 +366,7 @@ theorem strictSQFCall_refines
       toPolyList output this._p.toNat =
         sqfZp (SparsePolyZp.toPoly this._p.toNat source) ∧
       ∀ item ∈ output.toList, SQFOutputReady this item := by
-  rcases StrictSquarefreeGenerated.__squarefree_Zp_raw_ir_refines_sqfZp
+  rcases StrictSquarefreeEntry.__squarefree_Zp_raw_ir_refines_sqfZp
       this hcfg physical
       source hready.canonical hready.monic hready.nonempty
       hready.degreePositive hready.denseBound with

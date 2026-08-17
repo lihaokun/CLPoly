@@ -22,6 +22,25 @@ json dispatch(const std::string& fn, const json& args) {
     }
 
     // === 函数 dispatch ===
+    if (fn == "__factor_Zp") {
+        auto f = parse_SparsePolyZp(args.at(0));
+        return serialize_FactorZpResult(clpoly::__factor_Zp(std::move(f)));
+    }
+    if (fn == "__factor_squarefree_primitive_ZZ") {
+        auto f = parse_SparsePolyZZ(args.at(0));
+        bool use_large_prime = parse_Bool(args.at(1));
+        bool previous = clpoly::__g_use_large_prime;
+        clpoly::__g_use_large_prime = use_large_prime;
+        try {
+            auto result = clpoly::__factor_squarefree_primitive_ZZ(f);
+            clpoly::__g_use_large_prime = previous;
+            return serialize_ArraySPZZ(result);
+        } catch (...) {
+            clpoly::__g_use_large_prime = previous;
+            throw;
+        }
+    }
+
     if (fn == "__needs_zassenhaus_safety_net") {
         uint64_t result_count = parse_UInt64(args.at(0));
         uint64_t modular_count = parse_UInt64(args.at(1));

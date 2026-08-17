@@ -191,6 +191,29 @@ json serialize_TripleSPZp(const upolynomial_<Zp>& g,
     })}};
 }
 
+json serialize_FactorZpResult(
+    const std::pair<Zp,
+      std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>& result) {
+    json factors = json::array();
+    for (const auto& item : result.second) {
+        factors.push_back(json::array({
+            serialize_SparsePolyZp(item.first),
+            serialize_UInt64(item.second)
+        }));
+    }
+    return {{"type", "FactorZpResult"}, {"val", json::array({
+        serialize_Zp(result.first), factors
+    })}};
+}
+
+json serialize_ArraySPZZ(const std::vector<upolynomial_<ZZ>>& factors) {
+    json encoded = json::array();
+    for (const auto& factor : factors) {
+        encoded.push_back(serialize_SparsePolyZZ(factor));
+    }
+    return {{"type", "ArraySPZZ"}, {"val", encoded}};
+}
+
 // ---- A5: Variable ----
 
 Variable parse_Variable(const json& j) {

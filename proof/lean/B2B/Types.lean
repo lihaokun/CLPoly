@@ -168,6 +168,25 @@ def encodeTripleSPZp (g s t : SparsePolyZp) : Json :=
                                  encodeSparsePolyZp s,
                                  encodeSparsePolyZp t])]
 
+/-- Observable return encoding shared by the C++ and strict Lean
+`__factor_Zp` entries. -/
+def encodeFactorZpResult
+    (result : Zp × Array (SparsePolyZp × UInt64)) : Json :=
+  let factors := result.2.map fun item =>
+    Json.arr #[encodeSparsePolyZp item.1, encodeUInt64 item.2]
+  Json.mkObj [
+    ("type", "FactorZpResult"),
+    ("val", Json.arr #[encodeZp result.1, Json.arr factors])
+  ]
+
+/-- Observable return encoding shared by the C++ and strict Lean
+`__factor_squarefree_primitive_ZZ` entries. -/
+def encodeArraySPZZ (factors : Array SparsePolyZZ) : Json :=
+  Json.mkObj [
+    ("type", "ArraySPZZ"),
+    ("val", Json.arr (factors.map encodeSparsePolyZZ))
+  ]
+
 -- ---- A5: Variable ----
 
 def parseVariable (j : Json) : Except String Variable := do

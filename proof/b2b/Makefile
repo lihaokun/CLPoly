@@ -5,7 +5,11 @@
 
 CXX      ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -DNDEBUG -Wall -Wextra
-INCLUDES  = -I third_party -I ../../
+GMP_CFLAGS ?= $(shell pkg-config --cflags gmp 2>/dev/null)
+GMP_LIBS   ?= $(shell pkg-config --libs gmpxx 2>/dev/null)
+PACKAGE_PREFIX ?= $(shell brew --prefix 2>/dev/null)
+PACKAGE_CFLAGS = $(if $(strip $(PACKAGE_PREFIX)),-I$(PACKAGE_PREFIX)/include,)
+INCLUDES  = -I third_party -I ../../ $(GMP_CFLAGS) $(PACKAGE_CFLAGS)
 
 DRIVER_SRCS = driver/cpp_driver.cc types/b2b_types.cc registry/cpp_registry.cc
 DRIVER_OBJS = $(DRIVER_SRCS:.cc=.o)
@@ -19,7 +23,7 @@ CLPOLY_SRCS = ../../clpoly/upolynomial.cc ../../clpoly/variable.cc
 TEST_SRCS = types/test_types.cc types/b2b_types.cc
 TEST_OBJS = $(TEST_SRCS:.cc=.o)
 
-LIBS       = -lgmpxx -lgmp
+LIBS       = $(if $(strip $(GMP_LIBS)),$(GMP_LIBS),-lgmpxx -lgmp)
 
 .PHONY: all clean test_types
 

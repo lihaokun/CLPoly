@@ -93,6 +93,31 @@ int main() {
         }
     }
 
+    // Complete factorization result encodings
+    {
+        upolynomial_<Zp> factor_zp;
+        factor_zp.push_back({umonomial(1), Zp((int64_t)1, (uint64_t)5)});
+        factor_zp.push_back({umonomial(0), Zp((int64_t)4, (uint64_t)5)});
+        std::pair<Zp,
+          std::vector<std::pair<upolynomial_<Zp>, uint64_t>>> result_zp = {
+            Zp((int64_t)3, (uint64_t)5), {{factor_zp, 2}}
+          };
+        auto encoded_zp = serialize_FactorZpResult(result_zp);
+        CHECK(encoded_zp.at("type") == "FactorZpResult" &&
+              encoded_zp.at("val").at(1).size() == 1 &&
+              encoded_zp.at("val").at(1).at(0).at(1).at("val") == "2",
+              "FactorZpResult observable encoding");
+
+        upolynomial_<ZZ> factor_zz;
+        factor_zz.push_back({umonomial(1), ZZ(1)});
+        factor_zz.push_back({umonomial(0), ZZ(-2)});
+        auto encoded_zz = serialize_ArraySPZZ({factor_zz});
+        CHECK(encoded_zz.at("type") == "ArraySPZZ" &&
+              encoded_zz.at("val").size() == 1 &&
+              encoded_zz.at("val").at(0).at("val").at(1).at(1) == "-2",
+              "ArraySPZZ observable encoding");
+    }
+
     // 类型不匹配检测
     {
         bool threw = false;

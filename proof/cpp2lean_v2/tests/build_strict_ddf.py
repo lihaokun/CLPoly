@@ -21,11 +21,6 @@ from pass8_codegen import codegen_corpus
 
 
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "StrictDDF.lean"
-CONTRACT_OUT = (
-    V2_ROOT.parent / "lean" / "CLPoly" / "Refinement" / "Generated" /
-    "DDF.lean"
-)
-CPP_ENTRY = "__ddf_Zp_raw_ir"
 STRICT_DDF_ROOTS = {
     "__make_zp",
     "__upoly_subtract_x",
@@ -212,77 +207,24 @@ def generate_strict_ddf() -> str:
     return source
 
 
-def generate_strict_ddf_contract() -> str:
-    """Emit the public theorem under the exact original C++ entry name."""
-    theorem_name = f"{CPP_ENTRY}_refines_ddf"
-    return f'''-- Auto-generated strict refinement contract for `{CPP_ENTRY}`.
-import CLPoly.Refinement.DDF
-
-set_option autoImplicit false
-
-namespace Refinement
-
-open CLPoly.Math
-
-/-- The cpp2lean-generated C++ DDF entry terminates and decodes to L2 `ddf`.
-The double underscores are retained verbatim from the original C++ symbol. -/
-theorem {theorem_name}
-    (this : DenseUPolyZp) [Fact (Nat.Prime this._p.toNat)]
-    (providers : StrictDDF.DDFRawProviders this) (f : SparsePolyZp)
-    (hfPrime : f[0]!.2.prime = this._p)
-    (hfCanonical : SparsePolyZp.Canonical this._p.toNat f)
-    (hfDegree : ∀ term ∈ f.toList, term.1.deg < 2 ^ 62)
-    (hfMonic : (SparsePolyZp.toPoly this._p.toNat f).Monic)
-    (hfSquarefree : Squarefree (SparsePolyZp.toPoly this._p.toNat f)) :
-    ∃ output,
-      Generated.StrictDDF.{CPP_ENTRY}
-          (StrictDDF.strictDDFRawOps this providers
-            (SparsePolyZp.toPoly this._p.toNat f)) f
-          (fun _ => StrictDDF.DDFLoopInvariant.initial this f
-            f[0]!.2.prime hfPrime
-            hfCanonical hfDegree hfMonic hfSquarefree) = .ok output ∧
-      StrictDDF.ddfResultToL2 this._p.toNat output =
-        ddf (SparsePolyZp.toPoly this._p.toNat f) := by
-  exact StrictDDF.strictDDFEntryIR_refines_ddf this providers f hfPrime
-    hfCanonical hfDegree hfMonic hfSquarefree
-
-end Refinement
-'''
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=OUT)
-    parser.add_argument("--contract-output", type=Path, default=CONTRACT_OUT)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     source = generate_strict_ddf()
-    contract = generate_strict_ddf_contract()
     if args.check:
         if not args.output.exists() or args.output.read_text() != source:
             print(f"FAIL: {args.output} is not reproducible", file=sys.stderr)
             return 1
-        if (not args.contract_output.exists() or
-                args.contract_output.read_text() != contract):
-            print(
-                f"FAIL: {args.contract_output} is not reproducible",
-                file=sys.stderr,
-            )
-            return 1
         print(
-            f"PASS: {args.output} and {args.contract_output} are "
-            "reproducible and placeholder-free"
+            f"PASS: {args.output} is reproducible and placeholder-free; "
+            "the public theorem is emitted centrally by Pass 9"
         )
         return 0
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(source)
-    args.contract_output.parent.mkdir(parents=True, exist_ok=True)
-    args.contract_output.write_text(contract)
     print(f"generated {args.output} ({source.count(chr(10)) + 1} lines)")
-    print(
-        f"generated {args.contract_output} "
-        f"({contract.count(chr(10)) + 1} lines)"
-    )
     return 0
 
 

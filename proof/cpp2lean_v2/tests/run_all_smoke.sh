@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 回归测试套件：每 Pass 完成后跑一次，确保无回归。
 # 用法: bash tests/run_all_smoke.sh
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 

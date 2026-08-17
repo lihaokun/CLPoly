@@ -1,6 +1,10 @@
 {
   "fn": "_nonexistent_fn",
   "cases": [
-    {"name": "smoke_unknown_fn", "args": []}
+    {
+      "name": "smoke_unknown_fn",
+      "args": [],
+      "expected": {"error_contains": "unknown fn"}
+    }
   ]
 }

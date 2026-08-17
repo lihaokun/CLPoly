@@ -3,7 +3,7 @@
 //       MemberExpr、FieldAccess、ZZ literal
 // 源：clpoly/polynomial_factorize_univar.hh:743-748
 
-#include <clpoly/polynomial_factorize.hh>
+#include <clpoly/upolynomial.hh>
 
 namespace clpoly {
     // 获取 ZZ 多项式的常数项

@@ -53,6 +53,14 @@ def _system_includes() -> list[str]:
                 break
             if cap and line.startswith(" "):
                 paths.append(f"-I{line.strip()}")
+        # Homebrew headers are not part of Apple Clang's default search path.
+        # The fixtures include CLPoly headers, which in turn require Boost and
+        # GMP from the active package prefix.
+        brew = subprocess.run(
+            ["brew", "--prefix"], capture_output=True, text=True,
+        )
+        if brew.returncode == 0 and brew.stdout.strip():
+            paths.append(f"-I{brew.stdout.strip()}/include")
         return paths
     except Exception:
         return []

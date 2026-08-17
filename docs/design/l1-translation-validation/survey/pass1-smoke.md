@@ -1,6 +1,6 @@
 # Pass 1 parse 全量烟测 (65 函数)
 
-- OK (0 Unknown): **63**
+- OK (0 Unknown): **64**
 - WARN (有 Unknown 节点): **2**
 - FAIL (parse 崩溃): **0**
 
@@ -19,15 +19,14 @@
 ### Unknown Type qualTypes (top 20)
 | qualType | count |
 |---|---|
-| `std::_Bit_reference` | 6 |
+| `std::__bit_reference<std::vector<bool>>` | 6 |
 
 ## Ref 参数自动检测 vs TRANSLATION_SCOPE_OUTPUT_PARAMS
 
-⚠️  有 **2** 个函数不匹配：
+⚠️  有 **1** 个函数不匹配：
 
 | 函数 | auto | configured |
 |---|---|---|
-| `__extract_monomial_content` | [1] | [] |
 | `__upoly_divmod` | [0, 1] | [] |
 
 ## 函数明细
@@ -108,3 +107,4 @@
 - `__wang_leading_coeff`
 - `__zassenhaus_recombine`
 - `factorize`
+- `squarefreefactorize`

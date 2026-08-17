@@ -1,4 +1,4 @@
-import CLPoly.Refinement.FactorZp
+import CLPoly.Refinement.FactorZZ
 
 /-!
 Executable physical runtime for strict factorization B2B.
@@ -356,5 +356,140 @@ unsafe def factorZpRuntime (f : SparsePolyZp) :
     letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
     Generated.StrictFactorZp.__factor_Zp_raw_ir
       (@factorZpRuntimeOps ctx inferInstance) (mtSeed 42) f
+
+unsafe def selectPrimeCandidateOps (p : UInt64) :
+    Generated.StrictSelectPrime.CandidateRawOps MT19937State :=
+  let ctx := denseContext p
+  letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
+  let ddf := ddfOps ctx
+  let edf := edfOps ctx
+  { lcMod := fun coefficient modulus =>
+      .ok (ZZ.fdiv_r 0 coefficient modulus.toNat)
+    polynomialMod := Generated.StrictPolynomialMod.polynomial_mod_raw_ir
+    derivative := fun source =>
+      .ok (Refinement.StrictSquarefreeZp.derivativeIR ctx source)
+    gcd := fun left right =>
+      Refinement.StrictDDF.strictGCDIR ctx left right
+        (rawGCDWorkspace ctx left right)
+    makeMonic := Refinement.StrictSquarefreeZp.upolyMakeMonicIR ctx
+    ddf := fun f =>
+      Generated.StrictDDF.__ddf_Zp_raw_ir ddf f (fun _ => trivial)
+    edf := fun result f d rng =>
+      Generated.StrictEDF.__edf_Zp_raw_ir edf
+        { splitStep := erasedValue }
+        { retryTrace := fun f d rng _ => buildRetryTrace edf f d rng }
+        result f d rng trivial }
+
+unsafe def trySelectPrimeCandidate (f : SparsePolyZZ) (degree : Int64)
+    (leading : ZZ) (p : UInt64) (rng : MT19937State) :
+    RawExec (Generated.StrictSelectPrime.CandidateResult MT19937State) :=
+  Generated.StrictSelectPrime.tryCandidateRaw (selectPrimeCandidateOps p)
+    f degree leading p rng
+
+/-- Logarithmic modular exponentiation used by the executable deterministic
+Miller--Rabin implementation below.  `exponent` is the source loop variant,
+not an artificial execution bound. -/
+def powModNatLoop (modulus accumulator base exponent : Nat) : Nat :=
+  if exponent = 0 then accumulator % modulus
+  else
+    let accumulator' :=
+      if exponent % 2 = 1 then (accumulator * base) % modulus
+      else accumulator
+    powModNatLoop modulus accumulator' ((base * base) % modulus) (exponent / 2)
+termination_by exponent
+decreasing_by omega
+
+def powModNat (base exponent modulus : Nat) : Nat :=
+  powModNatLoop modulus 1 (base % modulus) exponent
+
+def factorTwos (value : Nat) : Nat × Nat :=
+  if value ≠ 0 && value % 2 = 0 then
+    let result := factorTwos (value / 2)
+    (result.1, result.2 + 1)
+  else (value, 0)
+termination_by value
+decreasing_by
+  simp_all only [Bool.and_eq_true, bne_iff_ne, decide_eq_true_eq]
+  omega
+
+def millerSquareLoop (n x rounds : Nat) : Bool :=
+  if rounds = 0 then false
+  else
+    let x' := (x * x) % n
+    if x' = n - 1 then true
+    else millerSquareLoop n x' (rounds - 1)
+termination_by rounds
+decreasing_by omega
+
+def millerWitness (n d s base : Nat) : Bool :=
+  let x := powModNat (base % n) d n
+  x = 1 || x = n - 1 || millerSquareLoop n x (s - 1)
+
+/-- Deterministic Miller--Rabin for the complete UInt64 domain, using the
+standard seven-base witness set.  This computes every candidate decision;
+no selected-prime table or factorization answer is embedded in the runtime. -/
+def isPrime64 (n : Nat) : Bool :=
+  if n < 2 then false
+  else if n = 2 || n = 3 then true
+  else if n % 2 = 0 then false
+  else
+    let decomposition := factorTwos (n - 1)
+    #[2, 325, 9375, 28178, 450775, 9780504, 1795265022].all
+      (fun base => n ∣ base || millerWitness n decomposition.1 decomposition.2 base)
+
+def nextPrimeFastSearch (candidate : Nat) : RawExec UInt64 :=
+  if hbound : candidate < UInt64.size then
+    if isPrime64 candidate then .ok candidate.toUInt64
+    else nextPrimeFastSearch (candidate + 1)
+  else .error .arithmeticOverflow
+termination_by UInt64.size - candidate
+decreasing_by omega
+
+def prevPrimeFastSearch (candidate : Nat) : RawExec UInt64 :=
+  if isPrime64 candidate then .ok candidate.toUInt64
+  else if candidate = 0 then .error .arithmeticDomain
+  else prevPrimeFastSearch (candidate - 1)
+termination_by candidate
+decreasing_by omega
+
+def nextPrimeFast (useLargePrime : Bool) (p : UInt64) : RawExec UInt64 :=
+  if useLargePrime then
+    if p.toNat ≤ 2 then .error .arithmeticDomain
+    else prevPrimeFastSearch (p.toNat - 1)
+  else nextPrimeFastSearch (p.toNat + 1)
+
+unsafe def selectPrimeRuntime (f : SparsePolyZZ) (useLargePrime : Bool) :
+    RawExec PrimeSelectionResult :=
+  let ops : Generated.StrictSelectPrime.SelectPrimeRawOps MT19937State :=
+    { nextPrime := nextPrimeFast
+      tryCandidate := trySelectPrimeCandidate }
+  Generated.StrictSelectPrime.__select_prime_raw_ir ops
+    { rank := Generated.StrictPrimeEnumeration.rank
+      next_decreases := erasedValue }
+    (mtSeed 42) useLargePrime f
+
+unsafe def henselLiftRuntime (f : SparsePolyZZ)
+    (factors : Array SparsePolyZp) (p : UInt64) (target : Int32) :
+    RawExec (Array SparsePolyZZ × ZZ) :=
+  let ctx := denseContext p
+  letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
+  Generated.StrictHensel.__hensel_lift_upoly_raw_ir
+    (Refinement.StrictHensel.strictHenselRawOps
+      Refinement.StrictHensel.concreteDivmodTermination)
+    (Refinement.StrictHensel.strictHenselTreeBuildRawOps ctx
+      (rawMulProvider ctx))
+    f factors p target erasedValue
+
+unsafe def factorZZRuntimeOps : Generated.StrictFactorZZ.FactorZZRawOps :=
+  { selectPrime := selectPrimeRuntime
+    henselLift := henselLiftRuntime
+    vanHoeijRecombine := Refinement.StrictFactorZZ.concreteVanHoeijRecombine
+    zassenhausRecombine :=
+      Refinement.StrictFactorZZ.concreteZassenhausRecombine }
+
+unsafe def factorZZRuntime (useLargePrime : Bool) (f : SparsePolyZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
+    factorZZRuntimeOps useLargePrime f
 
 end B2B.StrictRuntime

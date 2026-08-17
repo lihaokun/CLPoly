@@ -214,10 +214,17 @@ json serialize_FactorZpResult(
 }
 
 json serialize_ArraySPZZ(const std::vector<upolynomial_<ZZ>>& factors) {
-    json encoded = json::array();
+    std::vector<json> canonical_factors;
     for (const auto& factor : factors) {
-        encoded.push_back(serialize_SparsePolyZZ(factor));
+        canonical_factors.push_back(serialize_SparsePolyZZ(factor));
     }
+    std::sort(canonical_factors.begin(), canonical_factors.end(),
+        [](const json& left, const json& right) {
+            return left.dump() < right.dump();
+        });
+    json encoded = json::array();
+    for (auto& factor : canonical_factors)
+        encoded.push_back(std::move(factor));
     return {{"type", "ArraySPZZ"}, {"val", encoded}};
 }
 

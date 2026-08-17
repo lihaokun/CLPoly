@@ -39,10 +39,31 @@ unsafe def testCases : List (UInt64 × List UInt64) → IO Bool
       IO.eprintln s!"FAIL: mt19937/uniform [0,{upper}): {actual}"
       pure false
 
+def primalityCases : List (Nat × Bool) := [
+  (0, false), (1, false), (2, true), (3, true), (4, false),
+  (341550071728321, false),
+  (3825123056546413051, false),
+  (18446744073709551557, true)
+]
+
+def testPrimalityCases : List (Nat × Bool) → IO Bool
+  | [] => pure true
+  | (candidate, wanted) :: rest => do
+    let actual := StrictRuntime.isPrime64 candidate
+    if actual = wanted then
+      IO.println s!"PASS: deterministic UInt64 primality {candidate}"
+      testPrimalityCases rest
+    else
+      IO.eprintln s!"FAIL: deterministic UInt64 primality {candidate}: {actual}"
+      pure false
+
 end B2B.TestStrictRuntime
 
 unsafe def main : IO UInt32 := do
-  if ← B2B.TestStrictRuntime.testCases B2B.TestStrictRuntime.expected then
+  let rngOk ← B2B.TestStrictRuntime.testCases B2B.TestStrictRuntime.expected
+  let primeOk ← B2B.TestStrictRuntime.testPrimalityCases
+    B2B.TestStrictRuntime.primalityCases
+  if rngOk && primeOk then
     return 0
   else
     return 1

@@ -22,6 +22,12 @@ unsafe def dispatch (fn : String) (args : Array Json) : Except String Json := do
     match StrictRuntime.factorZpRuntime f with
     | .ok result => return encodeFactorZpResult result
     | .error fault => throw s!"strict FactorZp execution failed: {repr fault}"
+  | "__factor_squarefree_primitive_ZZ" =>
+    let f ← parseSparsePolyZZ args[0]!
+    let useLargePrime ← parseBool args[1]!
+    match StrictRuntime.factorZZRuntime useLargePrime f with
+    | .ok result => return encodeArraySPZZ result
+    | .error fault => throw s!"strict FactorZZ execution failed: {repr fault}"
   | "__needs_zassenhaus_safety_net" =>
     let resultCount ← parseUInt64 args[0]!
     let modularCount ← parseUInt64 args[1]!

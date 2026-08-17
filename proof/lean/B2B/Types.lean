@@ -190,9 +190,11 @@ def encodeFactorZpResult
 /-- Observable return encoding shared by the C++ and strict Lean
 `__factor_squarefree_primitive_ZZ` entries. -/
 def encodeArraySPZZ (factors : Array SparsePolyZZ) : Json :=
+  let factors := factors.toList.map encodeSparsePolyZZ
+    |>.foldr insertCanonicalJson [] |>.toArray
   Json.mkObj [
     ("type", "ArraySPZZ"),
-    ("val", Json.arr (factors.map encodeSparsePolyZZ))
+    ("val", Json.arr factors)
   ]
 
 -- ---- A5: Variable ----

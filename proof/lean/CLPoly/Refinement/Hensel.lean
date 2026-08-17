@@ -7549,6 +7549,117 @@ theorem scaleZpCoeffs_toPoly
   exact scaleZpCoeffsList_toPoly p coefficient hcoefficient
     factor.toList hfactor
 
+private theorem zpMul_reduced (p : Nat) (left right : Zp)
+    (hleft : CLPoly.Math.Zp.Reduced p left)
+    (_hright : CLPoly.Math.Zp.Reduced p right)
+    (hp : 0 < p) (hpWord : p < UInt64.size) :
+    CLPoly.Math.Zp.Reduced p (left * right) := by
+  refine ⟨hleft.1, ?_⟩
+  show (((left.val.toNat * right.val.toNat) %
+    left.prime.toNat).toUInt64).toNat < p
+  have hmodLtP :
+      (left.val.toNat * right.val.toNat) % left.prime.toNat < p := by
+    rw [hleft.1]
+    exact Nat.mod_lt _ hp
+  have hmodLtWord :
+      (left.val.toNat * right.val.toNat) % left.prime.toNat < UInt64.size :=
+    hmodLtP.trans hpWord
+  change (OfNat.ofNat
+      ((left.val.toNat * right.val.toNat) % left.prime.toNat) :
+        UInt64).toNat < p
+  rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt hmodLtWord]
+  exact hmodLtP
+
+/-- The literal coefficient map used by the first-factor adjustment preserves
+degree order and reduced residues, and its following zero filter therefore
+produces a physically canonical sparse factor. -/
+theorem scaleZpCoeffs_normalization_canonical
+    (p : Nat) [Fact (Nat.Prime p)]
+    (factor : SparsePolyZp) (coefficient : Zp)
+    (hfactor : CLPoly.Math.SparsePolyZp.Canonical p factor)
+    (hcoefficient : CLPoly.Math.Zp.Reduced p coefficient)
+    (hp : 0 < p) (hpWord : p < UInt64.size) :
+    CLPoly.Math.SparsePolyZp.Canonical p
+      (SparsePolyZp.normalization
+        (Generated.StrictHensel.scaleZpCoeffs factor coefficient)) := by
+  apply normalization_canonical_of_chain_allReduced
+  · unfold Generated.StrictHensel.scaleZpCoeffs
+    rw [Array.toList_map, List.isChain_map]
+    simpa using hfactor.2.1
+  · intro term hterm
+    unfold Generated.StrictHensel.scaleZpCoeffs at hterm
+    rw [Array.toList_map, List.mem_map] at hterm
+    rcases hterm with ⟨source, hsource, rfl⟩
+    exact zpMul_reduced p source.2 coefficient
+      (hfactor.1 source hsource) hcoefficient hp hpWord
+
+/-- The complete literal first-factor adjustment preserves physical
+canonicality at every array slot.  Slot zero is proved from the executed
+coefficient map and normalization; positive slots are carried by the source
+array frame theorem. -/
+theorem HenselAdjustFirstFactorCorrect.canonical
+    {f : SparsePolyZZ} {factors adjusted : Array SparsePolyZp}
+    {p : UInt64} [Fact (Nat.Prime p.toNat)]
+    (hcorrect : HenselAdjustFirstFactorCorrect f factors p adjusted)
+    (hfactors : ∀ factor ∈ factors.toList,
+      CLPoly.Math.SparsePolyZp.Canonical p.toNat factor) :
+    ∀ factor ∈ adjusted.toList,
+      CLPoly.Math.SparsePolyZp.Canonical p.toNat factor := by
+  intro factor hfactor
+  rcases List.mem_iff_get.mp hfactor with ⟨index, hget⟩
+  have hindex : index.1 < adjusted.size := by simpa using index.2
+  have hfactorEq : adjusted[index.1] = factor := by simpa using hget
+  rw [← hfactorEq]
+  by_cases hzeroIndex : index.1 = 0
+  · cases hcorrect with
+    | adjusted leading first value hsource hfirst hvalue =>
+        have hzero : 0 < factors.size := by
+          by_contra hnot
+          rw [Array.getElem?_eq_none (by omega)] at hfirst
+          contradiction
+        have hfirstGet : factors[0] = first :=
+          Option.some.inj
+            ((Array.getElem?_eq_getElem hzero).symm.trans hfirst)
+        have hfirstCanonical :
+            CLPoly.Math.SparsePolyZp.Canonical p.toNat first := by
+          rw [← hfirstGet]
+          exact hfactors factors[0] (Array.getElem_mem_toList hzero)
+        have hcoefficient : CLPoly.Math.Zp.Reduced p.toNat
+            (Zp.ofInt leading.2 p) := by
+          constructor
+          · simp [Zp.ofInt]
+          · unfold Zp.ofInt
+            have hpInt : (0 : Int) < p.toNat := by
+              exact_mod_cast (Fact.out : Nat.Prime p.toNat).pos
+            have hnonneg : 0 ≤ leading.2.emod p.toNat :=
+              Int.emod_nonneg _ (by omega)
+            have hltInt : leading.2.emod p.toNat < p.toNat :=
+              Int.emod_lt_of_pos _ hpInt
+            have hltNatP : (leading.2.emod p.toNat).toNat < p.toNat :=
+              (Int.toNat_lt hnonneg).2 hltInt
+            have hltSize : (leading.2.emod p.toNat).toNat < UInt64.size :=
+              hltNatP.trans (UInt64.toNat_lt_size p)
+            have hword :
+                ((leading.2.emod p.toNat).toNat.toUInt64).toNat =
+                  (leading.2.emod p.toNat).toNat :=
+              UInt64.toNat_ofNat_of_lt hltSize
+            have hremNonneg : ¬leading.2 % (p.toNat : Int) < 0 :=
+              not_lt_of_ge hnonneg
+            simp only [hremNonneg, ↓reduceIte]
+            change ((leading.2.emod p.toNat).toNat.toUInt64).toNat < p.toNat
+            rw [hword]
+            exact hltNatP
+        have hcanonical := scaleZpCoeffs_normalization_canonical p.toNat
+          first (Zp.ofInt leading.2 p) hfirstCanonical hcoefficient
+          (Fact.out : Nat.Prime p.toNat).pos (UInt64.toNat_lt_size p)
+        simpa [Array.set!, hzero, hvalue, hzeroIndex] using hcanonical
+  · have hpositive : 0 < index.1 := Nat.pos_of_ne_zero hzeroIndex
+    rcases hcorrect.getElem_eq_of_pos index.1 hindex hpositive with
+      ⟨hsourceIndex, heq⟩
+    rw [heq]
+    exact hfactors factors[index.1]
+      (Array.getElem_mem_toList hsourceIndex)
+
 theorem zpOfInt_reduced (coefficient : Int) (p : UInt64)
     (hp : 0 < p.toNat) :
     CLPoly.Math.Zp.Reduced p.toNat (Zp.ofInt coefficient p) := by
@@ -14452,6 +14563,38 @@ theorem __hensel_lift_upoly_raw_ir_factorCount_of_success
   · simp only [hcount, ↓reduceIte, pure, Except.pure, bind,
       Except.bind] at hrun
     contradiction
+
+/-- Successful execution also proves the source exponent contract.  A
+negative `Int32` exponent reaches the literal assertion-failure branch of the
+generated target helper and therefore cannot produce an output. -/
+theorem __hensel_lift_upoly_raw_ir_exponent_of_success
+    (stepOps : Generated.StrictHensel.HenselStepRawOps)
+    (treeOps : Generated.StrictHensel.HenselTreeBuildRawOps)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp) (p : UInt64)
+    (aTarget : Int32) (hp : 2 ≤ p.toNat)
+    (output : Array SparsePolyZZ × ZZ)
+    (hrun : Generated.StrictHensel.__hensel_lift_upoly_raw_ir stepOps treeOps
+      f factors p aTarget hp = .ok output) :
+    aTarget = 0 ∨ aTarget > 0 := by
+  by_cases hzero : aTarget = 0
+  · exact Or.inl hzero
+  · right
+    by_contra hnotPositive
+    have htargetError :
+        Generated.StrictHensel.__hensel_lift_target_raw_ir f p aTarget =
+          .error .assertionFailure := by
+      simp [Generated.StrictHensel.__hensel_lift_target_raw_ir,
+        Generated.StrictHensel.__hensel_explicit_target_raw_ir,
+        hzero, hnotPositive]
+    rw [Generated.StrictHensel.__hensel_lift_upoly_raw_ir] at hrun
+    simp only [pure, Except.pure, bind, Except.bind] at hrun
+    by_cases hcount : 2 ≤ factors.size
+    · by_cases hfits :
+          Generated.StrictHensel.__hensel_factor_count_fits_ir
+            factors.size = true
+      · simp [hcount, hfits, htargetError] at hrun
+      · simp [hcount, hfits] at hrun
+    · simp [hcount] at hrun
 
 /-- Genuine raw-to-safe and L1-to-L2 composition theorem for the full C++
 Hensel entry.  Every intermediate is obtained from the strict generated raw

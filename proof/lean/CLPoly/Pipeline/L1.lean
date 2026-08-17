@@ -703,7 +703,7 @@ theorem strictFactorSquarefreePrimitiveZZStage
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @Refinement.StrictFactorZZ.HenselLiftEntryReadiness candidate.dense
+      @Refinement.StrictFactorZZ.HenselLiftRuntimeReadiness candidate.dense
         Refinement.StrictHensel.concreteDivmodTermination
         candidate.providers.mul f selection.factors aTarget)
     (hcanonical : Refinement.StrictPolynomialMod.SparsePolyZZCanonical f)

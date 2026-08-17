@@ -341,7 +341,7 @@ theorem {theorem_name}
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @StrictFactorZZ.HenselLiftEntryReadiness candidate.dense
+      @StrictFactorZZ.HenselLiftRuntimeReadiness candidate.dense
         StrictHensel.concreteDivmodTermination candidate.providers.mul
         f selection.factors aTarget)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)

@@ -101,7 +101,7 @@ theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @StrictFactorZZ.HenselLiftEntryReadiness candidate.dense
+      @StrictFactorZZ.HenselLiftRuntimeReadiness candidate.dense
         StrictHensel.concreteDivmodTermination candidate.providers.mul
         f selection.factors aTarget)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)

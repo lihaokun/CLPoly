@@ -1000,6 +1000,33 @@ theorem selectionFactors_adjusted_irreducible
   intro index hindex
   exact hrel.irreducible (selectionFactors_irreducible hselection) index hindex
 
+/-- Every adjusted factor is physically nonempty because the actual
+selection factors remain irreducible after the source unit adjustment. -/
+theorem selectionFactors_adjusted_nonempty
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {adjusted : Array SparsePolyZp}
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hadjust : StrictHensel.HenselAdjustFirstFactorCorrect f
+      selection.factors selection.prime adjusted) :
+    ∀ factor ∈ adjusted.toList, 0 < factor.size := by
+  letI : Fact (Nat.Prime selection.prime.toNat) :=
+    ⟨hselection.goodPrime.prime⟩
+  intro factor hfactor
+  rcases List.mem_iff_get.mp hfactor with ⟨index, hget⟩
+  have hindex : index.1 < adjusted.size := by simpa using index.2
+  have hirreducible := selectionFactors_adjusted_irreducible hfactors
+    hleadingSemantic hselection hadjust index.1 hindex
+  have hfactorEq : adjusted[index.1] = factor := by simpa using hget
+  rw [← hfactorEq]
+  exact StrictSquarefreeZp.sparsePolyZp_size_pos_of_toPoly_ne_zero
+    selection.prime.toNat adjusted[index.1] hirreducible.ne_zero
+
 /-- The actual first-factor adjustment turns the monic finite-field factors
 returned by the selected `__factor_Zp` execution into an *exact* factorization
 of the integer source reduced modulo the selected prime.  This recovers the
@@ -1051,6 +1078,61 @@ theorem selectionAdjustedFactors_product_eq_source
       selected.prod = sourceMod
   rw [hleadingSemantic leading hleading, ← hsourceLeading]
   exact hselectedExact.symm
+
+/-- A squarefree product in a principal ideal domain has pairwise coprime
+list entries.  This direction is kept separate because the library's
+`squarefree_mul_iff` exposes relative primality, while the Hensel tree builder
+uses the Bézout-style `IsCoprime` interface. -/
+private theorem list_pairwise_isCoprime_of_squarefree_prod
+    {R : Type} [CommRing R] [IsDomain R] [IsPrincipalIdealRing R]
+    (items : List R) (hsquarefree : Squarefree items.prod) :
+    items.Pairwise IsCoprime := by
+  induction items with
+  | nil => exact .nil
+  | cons head tail ih =>
+      have hsplit := squarefree_mul_iff.mp hsquarefree
+      refine List.pairwise_cons.mpr ⟨?_, ih hsplit.2.2⟩
+      intro item hitem
+      apply IsRelPrime.isCoprime
+      intro common hcommonHead hcommonItem
+      exact hsplit.1 hcommonHead
+        (hcommonItem.trans (List.dvd_prod hitem))
+
+/-- Pairwise coprimality required by the literal Hensel tree is a consequence
+of the actual selected squarefree prime and the exact first-factor adjustment;
+it is not an independent readiness assumption. -/
+theorem selectionAdjustedFactors_pairwise_isCoprime
+    {f : SparsePolyZZ} {selection : PrimeSelectionResult}
+    {adjusted : Array SparsePolyZp}
+    [Fact (Nat.Prime selection.prime.toNat)]
+    (hfactors : ∀ factor ∈ selection.factors.toList,
+      SparsePolyZp.Canonical selection.prime.toNat factor)
+    (hleadingSemantic : ∀ leading, f[0]? = some leading →
+      (leading.2 : ZMod selection.prime.toNat) =
+        (SparsePolyZZ.toPoly f).leadingCoeff)
+    (hselection : StrictSelectPrime.SelectionCorrect
+      (SparsePolyZZ.toPoly f) selection)
+    (hadjust : StrictHensel.HenselAdjustFirstFactorCorrect f
+      selection.factors selection.prime adjusted) :
+    ∀ i j (hi : i < adjusted.size) (hj : j < adjusted.size), i < j →
+      IsCoprime
+        (SparsePolyZp.toPoly selection.prime.toNat adjusted[i])
+        (SparsePolyZp.toPoly selection.prime.toNat adjusted[j]) := by
+  let decoded := adjusted.toList.map
+    (SparsePolyZp.toPoly selection.prime.toNat)
+  have hproduct := selectionAdjustedFactors_product_eq_source hfactors
+    hleadingSemantic hselection hadjust
+  have hsquarefree : Squarefree decoded.prod := by
+    rw [hproduct]
+    exact hselection.goodPrime.sqfree
+  have hpairwise := list_pairwise_isCoprime_of_squarefree_prod decoded
+    hsquarefree
+  intro i j hi hj hij
+  have hilength : i < decoded.length := by simp [decoded, hi]
+  have hjlength : j < decoded.length := by simp [decoded, hj]
+  have hrel := hpairwise.rel_get_of_lt
+    (a := ⟨i, hilength⟩) (b := ⟨j, hjlength⟩) hij
+  simpa [decoded] using hrel
 
 /-- The exact selected-prime factorization now discharges the formerly
 explicit source-product premise of the real Hensel loop.  Consequently the

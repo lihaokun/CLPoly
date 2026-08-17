@@ -5,7 +5,7 @@
 
 import Lean.Data.Json
 import B2B.Types
-import CLPoly.Generated.Corpus
+import B2B.StrictRuntime
 import CLPoly.Generated.StrictFactorZZ
 import CLPoly.Generated.StrictHensel
 import CLPoly.Model
@@ -15,8 +15,13 @@ open Lean
 namespace B2B
 
 -- args 是 Json.arr，dispatch 已校验
-def dispatch (fn : String) (args : Array Json) : Except String Json := do
+unsafe def dispatch (fn : String) (args : Array Json) : Except String Json := do
   match fn with
+  | "__factor_Zp" =>
+    let f ← parseSparsePolyZp args[0]!
+    match StrictRuntime.factorZpNoRetry f with
+    | .ok result => return encodeFactorZpResult result
+    | .error fault => throw s!"strict FactorZp execution failed: {repr fault}"
   | "__needs_zassenhaus_safety_net" =>
     let resultCount ← parseUInt64 args[0]!
     let modularCount ← parseUInt64 args[1]!
@@ -32,7 +37,7 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
   | "__make_zp" =>
     let val ← parseInt64 args[0]!
     let p   ← parseUInt64 args[1]!
-    return encodeZp (Generated.__make_zp_ir val p)
+    return encodeZp (Zp.ofInt val.toInt p)
   -- Zp 算术 wrapper（C++ 端是 operator 重载，B2B 起 ____xx_zp 名）
   | "__add_zp" =>
     let a ← parseZp args[0]!
@@ -129,8 +134,8 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
   | "__gcd_eea_zp_poly" =>
     let f ← parseSparsePolyZp args[0]!
     let g ← parseSparsePolyZp args[1]!
-    let (gcd, s, t) := polynomial_GCD_eea f g #[] #[]
-    return encodeTripleSPZp gcd s t
+    let output := polynomial_GCD_eea f g #[] #[]
+    return encodeTripleSPZp output.1 output.2.1 output.2.2
   | "__derivative_zp_poly" =>
     let p ← parseSparsePolyZp args[0]!
     return encodeSparsePolyZp (SparsePolyZp.derivative p)
@@ -164,8 +169,8 @@ def dispatch (fn : String) (args : Array Json) : Except String Json := do
     let b ← parseZZ args[1]!
     -- Nat.extGcd 接受非负 Nat；ZZ 输入需取 natAbs。但 C++ 端可处理负数（gmp_gcdext 支持）。
     -- 为简化：B2B 测例约定 a,b ≥ 0
-    let (g, s, t) := Nat.extGcd a.toNat b.toNat
-    return encodeZZTriple (g : Int) s t
+    let output := Nat.extGcd a.toNat b.toNat
+    return encodeZZTriple (output.1 : Int) output.2.1 output.2.2
   | _ => throw s!"unknown fn: {fn}"
 
 end B2B

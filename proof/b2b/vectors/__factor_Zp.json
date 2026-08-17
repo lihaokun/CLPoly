@@ -1,0 +1,21 @@
+{
+  "fn": "__factor_Zp",
+  "cases": [
+    {
+      "name": "irreducible_quadratic_F5_strict_no_retry",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["2", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [[
+            {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["2", "5"]]]},
+            {"type": "UInt64", "val": "1"}
+          ]]
+        ]
+      }
+    }
+  ]
+}

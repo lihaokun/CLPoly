@@ -170,10 +170,18 @@ def encodeTripleSPZp (g s t : SparsePolyZp) : Json :=
 
 /-- Observable return encoding shared by the C++ and strict Lean
 `__factor_Zp` entries. -/
+def insertCanonicalJson (item : Json) (items : List Json) : List Json :=
+  match items with
+  | [] => [item]
+  | head :: tail =>
+    if item.compress < head.compress then item :: head :: tail
+    else head :: insertCanonicalJson item tail
+
 def encodeFactorZpResult
     (result : Zp × Array (SparsePolyZp × UInt64)) : Json :=
-  let factors := result.2.map fun item =>
-    Json.arr #[encodeSparsePolyZp item.1, encodeUInt64 item.2]
+  let factors := result.2.toList.map (fun item =>
+      Json.arr #[encodeSparsePolyZp item.1, encodeUInt64 item.2])
+    |>.foldr insertCanonicalJson [] |>.toArray
   Json.mkObj [
     ("type", "FactorZpResult"),
     ("val", Json.arr #[encodeZp result.1, Json.arr factors])

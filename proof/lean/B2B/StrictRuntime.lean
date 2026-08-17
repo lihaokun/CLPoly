@@ -223,6 +223,32 @@ unsafe def edfOps (this : DenseUPolyZp)
     makeMonic := Refinement.StrictDDF.strictMakeMonicIR this
     EntryInvariant := fun _ _ => True }
 
+/-- Run the literal EDF retry body until it produces a proper factor, and
+record that concrete run as the finite trace consumed by the generated
+well-founded EDF.  There is no retry counter and no candidate oracle. -/
+unsafe def buildRetryTrace (ops : Generated.StrictEDF.EDFRawOps Nat)
+    (f : SparsePolyZp) (d : UInt64) (rng : Nat) :
+    Generated.StrictEDF.RetryTrace ops f d rng :=
+  match hrandom : ops.random (get_deg f) f[0]!.2.prime rng with
+  | .error _ => buildRetryTrace ops f d rng
+  | .ok (r, rngNext) =>
+    if hempty : r.isEmpty then
+      .empty rng r rngNext hrandom hempty
+        (buildRetryTrace ops f d rngNext)
+    else
+      let hbudget : 0 < d.toNat ∧ d.toNat < UInt64.size := erasedValue
+      have hnonempty : r.isEmpty = false := by
+        cases hvalue : r.isEmpty <;> simp_all
+      match hcandidate : Generated.StrictEDF.candidateRun ops f d r hbudget with
+      | .error _ => buildRetryTrace ops f d rng
+      | .ok candidate =>
+        if hproper : get_deg candidate > 0 ∧ get_deg candidate < get_deg f then
+          .success rng r rngNext candidate hbudget hrandom hnonempty hcandidate
+            erasedValue hproper
+        else
+          .failed rng r rngNext candidate hbudget hrandom hnonempty hcandidate
+            hproper (buildRetryTrace ops f d rngNext)
+
 def insertByDegree (item : SparsePolyZp × UInt64)
     (items : List (SparsePolyZp × UInt64)) :
     List (SparsePolyZp × UInt64) :=
@@ -236,7 +262,7 @@ def sortByDegree (items : Array (SparsePolyZp × UInt64)) :
     RawExec (Array (SparsePolyZp × UInt64)) :=
   .ok (items.toList.foldr insertByDegree [] |>.toArray)
 
-unsafe def factorZpNoRetryOps (this : DenseUPolyZp)
+unsafe def factorZpRuntimeOps (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)] :
     Generated.StrictFactorZp.FactorZpRawOps Nat :=
   let sqf := sqfOps this
@@ -249,13 +275,10 @@ unsafe def factorZpNoRetryOps (this : DenseUPolyZp)
     ddf := fun f =>
       Generated.StrictDDF.__ddf_Zp_raw_ir ddf f (fun _ => trivial)
     edf := fun result f d rng =>
-      if (get_deg f).toUInt64 == d then
-        Generated.StrictEDF.__edf_Zp_raw_ir edf
-          { splitStep := erasedValue }
-          { retryTrace := erasedValue }
-          result f d rng trivial
-      else
-        .error .assertionFailure
+      Generated.StrictEDF.__edf_Zp_raw_ir edf
+        { splitStep := erasedValue }
+        { retryTrace := fun f d rng _ => buildRetryTrace edf f d rng }
+        result f d rng trivial
     sortByDegree := sortByDegree }
 
 unsafe def denseContext (p : UInt64) : DenseUPolyZp :=
@@ -266,10 +289,9 @@ unsafe def denseContext (p : UInt64) : DenseUPolyZp :=
     _ninv := Generated.StrictGCD.dense_upoly_zp___preinvert_limb_ir
       (p <<< norm) }
 
-/-- Execute the generated strict C++ entry on inputs for which every EDF
-component takes its degree-equals-`d` source branch.  The name deliberately
-records that this is not yet the general random-retry executor. -/
-unsafe def factorZpNoRetry (f : SparsePolyZp) :
+/-- Execute the generated strict C++ entry with a concrete raw workspace and
+an actual finite EDF retry trace assembled from the executed retry body. -/
+unsafe def factorZpRuntime (f : SparsePolyZp) :
     RawExec (Zp × Array (SparsePolyZp × UInt64)) :=
   if hf : f.isEmpty then
     .error .assertionFailure
@@ -277,6 +299,6 @@ unsafe def factorZpNoRetry (f : SparsePolyZp) :
     let ctx := denseContext f[0]!.2.prime
     letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
     Generated.StrictFactorZp.__factor_Zp_raw_ir
-      (@factorZpNoRetryOps ctx inferInstance) 42 f
+      (@factorZpRuntimeOps ctx inferInstance) 42 f
 
 end B2B.StrictRuntime

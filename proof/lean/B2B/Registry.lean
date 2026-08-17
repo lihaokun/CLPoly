@@ -19,7 +19,7 @@ unsafe def dispatch (fn : String) (args : Array Json) : Except String Json := do
   match fn with
   | "__factor_Zp" =>
     let f ← parseSparsePolyZp args[0]!
-    match StrictRuntime.factorZpNoRetry f with
+    match StrictRuntime.factorZpRuntime f with
     | .ok result => return encodeFactorZpResult result
     | .error fault => throw s!"strict FactorZp execution failed: {repr fault}"
   | "__needs_zassenhaus_safety_net" =>

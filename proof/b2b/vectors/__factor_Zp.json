@@ -16,6 +16,28 @@
           ]]
         ]
       }
+    },
+    {
+      "name": "edf_splits_x_squared_minus_one_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["4", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["1", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ],
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["4", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ]
+          ]
+        ]
+      }
     }
   ]
 }

@@ -23,11 +23,10 @@ for compiler-erased proof fields.  A new reverse-dependency audit rejects any
 import or reference from `Generated`, `Refinement`, or `Pipeline` back into
 this B2B-only module.
 
-The executor currently rejects an EDF component that requires randomized
-splitting.  This is intentional and observable as `assertionFailure`; it is
-not a fallback.  General FactorZp B2B still requires the exact C++ MT19937
-draw stream and a concrete finite `RetryTrace`.  Therefore this commit is an
-execution checkpoint, not completion of full FactorZp B2B.
+At this checkpoint the executor rejected an EDF component that required
+randomized splitting.  This was intentional and observable as
+`assertionFailure`; it was not a fallback.  The following runtime-trace commit
+removes that limitation.
 
 ## Verification
 
@@ -44,7 +43,6 @@ execution checkpoint, not completion of full FactorZp B2B.
 
 ## Remaining work
 
-Implement the exact C++ `std::mt19937(42)`/uniform-distribution execution and
-construct the corresponding finite retry traces from actual candidate runs;
-then add split/retry FactorZp vectors before using the same physical runtime
-for the full FactorZZ entry.
+Implement runtime retry traces and then the exact C++
+`std::mt19937(42)`/uniform-distribution stream before using the same physical
+runtime for the full FactorZZ entry.

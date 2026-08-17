@@ -194,13 +194,20 @@ json serialize_TripleSPZp(const upolynomial_<Zp>& g,
 json serialize_FactorZpResult(
     const std::pair<Zp,
       std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>& result) {
-    json factors = json::array();
+    std::vector<json> canonical_factors;
     for (const auto& item : result.second) {
-        factors.push_back(json::array({
+        canonical_factors.push_back(json::array({
             serialize_SparsePolyZp(item.first),
             serialize_UInt64(item.second)
         }));
     }
+    std::sort(canonical_factors.begin(), canonical_factors.end(),
+        [](const json& left, const json& right) {
+            return left.dump() < right.dump();
+        });
+    json factors = json::array();
+    for (auto& factor : canonical_factors)
+        factors.push_back(std::move(factor));
     return {{"type", "FactorZpResult"}, {"val", json::array({
         serialize_Zp(result.first), factors
     })}};

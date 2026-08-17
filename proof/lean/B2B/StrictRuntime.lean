@@ -198,17 +198,72 @@ unsafe def ddfOps (this : DenseUPolyZp)
     splitStep := erasedValue
     noSplitStep := erasedValue }
 
-/-- Deterministic placeholder state for executions whose EDF components take
-the source early-return branch and therefore never request a random word. -/
-unsafe def noRetryEngine : Generated.StrictEDF.RandomEngine Nat where
-  nextAdvance := fun state upper =>
-    if upper = 0 then (0, state + 1) else (state.toUInt64 % upper, state + 1)
+structure MT19937State where
+  words : Array UInt32
+  index : Nat
+deriving Repr
+
+def mtSeed (seed : UInt32) : MT19937State :=
+  let words := (Array.range 623).foldl (fun (words : Array UInt32) offset =>
+    let index := offset + 1
+    let previous := words[offset]!
+    words.push ((1812433253 : UInt32) *
+      (previous ^^^ (previous >>> (30 : UInt32))) + index.toUInt32))
+    #[seed]
+  { words, index := 624 }
+
+def mtTwist (state : MT19937State) : MT19937State :=
+  let words : Array UInt32 := (Array.range 624).map fun index =>
+    let combined := (state.words[index]! &&& (0x80000000 : UInt32)) |||
+      (state.words[(index + 1) % 624]! &&& (0x7fffffff : UInt32))
+    let shifted := combined >>> (1 : UInt32)
+    state.words[(index + 397) % 624]! ^^^ shifted ^^^
+      (if combined &&& (1 : UInt32) = 0 then 0 else 0x9908b0df)
+  { words, index := 0 }
+
+def mtNextWord (state : MT19937State) : UInt32 × MT19937State :=
+  let ready := if state.index < 624 then state else mtTwist state
+  let word := ready.words[ready.index]!
+  let word := word ^^^ (word >>> (11 : UInt32))
+  let word := word ^^^ ((word <<< (7 : UInt32)) &&& 0x9d2c5680)
+  let word := word ^^^ ((word <<< (15 : UInt32)) &&& 0xefc60000)
+  let word := word ^^^ (word >>> (18 : UInt32))
+  (word, { ready with index := ready.index + 1 })
+
+def lowMask (width : Nat) : UInt64 :=
+  if 64 ≤ width then ~~~(0 : UInt64) else (1 <<< width.toUInt64) - 1
+
+/-- libc++'s small-range `uniform_int_distribution<uint64_t>` path: take the
+minimum low-bit window and reject values outside the requested range. -/
+unsafe def uniformBelow (state : MT19937State) (upper : UInt64) :
+    UInt64 × MT19937State :=
+  if upper ≤ 1 then (0, state)
+  else
+    let width := Nat.log2 (upper.toNat - 1) + 1
+    if width ≤ 32 then
+      let (word, next) := mtNextWord state
+      let candidate := word.toUInt64 &&& lowMask width
+      if candidate < upper then (candidate, next)
+      else uniformBelow next upper
+    else
+      -- libc++ independent_bits_engine uses two MT words for a UInt64 range.
+      let firstWidth := width / 2
+      let secondWidth := width - firstWidth
+      let (first, state') := uniformBelow state (1 <<< firstWidth.toUInt64)
+      let (second, state'') := uniformBelow state' (1 <<< secondWidth.toUInt64)
+      let candidate := (first <<< secondWidth.toUInt64) ||| second
+      if candidate < upper then (candidate, state'')
+      else uniformBelow state'' upper
+
+unsafe def mt19937Engine : Generated.StrictEDF.RandomEngine MT19937State where
+  nextAdvance := uniformBelow
   nextLt := erasedValue
 
 unsafe def edfOps (this : DenseUPolyZp)
-    [Fact (Nat.Prime this._p.toNat)] : Generated.StrictEDF.EDFRawOps Nat :=
+    [Fact (Nat.Prime this._p.toNat)] :
+    Generated.StrictEDF.EDFRawOps MT19937State :=
   let providers := ddfProviders this
-  { random := Generated.StrictEDF.__upoly_random_raw_ir noRetryEngine
+  { random := Generated.StrictEDF.__upoly_random_raw_ir mt19937Engine
     modPoly := fun dividend modulus =>
       Refinement.StrictDDF.strictModIR this dividend modulus
         ((providers.mod modulus).workspace dividend)
@@ -226,8 +281,9 @@ unsafe def edfOps (this : DenseUPolyZp)
 /-- Run the literal EDF retry body until it produces a proper factor, and
 record that concrete run as the finite trace consumed by the generated
 well-founded EDF.  There is no retry counter and no candidate oracle. -/
-unsafe def buildRetryTrace (ops : Generated.StrictEDF.EDFRawOps Nat)
-    (f : SparsePolyZp) (d : UInt64) (rng : Nat) :
+unsafe def buildRetryTrace
+    (ops : Generated.StrictEDF.EDFRawOps MT19937State)
+    (f : SparsePolyZp) (d : UInt64) (rng : MT19937State) :
     Generated.StrictEDF.RetryTrace ops f d rng :=
   match hrandom : ops.random (get_deg f) f[0]!.2.prime rng with
   | .error _ => buildRetryTrace ops f d rng
@@ -264,7 +320,7 @@ def sortByDegree (items : Array (SparsePolyZp × UInt64)) :
 
 unsafe def factorZpRuntimeOps (this : DenseUPolyZp)
     [Fact (Nat.Prime this._p.toNat)] :
-    Generated.StrictFactorZp.FactorZpRawOps Nat :=
+    Generated.StrictFactorZp.FactorZpRawOps MT19937State :=
   let sqf := sqfOps this
   let ddf := ddfOps this
   let edf := edfOps this
@@ -299,6 +355,6 @@ unsafe def factorZpRuntime (f : SparsePolyZp) :
     let ctx := denseContext f[0]!.2.prime
     letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
     Generated.StrictFactorZp.__factor_Zp_raw_ir
-      (@factorZpRuntimeOps ctx inferInstance) 42 f
+      (@factorZpRuntimeOps ctx inferInstance) (mtSeed 42) f
 
 end B2B.StrictRuntime

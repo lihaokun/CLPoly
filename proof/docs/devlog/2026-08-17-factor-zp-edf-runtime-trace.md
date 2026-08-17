@@ -29,11 +29,7 @@ factor or multiplicity is discarded.
 - the trace is assembled from executed raw random/candidate calls and is
   structurally consumed by `Generated.StrictEDF.__edf_Zp_raw_ir`.
 
-## Remaining fidelity item
+## Follow-up
 
-The runtime currently uses a deterministic range-correct test engine rather
-than the literal `std::mt19937(42)` plus the platform's
-`uniform_int_distribution<uint64_t>`.  Factor outputs are semantically
-canonicalized, but exact source-state fidelity still requires implementing
-that engine before declaring general FactorZp B2B complete.  This commit is
-therefore another concrete checkpoint, not the final acceptance claim.
+The following MT19937 commit replaces the temporary range-correct engine with
+the literal source engine and platform distribution behavior.

@@ -14067,14 +14067,11 @@ theorem strictHenselTreeBuildRawIR_refines_topology_root
   · exact hchildren.2
   · exact hgcdInvariant.toInitial (by simpa using hcoprime)
 
-/-- Safety and inductive premises for the complete generated C++ Hensel
-entry.  Every premise is universally quantified over the intermediate value
-actually returned by the preceding raw stage; no field can prescribe a tree,
-node array, extracted factor array, modulus, or final answer. -/
-structure HenselLiftEntryInvariant
+/-- Algebraic facts required at the complete generated C++ Hensel entry.
+These describe only the concrete source and adjusted modular factors; they do
+not select any tree, lifted node array, modulus, or returned factorization. -/
+structure HenselLiftAlgebraicInvariant
     (this : DenseUPolyZp)
-    (termination : Generated.StrictHensel.DivmodTermination)
-    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
     (f : SparsePolyZZ) (factors : Array SparsePolyZp)
     (aTarget : Int32) : Prop where
   sourceLeading : ∃ leading, f[0]? = some leading
@@ -14099,6 +14096,17 @@ structure HenselLiftEntryInvariant
           (getElem adjusted i hi))
         (CLPoly.Math.SparsePolyZp.toPoly this._p.toNat
           (getElem adjusted j hj))
+
+/-- Execution readiness for the two recursive stages reached after the
+literal target, adjustment, and tree-build executions.  Every premise is
+universally quantified over the value returned by the preceding raw stage,
+so these fields cannot prescribe a node array, modulus, or final answer. -/
+structure HenselLiftRuntimeReadiness
+    (this : DenseUPolyZp)
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp)
+    (aTarget : Int32) : Prop where
   liftReady : ∀ target adjusted nodes,
     HenselLiftTargetCorrect f this._p aTarget target →
     HenselAdjustFirstFactorCorrect f factors this._p adjusted →
@@ -14120,6 +14128,20 @@ structure HenselLiftEntryInvariant
     HenselExtractCorrect (henselTreeBuildTopology 0 factors.size 0)
       liftedNodes #[] extracted →
     HenselNormalizeExecutionInvariant extracted outputM
+
+/-- Complete safety and inductive premises for the generated C++ Hensel
+entry.  The split between source algebra and runtime readiness makes explicit
+which fields the outer FactorZZ proof must derive from the selected concrete
+candidate, and which fields are genuine low-level execution contracts. -/
+structure HenselLiftEntryInvariant
+    (this : DenseUPolyZp)
+    (termination : Generated.StrictHensel.DivmodTermination)
+    (mulProvider : StrictDDF.RawMulWorkspaceProvider this)
+    (f : SparsePolyZZ) (factors : Array SparsePolyZp)
+    (aTarget : Int32) : Prop
+    extends HenselLiftAlgebraicInvariant this f factors aTarget,
+      HenselLiftRuntimeReadiness this termination mulProvider f factors
+        aTarget
 
 /-- Complete semantic trace of the original C++ `__hensel_lift_upoly`
 entry, retaining the correctness evidence for every executed stage. -/

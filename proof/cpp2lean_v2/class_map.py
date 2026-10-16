@@ -809,7 +809,7 @@ def get_output_params(callee: str, num_args: int) -> list[int]:
 TRANSLATION_SCOPE_NONVOID_REFOUT: set[str] = {
     "__upoly_make_monic",       # Zp
     "__build_cld_matrix",       # int
-    "__lll_reduce",             # std::vector<int>
+    "__lll_reduce",             # std::vector<size_t>
     "__si_vandermonde_solve",   # bool
     "__mtshl_zp_univar_mdp",    # bool
     "__mtshl_multi_bdp",        # bool
@@ -882,10 +882,10 @@ REFINEMENT_MAP = {
         },
     },
     "__factor_squarefree_primitive_ZZ": {
-        "l1_name": "__factor_squarefree_primitive_ZZ_raw_ir",
+        "l1_name": "StrictVanHoeijFactorZZ.factorSquarefree",
         "l2_name": "FactorZZCorrect",
         "l2_import": "CLPoly.Spec",
-        "refinement_file": "FactorZZ",
+        "refinement_file": "VanHoeijFactorZZ",
         "result_kind": "factor_zz_correct",
         "cpp_source": "clpoly/polynomial_factorize_univar.hh",
         "doc": "squarefree primitive integer polynomial factorization",
@@ -894,11 +894,10 @@ REFINEMENT_MAP = {
                 "__factor_squarefree_primitive_ZZ_raw_ir_refines_"
                 "FactorZZCorrect"
             ),
-            "proof_import": "CLPoly.Refinement.FactorZZ",
+            "proof_import": "CLPoly.Refinement.VanHoeijFactorZZ",
             "proof_theorem": (
-                "Refinement.StrictFactorZZ."
-                "concreteSelectHensel___factor_squarefree_primitive_ZZ_"
-                "raw_ir_refines"
+                "Refinement.StrictRecombine."
+                "concreteFactorSquarefree_refines_FactorZZCorrect"
             ),
             "kind": "strict_factor_zz",
         },

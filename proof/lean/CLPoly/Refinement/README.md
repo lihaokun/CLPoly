@@ -7,7 +7,7 @@ result is:
 | C++ entry | Generated strict L1 | Public final theorem | L2 conclusion |
 |---|---|---|---|
 | `__factor_Zp` | [`Generated/StrictFactorZp.lean`](../Generated/StrictFactorZp.lean) | [`__factor_Zp_raw_ir_refines_FactorZpCorrect`](Generated.lean) | `FactorZpCorrect` |
-| `__factor_squarefree_primitive_ZZ` | [`Generated/StrictFactorZZ.lean`](../Generated/StrictFactorZZ.lean) | [`__factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect`](Generated.lean) | `FactorZZCorrect` |
+| `__factor_squarefree_primitive_ZZ` | [`Generated/StrictVanHoeijFactorZZ.lean`](../Generated/StrictVanHoeijFactorZZ.lean) | [`__factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect`](Generated.lean) | `FactorZZCorrect` |
 
 Both public theorems are generated into [`Generated.lean`](Generated.lean).
 [`Pipeline/L1.lean`](../Pipeline/L1.lean) re-exports the same strict programs;
@@ -19,8 +19,8 @@ The `Zp` entry executes make-monic, squarefree factorization, DDF, EDF,
 multiplicity attachment, RNG threading, and the final degree sort.
 
 The `ZZ` entry executes prime enumeration and candidate validation, the full
-`Zp` factorization path, multifactor Hensel lifting, and van-Hoeij/Zassenhaus
-recombination.  Recursive source loops are represented with structural or
+`Zp` factorization path, multifactor Hensel lifting, and certificate-only
+van Hoeij retry with a checked heuristic precision prefix. Recursive source loops are represented with structural or
 well-founded recursion.  No fuel counter, `partial def`, semantic factor
 oracle, or L2 fallback is part of the strict proof boundary.
 
@@ -31,8 +31,9 @@ The main implementation files are organized by responsibility:
 - [`DDF.lean`](DDF.lean) and [`EDF.lean`](EDF.lean): modular factor stages;
 - [`SelectPrime.lean`](SelectPrime.lean): concrete candidate pipeline;
 - [`Hensel.lean`](Hensel.lean): tree construction and quadratic lifting;
-- [`Recombine.lean`](Recombine.lean): Zassenhaus and van-Hoeij execution;
-- [`FactorZp.lean`](FactorZp.lean) and [`FactorZZ.lean`](FactorZZ.lean): final composition proofs.
+- [`Recombine.lean`](Recombine.lean): shared arithmetic, LLL, and legacy recombination contracts;
+- [`VanHoeijEntryTotal.lean`](VanHoeijEntryTotal.lean) and [`VanHoeijRetryTotal.lean`](VanHoeijRetryTotal.lean): actual certified entry and retry success;
+- [`FactorZp.lean`](FactorZp.lean) and [`VanHoeijFactorZZ.lean`](VanHoeijFactorZZ.lean): current final composition proofs.
 
 ## Trust and acceptance gates
 
@@ -68,14 +69,21 @@ generated Lean program, and covered by native or C++/Lean B2B regression tests:
   multiplication path allocated `6*n` words for a recursive routine whose
   verified workspace bound is `7*n`.  The production allocation and its HGCD
   caller accounting were increased to the proved bound.
-- **Van-Hoeij coordinate provenance and final-precision safety.**  A failed
-  CLD retry reused an already reduced lattice while interpreting a fresh local
-  transform in the original lifted-factor coordinates.  In addition, a
-  reduced-cardinality result could be accepted at full Mignotte precision
-  without running the exhaustive Zassenhaus safety path.  The controller now
-  rebuilds the canonical lattice for each retry and routes the full-precision
-  reduced case through the concrete Zassenhaus execution.  Native recombination
-  tests and the `__needs_zassenhaus_safety_net` B2B vectors cover the change.
+- **Van-Hoeij lattice and completion certificate (2026-10-16).** The new
+  controller uses modulus rows, safely retains the short-vector space, and
+  accepts a complete validated partition regardless of its factor count.
+  [Retry correctness](VanHoeijRetryCorrectness.lean) connects actual Hensel,
+  lattice, and validation executions to product recovery and irreducibility,
+  with source and recursive execution-readiness conditions explicit. The
+  previous cardinality safety helper and its B2B fixture have been retired.
+  Legacy `StrictFactorZZ` controller theorems remain historical dependencies
+  of shared mathematical helpers; they are not evidence for the new path.
+  [Actual retry totality](VanHoeijRetryTotal.lean) now constructs the checked
+  prefix and pure retry success under explicit input precision bounds and the
+  existing Hensel readiness contract. [Index width](VanHoeijIndexWidth.lean)
+  connects the actual matrix dimension to the widened C++ container indices.
+  Final latest-source regression and performance gates remain in progress;
+  see the [source correspondence record](../../../../docs/test-reports/vanhoeij-source-correspondence.md).
 - **Unchecked Hensel factor-count narrowing.**  A `size_t` factor count was
   converted to the signed indices used by the Hensel tree without first proving
   it was at most `INT_MAX`.  Both production entry points now reject an

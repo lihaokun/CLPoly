@@ -79,6 +79,50 @@ std::vector<upolynomial_<ZZ>> full_factor_pipeline(
 }
 
 int main() {
+    CLPOLY_TEST("checked heuristic conversion handles nonfinite and boundary values");
+    {
+        const int limit = std::numeric_limits<int>::max();
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(std::numeric_limits<double>::quiet_NaN()), limit);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(std::numeric_limits<double>::infinity()), limit);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(-std::numeric_limits<double>::infinity()), 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(0.5), 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(17.9), 17);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(static_cast<double>(limit) + 1.0), limit);
+        CLPOLY_ASSERT_EQ(__vanhoeij_clamp_precision(std::nextafter(static_cast<double>(limit), 0.0)), limit - 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_full_precision(2, ZZ(0)), 0);
+        CLPOLY_ASSERT_EQ(__vanhoeij_full_precision(2, ZZ(1)), 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_full_precision(17, ZZ(288)), 2);
+        CLPOLY_ASSERT_EQ(__vanhoeij_full_precision(17, ZZ(289)), 3);
+    }
+
+    CLPOLY_TEST("van Hoeij precision growth reaches the int boundary without overflow");
+    {
+        const int limit = std::numeric_limits<int>::max();
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(0, 0), 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(3, 20), 20);
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(20, 3), 40);
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(limit / 2, 1), limit - 1);
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(limit / 2 + 1, 1), limit);
+        CLPOLY_ASSERT_EQ(__vanhoeij_next_precision(limit - 1, 1), limit);
+        bool overflow = false;
+        try { (void)__vanhoeij_next_precision(limit, 1); }
+        catch (const std::overflow_error&) { overflow = true; }
+        CLPOLY_ASSERT(overflow);
+    }
+
+    CLPOLY_TEST("van Hoeij effective precision grows after truncation saturates");
+    {
+        // Lifting must eventually add lattice information. An unbounded
+        // modulus-dependent divisor kept these effective moduli constant.
+        const ZZ height(33);
+        const ZZ modulus = ZZ(1) << 96;
+        __vanhoeij_parameters first, later;
+        CLPOLY_ASSERT(__vanhoeij_choose_parameters(24, height, modulus, first));
+        CLPOLY_ASSERT(__vanhoeij_choose_parameters(24, height, modulus * ZZ(256), later));
+        CLPOLY_ASSERT(first.divisor <= height * height);
+        CLPOLY_ASSERT(later.divisor <= height * height);
+        CLPOLY_ASSERT_EQ(later.modulus, first.modulus * ZZ(256));
+    }
 
     // ========================================
     // 辅助函数测试
@@ -387,7 +431,7 @@ int main() {
         // f=(x-1)(x+1), m=7; CLD: C_0=x+1, C_1=x-1
         // 初始 M = 2^5 * I_2 = [[32,0],[0,32]]
         // 螺旋: N=2, k=0→col_idx=0 (次数 0)
-        // 新行 = [coeff(C_0,0), coeff(C_1,0), 1] = [1, -1, 1]
+        // CLD coefficients are a column; the new row is [0, 0, m].
         ZZ m(7);
         auto f  = make_upoly_zz({{2, 1}, {0, -1}});
         auto h0 = make_upoly_zz({{1, 1}, {0, -1}});
@@ -404,14 +448,11 @@ int main() {
         CLPOLY_ASSERT_EQ(J_new, 1);
         CLPOLY_ASSERT_EQ((int)M.size(), 3);     // r+J_new = 2+1
         CLPOLY_ASSERT_EQ((int)M[0].size(), 3);  // 3×3
-        // 已有行拓展：M[0]=[32,0,0], M[1]=[0,32,0]
-        CLPOLY_ASSERT_EQ(M[0][2], ZZ(0));
-        CLPOLY_ASSERT_EQ(M[1][2], ZZ(0));
-        // 新数据行 [coeff(C_0,0), coeff(C_1,0), 1]
-        // C_0=x+1: deg-0 coeff = 1; C_1=x-1: deg-0 coeff = -1
-        CLPOLY_ASSERT_EQ(M[2][0], ZZ(1));
-        CLPOLY_ASSERT_EQ(M[2][1], ZZ(-1));
-        CLPOLY_ASSERT_EQ(M[2][2], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[0][2], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[1][2], ZZ(-1));
+        CLPOLY_ASSERT_EQ(M[2][0], ZZ(0));
+        CLPOLY_ASSERT_EQ(M[2][1], ZZ(0));
+        CLPOLY_ASSERT_EQ(M[2][2], m);
     }
 
     CLPOLY_TEST("__build_cld_matrix J_target=2: adds both spiral columns");
@@ -432,12 +473,12 @@ int main() {
         CLPOLY_ASSERT_EQ(J_new, 2);
         CLPOLY_ASSERT_EQ((int)M.size(), 4);     // 4×4
         CLPOLY_ASSERT_EQ((int)M[0].size(), 4);
-        // 第二新行对应 k=1, j=1: [coeff(C_0,1), coeff(C_1,1), 0, 1]
-        // C_0=x+1: deg-1 coeff=1; C_1=x-1: deg-1 coeff=1
-        CLPOLY_ASSERT_EQ(M[3][0], ZZ(1));
-        CLPOLY_ASSERT_EQ(M[3][1], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[0][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[1][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[3][0], ZZ(0));
+        CLPOLY_ASSERT_EQ(M[3][1], ZZ(0));
         CLPOLY_ASSERT_EQ(M[3][2], ZZ(0));
-        CLPOLY_ASSERT_EQ(M[3][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[3][3], m);
     }
 
     CLPOLY_TEST("__build_cld_matrix spiral exhaustion: returns N when J_target > N");
@@ -480,10 +521,12 @@ int main() {
         CLPOLY_ASSERT_EQ(j2, 1);
         CLPOLY_ASSERT_EQ((int)M.size(), 4);
         // 检查最后一行与 J_target=2 一次性加入时相同
-        CLPOLY_ASSERT_EQ(M[3][0], ZZ(1));
-        CLPOLY_ASSERT_EQ(M[3][1], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[0][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[1][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[3][0], ZZ(0));
+        CLPOLY_ASSERT_EQ(M[3][1], ZZ(0));
         CLPOLY_ASSERT_EQ(M[3][2], ZZ(0));
-        CLPOLY_ASSERT_EQ(M[3][3], ZZ(1));
+        CLPOLY_ASSERT_EQ(M[3][3], m);
     }
 
     // ================================================================
@@ -561,9 +604,9 @@ int main() {
         CLPOLY_ASSERT_EQ((int)rows.size(), expected);
     }
 
-    CLPOLY_TEST("__lll_reduce: CLD matrix [[32,0,0],[0,32,0],[1,-1,1]], unimodular check");
+    CLPOLY_TEST("__lll_reduce: generic nonsymmetric matrix, unimodular check");
     {
-        // 来自 M1+M2 测试的格矩阵（初始缩放 + 一个 CLD 列）
+        // Generic full-rank lattice; this is not the corrected CLD embedding.
         LLLMatrix M = {{ZZ(32),ZZ(0),ZZ(0)},
                        {ZZ(0),ZZ(32),ZZ(0)},
                        {ZZ(1),ZZ(-1),ZZ(1)}};
@@ -699,12 +742,162 @@ int main() {
         CLPOLY_ASSERT(verify_ZZ_factorization(f, result));
     }
 
-    CLPOLY_TEST("full-precision reduced cardinality requires safety net");
+    CLPOLY_TEST("short-vector span retains combinations of long basis rows");
     {
-        CLPOLY_ASSERT(__needs_zassenhaus_safety_net(2, 3, true));
-        CLPOLY_ASSERT(!__needs_zassenhaus_safety_net(2, 3, false));
-        CLPOLY_ASSERT(!__needs_zassenhaus_safety_net(3, 3, true));
-        CLPOLY_ASSERT(__needs_zassenhaus_safety_net(0, 7, true));
+        // (0,1) = row1 - 100*row0 has norm 1; filtering individual row
+        // norms would discard row1 and lose that short lattice vector.
+        LLLMatrix matrix = {{ZZ(1), ZZ(0)}, {ZZ(100), ZZ(1)}};
+        auto rows = __lll_short_span(matrix, ZZ(1));
+        CLPOLY_ASSERT_EQ(rows.size(), size_t(2));
+        matrix = {{ZZ(1), ZZ(0)}, {ZZ(0), ZZ(2)}};
+        CLPOLY_ASSERT_EQ(__lll_short_span(matrix, ZZ(1)).size(), size_t(1));
+    }
+
+    CLPOLY_TEST("certified CLD groups four modular factors without fallback");
+    {
+        auto f = make_upoly_zz({{4, 1}, {2, 3}, {0, 2}});
+        auto modular = __factor_Zp(polynomial_mod(f, 17));
+        std::vector<upolynomial_<Zp>> factors;
+        for (auto& entry : modular.second) factors.push_back(entry.first);
+        CLPOLY_ASSERT_EQ(factors.size(), size_t(4));
+        auto lifted = __hensel_lift(f, factors, 17, 16);
+        auto result = __vanhoeij_try_recombine(f, lifted.first, lifted.second);
+        CLPOLY_ASSERT(result.complete);
+        CLPOLY_ASSERT(result.cld_columns > 0);
+        CLPOLY_ASSERT_EQ(result.factors.size(), size_t(2));
+        CLPOLY_ASSERT(verify_ZZ_factorization(f, result.factors));
+        for (const auto& factor : result.factors)
+            CLPOLY_ASSERT(factor == make_upoly_zz({{2, 1}, {0, 1}}) ||
+                          factor == make_upoly_zz({{2, 1}, {0, 2}}));
+    }
+
+    CLPOLY_TEST("certified CLD proves integer irreducibility despite modular splitting");
+    {
+        auto f = make_upoly_zz({{4, 1}, {0, 1}});
+        auto modular = __factor_Zp(polynomial_mod(f, 17));
+        std::vector<upolynomial_<Zp>> factors;
+        for (auto& entry : modular.second) factors.push_back(entry.first);
+        CLPOLY_ASSERT_EQ(factors.size(), size_t(4));
+        auto lifted = __hensel_lift(f, factors, 17, 16);
+        auto result = __vanhoeij_try_recombine(f, lifted.first, lifted.second);
+        CLPOLY_ASSERT(result.complete);
+        CLPOLY_ASSERT(result.cld_columns > 0);
+        CLPOLY_ASSERT_EQ(result.factors.size(), size_t(1));
+        CLPOLY_ASSERT_EQ(result.factors[0], f);
+    }
+
+#ifdef CLPOLY_PROFILE
+    CLPOLY_TEST("fixed-precision compatibility fallback is counted exactly once");
+    {
+        auto a = make_upoly_zz({{2, 1}, {0, 1}});
+        auto b = make_upoly_zz({{2, 1}, {0, 2}});
+        auto f = a * b;
+        f.normalization();
+        auto modular = __factor_Zp(polynomial_mod(f, 17));
+        std::vector<upolynomial_<Zp>> factors;
+        for (const auto& entry : modular.second) factors.push_back(entry.first);
+        // 17^2 exceeds the recovery bound, but has too little lattice
+        // information for this entry's parameter guard.
+        auto lifted = __hensel_lift(f, factors, 17, 2);
+        reset_factorize_profile();
+        CLPOLY_ASSERT(!__vanhoeij_try_recombine(f, lifted.first, lifted.second).complete);
+        auto result = __vanhoeij_recombine(f, lifted.first, lifted.second);
+        CLPOLY_ASSERT_EQ(result.size(), size_t(2));
+        CLPOLY_ASSERT(std::count(result.begin(), result.end(), a) == 1);
+        CLPOLY_ASSERT(std::count(result.begin(), result.end(), b) == 1);
+        CLPOLY_ASSERT_EQ(__g_profile.zassenhaus_fallbacks.load(), 1LL);
+    }
+#endif
+
+    CLPOLY_TEST("cached LLL GS norms retain the same span as exact recomputation");
+    {
+        for (int seed = 0; seed < 12; ++seed)
+        {
+            const int n = 3 + seed % 4;
+            LLLMatrix matrix(n, std::vector<ZZ>(n));
+            for (int i = 0; i < n; ++i)
+                for (int j = 0; j < n; ++j)
+                    matrix[i][j] = ZZ((seed + 3*i + 7*j) % 19 - 9 +
+                                      (i == j ? 100 : 0));
+            LLLMatrix transform;
+            std::vector<QQ> norms;
+            __lll_reduce(matrix, transform, ZZ(10000), &norms);
+            for (int bound : {100, 5000, 8000, 10000, 12000, 20000})
+                CLPOLY_ASSERT(__lll_short_span_from_norms(norms, ZZ(bound)) ==
+                              __lll_short_span(matrix, ZZ(bound)));
+        }
+    }
+
+    CLPOLY_TEST("certified nonmonic grouping and insufficient-precision rejection");
+    {
+        auto a = make_upoly_zz({{2, 2}, {0, 1}});
+        auto b = make_upoly_zz({{2, 3}, {0, 1}});
+        auto f = a * b;
+        f.normalization();
+        auto modular = __factor_Zp(polynomial_mod(f, 17));
+        std::vector<upolynomial_<Zp>> factors;
+        for (const auto& entry : modular.second) factors.push_back(entry.first);
+        CLPOLY_ASSERT(factors.size() > 2);
+        auto low = __hensel_lift(f, factors, 17, 1);
+        CLPOLY_ASSERT(!__vanhoeij_try_recombine(f, low.first, low.second).complete);
+        auto high = __hensel_lift(f, factors, 17, 16);
+        auto result = __vanhoeij_try_recombine(f, high.first, high.second);
+        CLPOLY_ASSERT(result.complete);
+        CLPOLY_ASSERT_EQ(result.factors.size(), size_t(2));
+        CLPOLY_ASSERT(std::count(result.factors.begin(), result.factors.end(), a) == 1);
+        CLPOLY_ASSERT(std::count(result.factors.begin(), result.factors.end(), b) == 1);
+#ifdef CLPOLY_PROFILE
+        reset_factorize_profile();
+#endif
+        auto full = __lll_factorize(f, factors, 17);
+        CLPOLY_ASSERT_EQ(full.size(), size_t(2));
+        CLPOLY_ASSERT(verify_ZZ_factorization(f, full));
+#ifdef CLPOLY_PROFILE
+        CLPOLY_ASSERT_EQ(__g_profile.zassenhaus_fallbacks.load(), 0LL);
+        CLPOLY_ASSERT_EQ(__g_profile.certified_recombinations.load(), 1LL);
+#endif
+    }
+
+    CLPOLY_TEST("deterministic primitive quadratics: exact factors over varying precisions");
+    {
+        int checked = 0;
+        for (int seed = 0; seed < 24; ++seed)
+        {
+            upolynomial_<ZZ> f = make_upoly_zz({{0, 1}});
+            std::vector<upolynomial_<ZZ>> expected;
+            for (int j = 0; j < 3; ++j)
+            {
+                // Negative discriminant proves irreducibility over Q;
+                // primitive normalization handles nonmonic/content cases.
+                auto g = __upoly_primitive(make_upoly_zz({
+                    {2, 1 + (seed+j)%3}, {1, (seed+2*j)%5-2},
+                    {0, 10 + seed + 3*j}})).second;
+                expected.push_back(g);
+                f = f * g;
+                f.normalization();
+            }
+            auto modular = __factor_Zp(polynomial_mod(f, 97));
+            std::vector<upolynomial_<Zp>> factors;
+            bool squarefree = true;
+            for (const auto& entry : modular.second)
+            {
+                if (entry.second != 1) squarefree = false;
+                factors.push_back(entry.first);
+            }
+            if (!squarefree) continue; // Outside the recombiner's contract.
+            ++checked;
+            for (int precision : {1, 4, 16})
+            {
+                auto lifted = __hensel_lift(f, factors, 97, precision);
+                auto result = __vanhoeij_try_recombine(f, lifted.first, lifted.second);
+                if (precision == 16) CLPOLY_ASSERT(result.complete);
+                if (!result.complete) continue;
+                CLPOLY_ASSERT_EQ(result.factors.size(), expected.size());
+                for (const auto& g : expected)
+                    CLPOLY_ASSERT(std::count(result.factors.begin(), result.factors.end(), g) == 1);
+            }
+        }
+        CLPOLY_ASSERT(checked >= 16);
     }
 
     return clpoly_test::test_summary();

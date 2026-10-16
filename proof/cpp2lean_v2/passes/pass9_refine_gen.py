@@ -100,10 +100,10 @@ theorem {theorem_name}
     sort initialRng f hcanonical hnonempty hdegreePositive hdegreeBound
 """
     if contract["kind"] == "strict_factor_zz":
-        return f"""/-- Generated public end-to-end contract for the original
-C++ `__factor_squarefree_primitive_ZZ` entry.  Its executable side fixes the
-actual generated prime-selection, modular factorization, quadratic Hensel
-lifting, van-Hoeij/Zassenhaus recombination, and source branch structure. -/
+        return f"""/-- Public contract for the new source-shaped
+C++ `__factor_squarefree_primitive_ZZ` model: strict prime selection followed
+by certified van Hoeij retries and a bounded fallback. The outer control flow
+comes from an explicit template; this wrapper is not an AST-equivalence proof. -/
 theorem {theorem_name}
     {{State : Type}} (engine : Generated.StrictEDF.RandomEngine State)
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)
@@ -115,27 +115,22 @@ theorem {theorem_name}
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @StrictFactorZZ.HenselLiftRuntimeReadiness candidate.dense
+      @StrictHensel.HenselLiftRuntimeReadiness candidate.dense
         StrictHensel.concreteDivmodTermination candidate.providers.mul
         f selection.factors aTarget)
     (hcanonical : StrictPolynomialMod.SparsePolyZZCanonical f)
     (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
     (hnonempty : 0 < f.size)
     (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
-    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
-    (hdegree63 : f[0].1.deg < 2 ^ 63)
-    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (hdegree31 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 31)
     (output : Array SparsePolyZZ)
-    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
-      (StrictFactorZZ.concreteRecombineFactorZZRawOps
-        (StrictFactorZZ.concreteSelectPrime engine provider initialRng)
-        (StrictFactorZZ.concreteHenselLift engine provider))
-      useLargePrime f = .ok output) :
+    (hrun : StrictRecombine.concreteFactorSquarefree engine provider initialRng useLargePrime f
+      hinitialPrimeCorrect hcanonical hnonempty hdegree hdegree31 = .ok output) :
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
   exact {proof_theorem} engine provider initialRng useLargePrime f
-    hinitialPrimeCorrect hhenselInvariant hcanonical hprimitive hnonempty
-      hdegree hdegree62 hdegree63 leading hleading output hrun
+    hinitialPrimeCorrect hcanonical hnonempty hdegree hdegree31 hprimitive
+      hhenselInvariant output hrun
 """
     if contract["kind"] == "strict_squarefree_zp":
         return f"""/-- Generated public contract for the original C++ `__squarefree_Zp` entry.

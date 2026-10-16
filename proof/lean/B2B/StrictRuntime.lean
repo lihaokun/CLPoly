@@ -1,4 +1,6 @@
 import CLPoly.Refinement.FactorZZ
+import CLPoly.Refinement.VanHoeijRetryExecution
+import CLPoly.Generated.StrictVanHoeijFactorZZ
 
 /-!
 Executable physical runtime for strict factorization B2B.
@@ -468,28 +470,15 @@ unsafe def selectPrimeRuntime (f : SparsePolyZZ) (useLargePrime : Bool) :
       next_decreases := erasedValue }
     (mtSeed 42) useLargePrime f
 
-unsafe def henselLiftRuntime (f : SparsePolyZZ)
-    (factors : Array SparsePolyZp) (p : UInt64) (target : Int32) :
-    RawExec (Array SparsePolyZZ × ZZ) :=
+unsafe def retryRuntimeAtPrime (p : UInt64) (_hp : Nat.Prime p.toNat) :
+    Generated.StrictVanHoeijRetry.RetryExecution :=
   let ctx := denseContext p
-  letI : Fact (Nat.Prime ctx._p.toNat) := erasedValue
-  Generated.StrictHensel.__hensel_lift_upoly_raw_ir
-    (Refinement.StrictHensel.strictHenselRawOps
-      Refinement.StrictHensel.concreteDivmodTermination)
-    (Refinement.StrictHensel.strictHenselTreeBuildRawOps ctx
-      (rawMulProvider ctx))
-    f factors p target erasedValue
-
-unsafe def factorZZRuntimeOps : Generated.StrictFactorZZ.FactorZZRawOps :=
-  { selectPrime := selectPrimeRuntime
-    henselLift := henselLiftRuntime
-    vanHoeijRecombine := Refinement.StrictFactorZZ.concreteVanHoeijRecombine
-    zassenhausRecombine :=
-      Refinement.StrictFactorZZ.concreteZassenhausRecombine }
+  Refinement.StrictRecombine.concreteVanHoeijRetryExecution ctx
+    Refinement.StrictHensel.concreteDivmodTermination (rawMulProvider ctx)
 
 unsafe def factorZZRuntime (useLargePrime : Bool) (f : SparsePolyZZ) :
     RawExec (Array SparsePolyZZ) :=
-  Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
-    factorZZRuntimeOps useLargePrime f
+  Generated.StrictVanHoeijFactorZZ.factorSquarefree selectPrimeRuntime
+    retryRuntimeAtPrime useLargePrime f (fun _ _ => erasedValue)
 
 end B2B.StrictRuntime

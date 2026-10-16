@@ -1,0 +1,46 @@
+-- Audit of the certificate-only retry controller and its concrete Hensel instance.
+-- The final theorem retains source selection and recursive Hensel readiness.
+-- Success existence is conditional on the explicit representable threshold;
+-- the public wrapper constructs the actual positive checked heuristic prefix.
+import CLPoly.Refinement.VanHoeijRetryExecution
+import CLPoly.Refinement.VanHoeijRetryTrace
+import CLPoly.Refinement.VanHoeijRetryArithmetic
+import CLPoly.Refinement.VanHoeijRetryRecovery
+import CLPoly.Refinement.VanHoeijRetryCorrectness
+import CLPoly.Refinement.VanHoeijFactorZZ
+import CLPoly.Refinement.VanHoeijRetryTotal
+
+#print axioms Refinement.StrictHensel.henselTreeInternalNodeCount_add_one
+#print axioms Refinement.StrictHensel.extract_factors_success_size
+#print axioms Refinement.StrictHensel.normalize_result_success_size
+#print axioms Refinement.StrictHensel.hensel_entry_success_count
+#print axioms Refinement.StrictRecombine.concreteVanHoeijRetryExecution
+#print axioms Refinement.StrictRecombine.retryLoop_success_origin
+#print axioms Refinement.StrictRecombine.lllFactorize_success_origin
+#print axioms Refinement.StrictRecombine.nextPrecision_success_exact
+#print axioms Refinement.StrictRecombine.nextPrecision_overflow
+#print axioms Refinement.StrictRecombine.retryLoop_success_nonnegative
+#print axioms Generated.StrictVanHoeijRetry.nextPrecision_increases
+#print axioms Refinement.StrictRecombine.nextPrecision_succeeds
+#print axioms Refinement.StrictRecombine.hensel_output_modulus_ge_requested
+#print axioms Refinement.StrictFactorZZ.heuristic_extended_hensel_liveRecoveryPrecision
+#print axioms Refinement.StrictRecombine.hensel_output_degree_le_source
+#print axioms Refinement.StrictRecombine.hensel_output_head_degree_fits
+#print axioms Refinement.StrictRecombine.hensel_tryRecombine_complete_irreducible
+#print axioms Refinement.StrictRecombine.concreteRetry_hensel_success
+#print axioms Refinement.StrictRecombine.concreteRetry_hensel_complete
+#print axioms Refinement.StrictRecombine.concrete_retryLoop_succeeds
+#print axioms Refinement.StrictRecombine.concrete_lllFactorize_succeeds_of_heuristic
+#print axioms Refinement.StrictRecombine.clampPrecision_positive
+#print axioms Refinement.StrictRecombine.heuristic_increment_exact
+#print axioms Refinement.StrictRecombine.fullPrecisionLoop_rank_decreases
+#print axioms Refinement.StrictRecombine.fullPrecisionLoop_output_ge
+#print axioms Refinement.StrictRecombine.fullPrecisionLoop_succeeds
+#print axioms Refinement.StrictRecombine.fullPrecision_succeeds
+#print axioms Refinement.StrictRecombine.fullPrecision_positive
+#print axioms Refinement.StrictRecombine.startingPrecision_succeeds_positive
+#print axioms Refinement.StrictRecombine.concrete_lllFactorize_succeeds
+#print axioms Refinement.StrictRecombine.concreteVanHoeijRetry_refines_FactorZZCorrect
+#print axioms Refinement.StrictRecombine.concreteRetryAtPrime
+#print axioms Refinement.StrictRecombine.concreteSelectedPrime
+#print axioms Refinement.StrictRecombine.concreteFactorSquarefree_refines_FactorZZCorrect

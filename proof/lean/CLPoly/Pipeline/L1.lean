@@ -703,29 +703,23 @@ theorem strictFactorSquarefreePrimitiveZZStage
     (hhenselInvariant : ∀ (selection : PrimeSelectionResult)
       (hp : Nat.Prime selection.prime.toNat) (aTarget : Int32),
       let candidate := provider.physical selection.prime hp
-      @Refinement.StrictFactorZZ.HenselLiftRuntimeReadiness candidate.dense
+      @Refinement.StrictHensel.HenselLiftRuntimeReadiness candidate.dense
         Refinement.StrictHensel.concreteDivmodTermination
         candidate.providers.mul f selection.factors aTarget)
     (hcanonical : Refinement.StrictPolynomialMod.SparsePolyZZCanonical f)
     (hprimitive : (SparsePolyZZ.toPoly f).IsPrimitive)
     (hnonempty : 0 < f.size)
     (hdegree : 2 ≤ (SparsePolyZZ.toPoly f).natDegree)
-    (hdegree62 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 62)
-    (hdegree63 : f[0].1.deg < 2 ^ 63)
-    (leading : UMonomial × ZZ) (hleading : f[0]? = some leading)
+    (hdegree31 : (SparsePolyZZ.toPoly f).natDegree < 2 ^ 31)
     (output : Array SparsePolyZZ)
-    (hrun : Generated.StrictFactorZZ.__factor_squarefree_primitive_ZZ_raw_ir
-      (Refinement.StrictFactorZZ.concreteRecombineFactorZZRawOps
-        (Refinement.StrictFactorZZ.concreteSelectPrime
-          engine provider initialRng)
-        (Refinement.StrictFactorZZ.concreteHenselLift engine provider))
-      useLargePrime f = .ok output) :
+    (hrun : Refinement.StrictRecombine.concreteFactorSquarefree
+      engine provider initialRng useLargePrime f
+      hinitialPrimeCorrect hcanonical hnonempty hdegree hdegree31 = .ok output) :
     FactorZZCorrect (SparsePolyZZ.toPoly f)
       (output.toList.map SparsePolyZZ.toPoly) := by
   exact
     Refinement.__factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
       engine provider initialRng useLargePrime f hinitialPrimeCorrect
-      hhenselInvariant hcanonical hprimitive hnonempty hdegree hdegree62
-      hdegree63 leading hleading output hrun
+      hhenselInvariant hcanonical hprimitive hnonempty hdegree hdegree31 output hrun
 
 end L1Pipeline

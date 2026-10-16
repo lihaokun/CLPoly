@@ -1,6 +1,6 @@
 # P1 单变量因式分解优化：架构文档
 
-> **2026-10-16 修正中**：以下原格构造与完成判据保留作历史记录。研究实现采用规范模约束格、GS 后缀保留和完整分组证书；除数不超过输入固定 D₀²。实际入口、检查式启发式及纯 van Hoeij 重试已连接统一输入阈值，成功存在性和不可约性已证明，机器精度范围与 Hensel 契约明确保留。格行号改为容器下标以消除 r+j 的 signed 窄化。最终最新源码回归、两端对照及三版本性能验收仍在进行，当前不可合并。详见[修正方案](../../fixes/vanhoeij-fix-lattice-certificate.md)和[源码对应审查](../../test-reports/vanhoeij-source-correspondence.md)。
+> **2026-10-16 修正完成**：以下原格构造与完成判据保留作历史记录。当前实现采用规范模约束格、GS 后缀保留和完整分组证书；除数不超过输入固定 D₀²。实际入口、检查式启发式及纯 van Hoeij 重试已连接统一输入阈值，成功存在性和不可约性已证明，机器精度范围与 Hensel 契约明确保留。格行号改为容器下标以消除 r+j 的 signed 窄化。最终原生、3107 项两端对照、Lean 构建及公理审计通过；三版本性能记录保留旧版超时、轻输入退化和主机负载限制。详见[修正方案](../../fixes/vanhoeij-fix-lattice-certificate.md)、[源码对应审查](../../test-reports/vanhoeij-source-correspondence.md)和[最终验收](../../test-reports/vanhoeij-final-acceptance.md)。
 
 > 阶段：架构（§2.2）
 > 目标：将 CLPoly 单变量 Z[x] 因式分解性能对齐 Maple/FLINT

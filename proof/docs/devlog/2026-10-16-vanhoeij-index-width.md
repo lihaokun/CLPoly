@@ -36,9 +36,9 @@ AST 翻译器或任意编译器产物的普遍等价性。
 - 最新 C++ 重组回归 401/401：`/tmp/clpoly-vh-index-width-native.log`。
 - 最新全套原生回归 27 文件通过、0 失败：`/tmp/clpoly-vh-index-width-all-native.log`。
 - 最新独立 C++ B2B 驱动 `_build/cpp_driver_index_width` 已重新编译。
-  18 个向量文件共 3107 项正在与最新 Lean 驱动对照，日志
-  `/tmp/clpoly-vh-final-b2b.log`。不把前一版两端的运行结果混记为
-  最新版本通过。
+  18 个向量文件共 3107 项与最新 Lean 驱动对照全部通过，进程退出码 0，
+  日志 `/tmp/clpoly-vh-final-b2b.log`。此结果属于最新版本，
+  不使用前一版两端的结果替代。
 - 严格边界、已证登记、B2B 运行时隔离及补丁检查通过。完整
   `lake build` 也已通过，3612 jobs，日志
   `/tmp/clpoly-vh-final-full-lake-build.log`。

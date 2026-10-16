@@ -1,0 +1,65 @@
+{
+  "repaired_commit": "2673cbe3571d7cf0b5af21a4766a6bea1381ad86",
+  "system": "Darwin",
+  "release": "25.6.0",
+  "machine": "arm64",
+  "modular_factor_rng_seed": 42,
+  "identical_modular_sources_sha256": {
+    "polynomial_factorize_zp.hh": "6f5f439bf4fdb5ba958cf99223e2a8446fb59016795870f634e3e88ae84cc6ef",
+    "dense_upoly_zp.hh": "6db1601fbc1e192f4bdb638a413e36f224c2efa33a689b425f7e3c3f95fddef4"
+  },
+  "timeout_seconds_per_version_family_r": 300,
+  "b2b_paused_during_measurement": true,
+  "benchmark_source_sha256": "2caee83e401158608d4f51feaa4ebc2f5d4bfafb99497904f0a3ebd1deef49ff",
+  "background_load_observations": [
+    {
+      "utc": "2026-10-16T12:55:11.175728+00:00",
+      "top_processes": [
+        {
+          "pid": 53287,
+          "cpu_percent": 100.0,
+          "process": "benchmark"
+        },
+        {
+          "pid": 629,
+          "cpu_percent": 25.4,
+          "process": "WindowServer"
+        },
+        {
+          "pid": 49122,
+          "cpu_percent": 11.0,
+          "process": "Code Helper (Renderer)"
+        },
+        {
+          "pid": 3935,
+          "cpu_percent": 7.1,
+          "process": "WallpaperAerialsExtension"
+        },
+        {
+          "pid": 37464,
+          "cpu_percent": 6.7,
+          "process": "DingTalk"
+        },
+        {
+          "pid": 931,
+          "cpu_percent": 6.2,
+          "process": "mds_stores"
+        },
+        {
+          "pid": 658,
+          "cpu_percent": 6.0,
+          "process": "airportd"
+        },
+        {
+          "pid": 58458,
+          "cpu_percent": 6.0,
+          "process": "python3"
+        }
+      ]
+    }
+  ],
+  "timing_caveat": "This task suspended its B2B interpreter, but other applications and OS services were observed using CPU. Wall-clock differences are descriptive and not isolated causal measurements.",
+  "cpu_model": "Apple M3",
+  "physical_cores": 8,
+  "logical_cores": 8
+}

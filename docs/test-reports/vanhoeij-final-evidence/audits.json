@@ -1,0 +1,35 @@
+[
+  {
+    "audit": "VanHoeijRetryAudit",
+    "declarations": 34,
+    "without_axioms": 0,
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "passed": true
+  },
+  {
+    "audit": "FinalAxiomAudit",
+    "declarations": 340,
+    "without_axioms": 2,
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "passed": true
+  },
+  {
+    "audit": "VanHoeijSeparationAudit",
+    "declarations": 212,
+    "without_axioms": 0,
+    "allowed_axioms": [
+      "propext",
+      "Classical.choice",
+      "Quot.sound"
+    ],
+    "passed": true
+  }
+]

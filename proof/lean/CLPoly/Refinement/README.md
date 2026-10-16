@@ -82,8 +82,11 @@ generated Lean program, and covered by native or C++/Lean B2B regression tests:
   prefix and pure retry success under explicit input precision bounds and the
   existing Hensel readiness contract. [Index width](VanHoeijIndexWidth.lean)
   connects the actual matrix dimension to the widened C++ container indices.
-  Final latest-source regression and performance gates remain in progress;
-  see the [source correspondence record](../../../../docs/test-reports/vanhoeij-source-correspondence.md).
+  Final B2B passed 3107/3107, native regression passed all 27 files and 406
+  profiling assertions, and the proof audits passed. Three-version performance
+  measurements retain baseline timeouts, small-input regressions, and host-load
+  limitations; see the [acceptance record](../../../../docs/test-reports/vanhoeij-final-acceptance.md)
+  and [source correspondence record](../../../../docs/test-reports/vanhoeij-source-correspondence.md).
 - **Unchecked Hensel factor-count narrowing.**  A `size_t` factor count was
   converted to the signed indices used by the Hensel tree without first proving
   it was at most `INT_MAX`.  Both production entry points now reject an

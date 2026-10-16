@@ -2,6 +2,11 @@
 
 日期：2026-10-16。研究分支：`research/vanhoeij-lattice-certificate`。
 
+最新记录见[三版本分阶段性能报告](vanhoeij-three-version-performance.md)：
+修复版 18/18 次与同输入 FLINT 一致；三版本共 47 个已完成样本验证通过。
+旧版超时、主机负载和时间波动均单独记录。下文保留早期诊断和固定
+FLINT 来源；其中当时的“待完成”表述不代表最新证明状态。
+
 ## 固定基线
 
 - 运行库：本机 Nix `flint3-3.1.2`，不可变 store 路径

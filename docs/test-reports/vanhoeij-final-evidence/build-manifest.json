@@ -1,0 +1,81 @@
+{
+  "presafety": {
+    "command": [
+      "/nix/store/0jd4fjnnrfz0dfxbc5lgfyxjfay73i77-clang-wrapper-19.1.7/bin/clang++",
+      "-std=c++17",
+      "-O2",
+      "-DCLPOLY_PROFILE",
+      "-DCLPOLY_PHASE_BENCH",
+      "-DCLPOLY_FLINT_REFERENCE",
+      "-I/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/presafety",
+      "-I/nix/store/1mi9ngqny23syw2kkrbcp7l9k0ywk951-gmp-with-cxx-6.3.0-dev/include",
+      "-I/nix/store/6ykbczwj77apyp4ja4c4ny6a0231rwhm-boost-1.87.0-dev/include",
+      "-I/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/include",
+      "-I/nix/store/y4cffpfw4jv6ibsrq66vfh8q3rds9i9j-mpfr-4.2.1-dev/include",
+      "/Users/godalin/Projects/CLPoly/test/bench_vanhoeij_certificate.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/presafety/clpoly/upolynomial.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/presafety/clpoly/variable.cc",
+      "-L/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/lib",
+      "-lflint",
+      "-L/nix/store/082dlcksz9vlc9mpypl9485c375kfk1h-gmp-with-cxx-6.3.0/lib",
+      "-lgmpxx",
+      "-lgmp",
+      "-o",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/presafety/benchmark"
+    ],
+    "binary_sha256": "b5b5e3a1e5d93f959199e21a2e9999fad3e64aea3b5da34dcc728a15bd582513"
+  },
+  "safetynet": {
+    "command": [
+      "/nix/store/0jd4fjnnrfz0dfxbc5lgfyxjfay73i77-clang-wrapper-19.1.7/bin/clang++",
+      "-std=c++17",
+      "-O2",
+      "-DCLPOLY_PROFILE",
+      "-DCLPOLY_PHASE_BENCH",
+      "-DCLPOLY_FLINT_REFERENCE",
+      "-I/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/safetynet",
+      "-I/nix/store/1mi9ngqny23syw2kkrbcp7l9k0ywk951-gmp-with-cxx-6.3.0-dev/include",
+      "-I/nix/store/6ykbczwj77apyp4ja4c4ny6a0231rwhm-boost-1.87.0-dev/include",
+      "-I/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/include",
+      "-I/nix/store/y4cffpfw4jv6ibsrq66vfh8q3rds9i9j-mpfr-4.2.1-dev/include",
+      "/Users/godalin/Projects/CLPoly/test/bench_vanhoeij_certificate.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/safetynet/clpoly/upolynomial.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/safetynet/clpoly/variable.cc",
+      "-L/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/lib",
+      "-lflint",
+      "-L/nix/store/082dlcksz9vlc9mpypl9485c375kfk1h-gmp-with-cxx-6.3.0/lib",
+      "-lgmpxx",
+      "-lgmp",
+      "-o",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/safetynet/benchmark"
+    ],
+    "binary_sha256": "3ec23e91fc196f9b46a9f01e747519cf47c97e84e99461e3e5b4ce1ddbef5fb2"
+  },
+  "repaired": {
+    "command": [
+      "/nix/store/0jd4fjnnrfz0dfxbc5lgfyxjfay73i77-clang-wrapper-19.1.7/bin/clang++",
+      "-std=c++17",
+      "-O2",
+      "-DCLPOLY_PROFILE",
+      "-DCLPOLY_PHASE_BENCH",
+      "-DCLPOLY_FLINT_REFERENCE",
+      "-DCLPOLY_CERTIFICATE_BENCH",
+      "-I/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/repaired",
+      "-I/nix/store/1mi9ngqny23syw2kkrbcp7l9k0ywk951-gmp-with-cxx-6.3.0-dev/include",
+      "-I/nix/store/6ykbczwj77apyp4ja4c4ny6a0231rwhm-boost-1.87.0-dev/include",
+      "-I/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/include",
+      "-I/nix/store/y4cffpfw4jv6ibsrq66vfh8q3rds9i9j-mpfr-4.2.1-dev/include",
+      "/Users/godalin/Projects/CLPoly/test/bench_vanhoeij_certificate.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/repaired/clpoly/upolynomial.cc",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/repaired/clpoly/variable.cc",
+      "-L/nix/store/h4xmcb94mg0mjdiic8p9adfy2hcfdf7v-flint3-3.1.2/lib",
+      "-lflint",
+      "-L/nix/store/082dlcksz9vlc9mpypl9485c375kfk1h-gmp-with-cxx-6.3.0/lib",
+      "-lgmpxx",
+      "-lgmp",
+      "-o",
+      "/Users/godalin/Projects/CLPoly/_build/vanhoeij-benchmark/repaired/benchmark"
+    ],
+    "binary_sha256": "a160f016aa25863ee40ef5862711360e6af27035c1072210cc7e29229f4fec8a"
+  }
+}

@@ -1,0 +1,27 @@
+CHECK build_strict_vanhoeij.py --check
+CHECK build_strict_vanhoeij_controller.py --check
+CHECK build_strict_vanhoeij_entry.py --check
+CHECK build_strict_vanhoeij_factor_zz.py --check
+CHECK build_strict_vanhoeij_heuristic.py --check
+CHECK build_strict_vanhoeij_parameters.py --check
+CHECK build_strict_vanhoeij_retry.py --check
+CHECK check_verified_refinements.py
+CHECK check_strict_refinement_boundary.py
+PASS: strict refinement boundary cannot import legacy L2 dispatch
+CHECK check_b2b_strict_runtime_isolation.py
+PASS: B2B physical runtime cannot flow into Generated/Refinement/Pipeline
+PASS VanHoeijRetryAudit 34 exact declaration matches; only standard axioms
+PASS FinalAxiomAudit 340 exact declaration matches; only standard axioms
+PASS VanHoeijSeparationAudit 212 exact declaration matches; only standard axioms
+PASS archived native-profile.log
+PASS archived native-full.log
+PASS archived b2b-final.log
+PASS archived lake-build.log
+PASS current production source matches measured source hash
+Final static and archived-evidence checks passed
+
+PASS lossless gzip lake-build.log; original SHA-256 51f64ddc4b432d468df7aa46bb3d408b17bda87f59112cbdb7672ec00160a7dc
+PASS lossless gzip native-full.log; original SHA-256 d62106665f880afab84cdd7af4208552474fbdb6fd30a53112a5188291ef399e
+PASS lossless gzip public-audit.log; original SHA-256 294178e699b6f10ac091b41177460e34ceb65221041b30e41b058335c84d77d8
+PASS lossless gzip retry-audit.log; original SHA-256 ef5305312665aacadc25109275eb0f0781f3d93c345029722de96e86a94d7e22
+PASS lossless gzip separation-audit.log; original SHA-256 e6958534baa2e883f355c15c96f0b6beacec174159a5d02e440923c33f2cd515

@@ -1,8 +1,8 @@
 # P1a van Hoeij LLL 重组：细化设计
 
-> **2026-10-16 修正中**：本文件原 M2 矩阵、M3 短行选择和 M5 接受条件已废弃，保留作历史记录。新实现使用同一正除数截断 CLD 与模数、显式短向量误差界、GS 后缀保留和完整分组验证。主控制器已取消三次预算及终端 Zassenhaus 回退，未获证时持续提高精度，接近机器指数上限时饱和至 INT_MAX。实际入口充分精度成功与纯重试证明见[分离与执行草稿](../../../proof/nl-proof/vanhoeij-eventual-separation.md)；精度可表示范围和真实 Hensel 就绪契约明确保留，不宣称未限定机器输入的普遍成功。
+> **2026-10-16 修正完成**：本文件原 M2 矩阵、M3 短行选择和 M5 接受条件已废弃，保留作历史记录。新实现使用同一正除数截断 CLD 与模数、显式短向量误差界、GS 后缀保留和完整分组验证。主控制器已取消三次预算及终端 Zassenhaus 回退，未获证时持续提高精度，接近机器指数上限时饱和至 INT_MAX。实际入口充分精度成功与纯重试证明见[分离与执行草稿](../../../proof/nl-proof/vanhoeij-eventual-separation.md)；精度可表示范围和真实 Hensel 就绪契约明确保留，不宣称未限定机器输入的普遍成功。
 
-> 实际启发式前缀已检查浮点和 signed 指数边界，并构造正常正返回；格行数、行号及 iota 使用 size_t，避免 r+j 超出 int。额外大小规约使用正剩余计数实现相同降序访问。当前对应关系与仍在运行的验收见[源码审查](../../test-reports/vanhoeij-source-correspondence.md)。
+> 实际启发式前缀已检查浮点和 signed 指数边界，并构造正常正返回；格行数、行号及 iota 使用 size_t，避免 r+j 超出 int。额外大小规约使用正剩余计数实现相同降序访问。源码对应关系与最终验收见[源码审查](../../test-reports/vanhoeij-source-correspondence.md)。
 
 > 阶段：细化（§2.3）
 > 依赖：`docs/design/vanhoeij/architecture.md`（架构文档，不得变更模块划分）

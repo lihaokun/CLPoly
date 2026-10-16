@@ -1,0 +1,1443 @@
+[
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "safetynet",
+    "samples_ms": [
+      76.6937,
+      77.0764,
+      75.6446
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 3550583,
+        "lll_ns": 68331708,
+        "inner_zass_ns": 620959,
+        "outer_zass_ns": 310083,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 3745458,
+        "lll_ns": 68634917,
+        "inner_zass_ns": 655000,
+        "outer_zass_ns": 311167,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 3388666,
+        "lll_ns": 67799666,
+        "inner_zass_ns": 625917,
+        "outer_zass_ns": 287708,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.2807945,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "repaired",
+    "samples_ms": [
+      83.6221,
+      81.883,
+      81.3688
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4439833,
+        "lll_ns": 77806917,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4158209,
+        "lll_ns": 76669000,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4097499,
+        "lll_ns": 76156250,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.264266125,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "repaired",
+    "samples_ms": [
+      82.8979,
+      81.4227,
+      81.9783
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4715375,
+        "lll_ns": 77054750,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4688375,
+        "lll_ns": 75660667,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4423708,
+        "lll_ns": 76421500,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.26181633400000004,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "safetynet",
+    "samples_ms": [
+      76.1893,
+      73.9584,
+      77.2283
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 3599124,
+        "lll_ns": 68078042,
+        "inner_zass_ns": 628625,
+        "outer_zass_ns": 322541,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 3341083,
+        "lll_ns": 66237917,
+        "inner_zass_ns": 594500,
+        "outer_zass_ns": 290750,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 3808500,
+        "lll_ns": 68857085,
+        "inner_zass_ns": 627959,
+        "outer_zass_ns": 329458,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.24397075000000001,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "safetynet",
+    "samples_ms": [
+      257.798,
+      256.638,
+      254.857
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7685041,
+        "lll_ns": 240014251,
+        "inner_zass_ns": 1005458,
+        "outer_zass_ns": 635125,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7706500,
+        "lll_ns": 239180584,
+        "inner_zass_ns": 1030583,
+        "outer_zass_ns": 532541,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6839292,
+        "lll_ns": 237559290,
+        "inner_zass_ns": 1006249,
+        "outer_zass_ns": 1025000,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.7955681669999999,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "repaired",
+    "samples_ms": [
+      223.196,
+      228.857,
+      216.566
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7834333,
+        "lll_ns": 211624209,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7624792,
+        "lll_ns": 219017292,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 7113416,
+        "lll_ns": 207325750,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.6969977079999998,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "repaired",
+    "samples_ms": [
+      239.074,
+      214.891,
+      216.463
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 8431167,
+        "lll_ns": 228256708,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7226791,
+        "lll_ns": 205332916,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6852458,
+        "lll_ns": 207395875,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.6953681670000003,
+    "loadavg": [
+      6.96728515625,
+      8.5986328125,
+      10.529296875
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "safetynet",
+    "samples_ms": [
+      255.379,
+      320.195,
+      348.182
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 6882750,
+        "lll_ns": 238657085,
+        "inner_zass_ns": 1007250,
+        "outer_zass_ns": 874125,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 6677500,
+        "lll_ns": 303935291,
+        "inner_zass_ns": 1011459,
+        "outer_zass_ns": 690041,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 8017541,
+        "lll_ns": 330087166,
+        "inner_zass_ns": 1022750,
+        "outer_zass_ns": 548250,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.9474540409999999,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "safetynet",
+    "samples_ms": [
+      77.7133,
+      77.9903,
+      76.4327
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4570167,
+        "lll_ns": 68104124,
+        "inner_zass_ns": 636166,
+        "outer_zass_ns": 369041,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4569250,
+        "lll_ns": 68067834,
+        "inner_zass_ns": 692709,
+        "outer_zass_ns": 367834,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4421459,
+        "lll_ns": 66943832,
+        "inner_zass_ns": 662917,
+        "outer_zass_ns": 348792,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.251980208,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "repaired",
+    "samples_ms": [
+      89.5076,
+      87.7313,
+      87.7744
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4540249,
+        "lll_ns": 83792042,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4316834,
+        "lll_ns": 82243333,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4252626,
+        "lll_ns": 82237459,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.28315720800000044,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "repaired",
+    "samples_ms": [
+      93.2134,
+      91.8107,
+      94.9123
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 5227208,
+        "lll_ns": 86774084,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4424541,
+        "lll_ns": 86187000,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4888999,
+        "lll_ns": 88847125,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.29743016599999983,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "safetynet",
+    "samples_ms": [
+      77.5325,
+      76.5569,
+      76.7649
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4506792,
+        "lll_ns": 67634833,
+        "inner_zass_ns": 696457,
+        "outer_zass_ns": 549041,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4437833,
+        "lll_ns": 66913042,
+        "inner_zass_ns": 686042,
+        "outer_zass_ns": 368209,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4537583,
+        "lll_ns": 67061957,
+        "inner_zass_ns": 684417,
+        "outer_zass_ns": 365459,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.2492196670000002,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "safetynet",
+    "samples_ms": [
+      269.161,
+      271.822,
+      268.871
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 8445292,
+        "lll_ns": 250413041,
+        "inner_zass_ns": 1161208,
+        "outer_zass_ns": 682917,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7275792,
+        "lll_ns": 253966209,
+        "inner_zass_ns": 1185292,
+        "outer_zass_ns": 695166,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6863500,
+        "lll_ns": 252062293,
+        "inner_zass_ns": 1129833,
+        "outer_zass_ns": 643458,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.8383389169999997,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "repaired",
+    "samples_ms": [
+      213.873,
+      203.661,
+      207.872
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7858375,
+        "lll_ns": 203678750,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7076500,
+        "lll_ns": 194407542,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6692833,
+        "lll_ns": 199004000,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.6480965419999993,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "repaired",
+    "samples_ms": [
+      225.487,
+      227.031,
+      206.376
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7010874,
+        "lll_ns": 215813500,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7977958,
+        "lll_ns": 216459125,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6826834,
+        "lll_ns": 197160208,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "wall_seconds": 0.6822626669999998,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "safetynet",
+    "samples_ms": [
+      259.667,
+      266.167,
+      260.622
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7053124,
+        "lll_ns": 242995667,
+        "inner_zass_ns": 1161083,
+        "outer_zass_ns": 724500,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7380541,
+        "lll_ns": 249039917,
+        "inner_zass_ns": 1141209,
+        "outer_zass_ns": 669083,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6944042,
+        "lll_ns": 243531500,
+        "inner_zass_ns": 1179500,
+        "outer_zass_ns": 693833,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "wall_seconds": 0.814245584,
+    "loadavg": [
+      6.8095703125,
+      8.53857421875,
+      10.49658203125
+    ]
+  },
+  {
+    "mode": "hard",
+    "r": 24,
+    "version": "repaired",
+    "samples_ms": [
+      767.301,
+      621.519,
+      610.831
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 16683834,
+        "lll_ns": 746897167,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4632958,
+        "lll_ns": 615106000,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4180042,
+        "lll_ns": 605053042,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "timeout_seconds": 45,
+    "wall_seconds": 2.1355242089999997,
+    "loadavg": [
+      5.615234375,
+      8.12353515625,
+      10.28955078125
+    ],
+    "stderr": ""
+  },
+  {
+    "mode": "hard",
+    "r": 24,
+    "version": "safetynet",
+    "samples_ms": [
+      74111.6
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4601333,
+        "lll_ns": 107612790,
+        "inner_zass_ns": 43905729333,
+        "outer_zass_ns": 30088180291,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ],
+    "status": "timeout",
+    "timeout_seconds": 120,
+    "wall_seconds": 120.00844475,
+    "loadavg": [
+      22.58251953125,
+      11.9580078125,
+      11.41162109375
+    ],
+    "stderr": ""
+  },
+  {
+    "mode": "hard",
+    "r": 32,
+    "version": "repaired",
+    "samples_ms": [
+      36086.0,
+      33930.0,
+      24998.3
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 21694541,
+        "lll_ns": 36047887541,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 38559917,
+        "lll_ns": 33876302459,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 49785291,
+        "lll_ns": 24930796083,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "timeout_seconds": 240,
+    "wall_seconds": 95.233670042,
+    "loadavg": [
+      19.6767578125,
+      14.13037109375,
+      12.3369140625
+    ],
+    "stderr": ""
+  },
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "presafety",
+    "samples_ms": [
+      75.956,
+      74.2486,
+      76.0215
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 3494292,
+        "lll_ns": 67925458,
+        "inner_zass_ns": 622999,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 3402875,
+        "lll_ns": 66766874,
+        "inner_zass_ns": 594334,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 3390874,
+        "lll_ns": 67430999,
+        "inner_zass_ns": 866918,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 24,
+    "version": "presafety",
+    "samples_ms": [
+      79.8702,
+      75.044,
+      74.2968
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 3804042,
+        "lll_ns": 71372208,
+        "inner_zass_ns": 743250,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 3352416,
+        "lll_ns": 67665249,
+        "inner_zass_ns": 581500,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 3618666,
+        "lll_ns": 66428749,
+        "inner_zass_ns": 609167,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "presafety",
+    "samples_ms": [
+      244.238,
+      251.681,
+      241.76
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7027667,
+        "lll_ns": 228358000,
+        "inner_zass_ns": 999542,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 6837375,
+        "lll_ns": 235226459,
+        "inner_zass_ns": 1023874,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6833376,
+        "lll_ns": 226005124,
+        "inner_zass_ns": 999291,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "r": 32,
+    "version": "presafety",
+    "samples_ms": [
+      315.335,
+      246.41,
+      246.657
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 6831833,
+        "lll_ns": 299666126,
+        "inner_zass_ns": 970375,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 7194917,
+        "lll_ns": 230275457,
+        "inner_zass_ns": 992625,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 7186751,
+        "lll_ns": 230464333,
+        "inner_zass_ns": 1029250,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "presafety",
+    "samples_ms": [
+      75.1677,
+      74.9536,
+      74.4702
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4476708,
+        "lll_ns": 66003167,
+        "inner_zass_ns": 647084,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4566500,
+        "lll_ns": 65671000,
+        "inner_zass_ns": 615291,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4331833,
+        "lll_ns": 65497293,
+        "inner_zass_ns": 615959,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 24,
+    "version": "presafety",
+    "samples_ms": [
+      76.9189,
+      74.9718,
+      72.7723
+    ],
+    "phases": [
+      {
+        "r": 24,
+        "repeat": 0,
+        "hensel_ns": 4776208,
+        "lll_ns": 66954458,
+        "inner_zass_ns": 684417,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 1,
+        "hensel_ns": 4299041,
+        "lll_ns": 65940166,
+        "inner_zass_ns": 727416,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 24,
+        "repeat": 2,
+        "hensel_ns": 4311167,
+        "lll_ns": 63847583,
+        "inner_zass_ns": 667000,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      15.369140625,
+      13.50537109375,
+      12.1533203125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "presafety",
+    "samples_ms": [
+      260.308,
+      262.196,
+      256.741
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 7056917,
+        "lll_ns": 244143125,
+        "inner_zass_ns": 1131166,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 6661875,
+        "lll_ns": 246696958,
+        "inner_zass_ns": 1151458,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6895583,
+        "lll_ns": 241146707,
+        "inner_zass_ns": 1169875,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      14.53857421875,
+      13.36376953125,
+      12.111328125
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "r": 32,
+    "version": "presafety",
+    "samples_ms": [
+      255.987,
+      258.029,
+      253.827
+    ],
+    "phases": [
+      {
+        "r": 32,
+        "repeat": 0,
+        "hensel_ns": 6938166,
+        "lll_ns": 240002291,
+        "inner_zass_ns": 1162250,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 1,
+        "hensel_ns": 6962875,
+        "lll_ns": 242469293,
+        "inner_zass_ns": 1167042,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "r": 32,
+        "repeat": 2,
+        "hensel_ns": 6858499,
+        "lll_ns": 238314417,
+        "inner_zass_ns": 1136875,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ],
+    "status": "passed",
+    "loadavg": [
+      14.53857421875,
+      13.36376953125,
+      12.111328125
+    ]
+  }
+]

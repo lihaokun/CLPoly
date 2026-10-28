@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, feature/formal-proofs]
   pull_request:
-    branches: [master]
+    branches: [master, feature/formal-proofs]
+
+# 显式 shell: bash → GitHub 以 `bash -eo pipefail` 运行，管道中任一命令失败都会让 step 失败
+defaults:
+  run:
+    shell: bash
 
 jobs:
   build-and-test:
@@ -21,3 +26,24 @@ jobs:
 
       - name: Run tests
         run: bash test/run_all_tests.sh
+
+  crosscheck:
+    # 与 FLINT / NTL 交叉验证 GCD、因式分解等结果
+    # 固定 24.04：交叉验证基于该版本自带的 FLINT 3.0 / NTL 11
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev libboost-dev libflint-dev libntl-dev
+
+      - name: Build library
+        run: make
+
+      - name: FLINT / NTL crosscheck
+        run: make crosscheck
+
+      # test_factorize_stress 暂不放进 CI：三变量多因子随机输入会让 Wang 路径偶发极慢（原有问题，
+      # 见 issue #27），会导致 job 不定期超时。修复后再加回。

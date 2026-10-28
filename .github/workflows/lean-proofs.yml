@@ -13,10 +13,16 @@ on:
       - '.github/workflows/lean-proofs.yml'
   workflow_dispatch:
 
+# 显式 shell: bash → GitHub 以 `bash -eo pipefail` 运行；
+# 否则 `lake build ... | tee | tail` 在 lake build 失败时 step 仍会通过
+defaults:
+  run:
+    shell: bash
+
 jobs:
   lake-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +72,28 @@ jobs:
           else
             echo "OK: no sorry warning outside Experiment/"
           fi
+
+      - name: 公理审计（同时编译默认目标之外的 van Hoeij 完全正确性证明）
+        run: |
+          cd proof/lean
+          # 三个审计文件不在默认 lake build 目标的导入闭包里；构建它们会顺带编译
+          # VanHoeijRetryTotal 等 70 个原本 CI 不编译的模块
+          audits=(
+            CLPoly/Refinement/FinalAxiomAudit.lean
+            CLPoly/Refinement/VanHoeijRetryAudit.lean
+            CLPoly/Refinement/VanHoeijSeparationAudit.lean
+          )
+          mods=()
+          for f in "${audits[@]}"; do m=${f%.lean}; mods+=("${m//\//.}"); done
+          lake build "${mods[@]}" 2>&1 | tail -20
+          for f in "${audits[@]}"; do
+            out="/tmp/$(basename "$f" .lean).out"
+            if ! lake env lean "$f" > "$out" 2>&1; then
+              cat "$out"
+              exit 1
+            fi
+            python3 scripts/check_axiom_audit.py "$f" "$out"
+          done
 
       - name: Lake build B2B targets
         run: |

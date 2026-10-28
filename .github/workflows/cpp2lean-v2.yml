@@ -7,6 +7,12 @@ on:
     branches: [master, feature/formal-proofs]
   workflow_dispatch:
 
+# 显式 shell: bash → GitHub 以 `bash -eo pipefail` 运行；
+# 否则 `python3 tests/smoke_*.py | tail -8` 在测试失败时 step 仍会通过
+defaults:
+  run:
+    shell: bash
+
 jobs:
   v2-tests:
     # apt.llvm.org 没有为 Ubuntu 26.04 (resolute) 提供 clang-18 源；固定 24.04 保持 AST 稳定

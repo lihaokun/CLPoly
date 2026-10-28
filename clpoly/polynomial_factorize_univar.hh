@@ -17,6 +17,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <limits>
 #include <stdexcept>
 #include <cassert>
 #ifdef CLPOLY_PROFILE
@@ -39,6 +40,10 @@ namespace clpoly{
         std::atomic<long long> phase2_recombine_ns{0};
         std::atomic<long long> calls{0};
         std::atomic<long long> phase2_triggers{0};
+        std::atomic<long long> certified_recombinations{0};
+        std::atomic<long long> zassenhaus_fallbacks{0};
+        std::atomic<long long> lattice_rounds{0};
+        std::atomic<long long> lattice_columns{0};
     };
     inline __profile_stats __g_profile;
 
@@ -62,6 +67,9 @@ namespace clpoly{
         printf("  recombine   P2     %9.1f us  %5.1f%%\n", us(r2_ns),  pct(r2_ns));
         printf("  total              %9.1f us\n",           us(total_ns));
         printf("  avg per call       %9.1f us\n",           us(total_ns / calls));
+        printf("  certified / fallback %lld / %lld\n",
+               __g_profile.certified_recombinations.load(),
+               __g_profile.zassenhaus_fallbacks.load());
         printf("================================================================\n\n");
     }
     inline void reset_factorize_profile() {
@@ -72,6 +80,10 @@ namespace clpoly{
         __g_profile.phase2_recombine_ns = 0;
         __g_profile.calls           = 0;
         __g_profile.phase2_triggers = 0;
+        __g_profile.certified_recombinations = 0;
+        __g_profile.zassenhaus_fallbacks = 0;
+        __g_profile.lattice_rounds = 0;
+        __g_profile.lattice_columns = 0;
     }
     #define _PROF_NOW() std::chrono::steady_clock::now()
     #define _PROF_NS(a,b) std::chrono::duration_cast<std::chrono::nanoseconds>((b)-(a)).count()
@@ -319,6 +331,12 @@ namespace clpoly{
         int leaf_end;           // 叶子范围结束
     };
 
+    inline bool __hensel_factor_count_fits(size_t factor_count)
+    {
+        return factor_count <= static_cast<size_t>(
+            std::numeric_limits<int>::max());
+    }
+
     // ZZ 多项式乘法并 mod m
     inline upolynomial_<ZZ> __upoly_mul_mod(
         const upolynomial_<ZZ>& a,
@@ -394,6 +412,8 @@ namespace clpoly{
         uint64_t p)
     {
         assert(factors.size() >= 2);
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
         std::vector<__hensel_node> nodes;
         nodes.push_back({}); // root at index 0
         __hensel_tree_build_recursive(nodes, factors, p, 0, (int)factors.size(), 0);
@@ -543,6 +563,8 @@ namespace clpoly{
     {
         assert(factors.size() >= 2);
         assert(!f.empty());
+        if (!__hensel_factor_count_fits(factors.size()))
+            throw std::overflow_error("Hensel factor count exceeds int range");
 
         // 1. 确定提升精度
         ZZ target;
@@ -604,6 +626,29 @@ namespace clpoly{
 
     // M4: 启发式起始精度（FLINT 公式 + Mignotte 上限）
     // 返回 {实际使用的精度, Mignotte 完整精度}
+    inline int __vanhoeij_clamp_precision(double value)
+    {
+        if (std::isnan(value) || value >= static_cast<double>(std::numeric_limits<int>::max()))
+            return std::numeric_limits<int>::max();
+        if (value <= 1.0) return 1;
+        return std::max(1, static_cast<int>(value));
+    }
+
+    inline int __vanhoeij_full_precision(uint64_t p, const ZZ& target)
+    {
+        assert(p >= 2);
+        int exponent = 0;
+        ZZ pa(1);
+        while (pa <= target)
+        {
+            if (exponent == std::numeric_limits<int>::max())
+                throw std::overflow_error("Hensel precision exceeds int range");
+            pa *= ZZ(p);
+            ++exponent;
+        }
+        return exponent;
+    }
+
     inline std::pair<int, int> __heuristic_starting_precision(
         const upolynomial_<ZZ>& f,
         int                     r,
@@ -612,20 +657,17 @@ namespace clpoly{
         // 1. FLINT 启发式 a_h（double 精度）
         double logp  = std::log((double)p);
         int    min_b = (int)ZZ(p).sizeinbase(2);
-        int    N     = (int)f.size() - 1;
         double a_h_d = std::ceil(
             (2.5 * r + min_b) * std::log(2.0) / logp
-            + std::log((double)(N + 1)) / (2.0 * logp));
-        int a_h = std::max(1, (int)a_h_d);
+            + std::log(static_cast<double>(f.size())) / (2.0 * logp));
+        int a_h = __vanhoeij_clamp_precision(a_h_d);
 
         // 2. Mignotte 精度 a_mig（循环逼近）
         ZZ B_mig = __mignotte_bound(f);
         ZZ lc_f  = f.front().second;
         if (lc_f < ZZ(0)) lc_f = -lc_f;
         ZZ target = ZZ(2) * lc_f * B_mig;
-        int a_mig = 0;
-        ZZ  pa(1);
-        while (pa <= target) { pa *= ZZ(p); ++a_mig; }
+        int a_mig = __vanhoeij_full_precision(p, target);
 
         return {std::min(a_mig, a_h), a_mig};
     }
@@ -931,6 +973,8 @@ namespace clpoly{
     //   按内螺旋顺序将 CLD 系数列喂入格矩阵 M，扩展 M 直到加入 J_target 新列。
     //   前置条件：M 已是 (r+J_cur)×(r+J_cur) 的整数方阵（行主序）
     //   后置条件：M 扩展为 (r+J_cur+J_new)×(r+J_cur+J_new)
+    //   M is a canonical, unreduced [sI | C; 0 | mI] row basis; callers
+    //   must not append raw CLD columns to an already transformed basis.
     //   注：初版不做列过滤，所有螺旋位置均接受，后续可加过滤条件优化
     // ================================================================
 
@@ -939,7 +983,7 @@ namespace clpoly{
         const std::vector<upolynomial_<ZZ>>& cld,
         int                                  J_cur,
         int                                  J_target,
-        const ZZ&                            /*m*/)
+        const ZZ&                            m)
     {
         int r = (int)cld.size();
 
@@ -963,18 +1007,19 @@ namespace clpoly{
             int col_idx = (k % 2 == 0) ? (k / 2) : (N - 1 - (k - 1) / 2);
 
             // j = 加入本列前 M 中已有的 J 列数（J_cur + J_new）
-            int j = J_cur + J_new;
+            const size_t j = size_t(J_cur) + size_t(J_new);
 
             // 步骤 1：扩展现有行，各追加一个 0
             for (auto& row : M)
                 row.push_back(ZZ(0));
 
-            // 步骤 2：新增数据行，长度 r + j + 1
-            //   前 r 项 = cld[i][col_idx]，中间 j 项 = 0，末项 = 1（对角 identity）
-            std::vector<ZZ> new_row(r + j + 1, ZZ(0));
+            // Row lattice [s I | C; 0 | m I].  A combination with
+            // factor coordinates e has data coordinates e*C + m*z.
+            // The modulus rows are essential: CLD identities hold modulo m.
             for (int i = 0; i < r; ++i)
-                new_row[i] = upoly_coeff(cld[i], col_idx);
-            new_row[r + j] = ZZ(1);
+                M[i][size_t(r) + j] = upoly_coeff(cld[i], col_idx);
+            std::vector<ZZ> new_row(size_t(r) + j + 1, ZZ(0));
+            new_row[size_t(r) + j] = m;
 
             M.push_back(std::move(new_row));
             ++J_new;
@@ -989,13 +1034,14 @@ namespace clpoly{
     //   后置条件：M 已 LLL 规约；U 满足 M_new = U · M_old；返回 ‖M[i]‖² ≤ B 的行下标
     // ================================================================
 
-    inline std::vector<int>
+    inline std::vector<size_t>
     __lll_reduce(
         LLLMatrix& M,
         LLLMatrix& U,
-        const ZZ&  B)
+        const ZZ&  B,
+        std::vector<QQ>* final_gs_norms = nullptr)
     {
-        int n = (int)M.size();
+        const size_t n = M.size();
 
         // Gram-Schmidt 系数 mu[i][j] (i > j) 和平方范数 B_gs[i] = ‖b_i^*‖²
         std::vector<std::vector<QQ>> mu(n, std::vector<QQ>(n, QQ(0)));
@@ -1003,13 +1049,13 @@ namespace clpoly{
 
         // U 初始化为单位矩阵
         U.assign(n, std::vector<ZZ>(n, ZZ(0)));
-        for (int i = 0; i < n; ++i)
+        for (size_t i = 0; i < n; ++i)
             U[i][i] = ZZ(1);
 
         // 辅助：ZZ 精确内积（行向量）
         auto dot = [&](const std::vector<ZZ>& a, const std::vector<ZZ>& b) -> ZZ {
             ZZ s(0);
-            for (int k = 0; k < (int)a.size(); ++k)
+            for (size_t k = 0; k < a.size(); ++k)
                 s += a[k] * b[k];
             return s;
         };
@@ -1025,38 +1071,38 @@ namespace clpoly{
         };
 
         // 辅助：行操作（同步作用于 M 和 U）：M[i] -= c * M[j], U[i] -= c * U[j]
-        auto row_sub = [&](int i, int j, const ZZ& c) {
-            for (int k = 0; k < n; ++k) {
+        auto row_sub = [&](size_t i, size_t j, const ZZ& c) {
+            for (size_t k = 0; k < n; ++k) {
                 M[i][k] -= c * M[j][k];
                 U[i][k] -= c * U[j][k];
             }
         };
-        auto row_swap = [&](int i, int j) {
+        auto row_swap = [&](size_t i, size_t j) {
             std::swap(M[i], M[j]);
             std::swap(U[i], U[j]);
         };
 
         // 初始化 Gram-Schmidt
         B_gs[0] = QQ(dot(M[0], M[0]), ZZ(1));
-        for (int i = 1; i < n; ++i)
+        for (size_t i = 1; i < n; ++i)
         {
-            for (int j = 0; j < i; ++j)
+            for (size_t j = 0; j < i; ++j)
             {
                 // num = <b_i, b_j> - sum_{l<j} mu[i][l] * mu[j][l] * B_gs[l]
                 //     = <b_i, b_j^*>
                 QQ num(dot(M[i], M[j]), ZZ(1));
-                for (int l = 0; l < j; ++l)
+                for (size_t l = 0; l < j; ++l)
                     num -= mu[i][l] * mu[j][l] * B_gs[l];
                 mu[i][j] = (B_gs[j] == QQ(0)) ? QQ(0) : num / B_gs[j];
             }
             // B_gs[i] = ‖b_i‖² - sum_{j<i} mu[i][j]² * B_gs[j] = ‖b_i^*‖²
             B_gs[i] = QQ(dot(M[i], M[i]), ZZ(1));
-            for (int j = 0; j < i; ++j)
+            for (size_t j = 0; j < i; ++j)
                 B_gs[i] -= mu[i][j] * mu[i][j] * B_gs[j];
         }
 
         // LLL 主循环（Cohen §2.6 算法 2.6.3）
-        int k = 1;
+        size_t k = 1;
         while (k < n)
         {
             // 大小规约（j = k-1）
@@ -1064,7 +1110,7 @@ namespace clpoly{
             if (q != ZZ(0))
             {
                 row_sub(k, k - 1, q);
-                for (int j = 0; j < k - 1; ++j)
+                for (size_t j = 0; j < k - 1; ++j)
                     mu[k][j] -= QQ(q, ZZ(1)) * mu[k - 1][j];
                 mu[k][k - 1] -= QQ(q, ZZ(1));
             }
@@ -1076,13 +1122,14 @@ namespace clpoly{
             if (lhs >= rhs)
             {
                 // 额外大小规约（j = k-2 down to 0）
-                for (int j = k - 2; j >= 0; --j)
+                for (size_t remaining = k - 1; remaining > 0; --remaining)
                 {
+                    const size_t j = remaining - 1;
                     ZZ q2 = round_qq(mu[k][j]);
                     if (q2 != ZZ(0))
                     {
                         row_sub(k, j, q2);
-                        for (int l = 0; l < j; ++l)
+                        for (size_t l = 0; l < j; ++l)
                             mu[k][l] -= QQ(q2, ZZ(1)) * mu[j][l];
                         mu[k][j] -= QQ(q2, ZZ(1));
                     }
@@ -1105,26 +1152,28 @@ namespace clpoly{
                 // swap 后 mu[k][k-1] 为 0（来自原 mu[k-1][k-1]），显式写入
                 mu[k][k - 1] = mu_new;
                 // 修正 j > k 行的 mu[j][k] 和 mu[j][k-1]
-                for (int j = k + 1; j < n; ++j)
+                for (size_t j = k + 1; j < n; ++j)
                 {
                     QQ t        = mu[j][k];
                     mu[j][k]    = mu[j][k - 1] - mu_old * t;
                     mu[j][k - 1] = t + mu_new * mu[j][k];  // mu[j][k] 已是更新后的值
                 }
-                k = std::max(k - 1, 1);
+                k = std::max(k - 1, size_t(1));
             }
         }
 
+        if (final_gs_norms) *final_gs_norms = B_gs;
+
         // 收集满足 ‖M[i]‖² ≤ B 的行，按范数²升序返回
-        std::vector<int> short_rows;
-        for (int i = 0; i < n; ++i)
+        std::vector<size_t> short_rows;
+        for (size_t i = 0; i < n; ++i)
         {
             ZZ norm_sq = dot(M[i], M[i]);
             if (norm_sq <= B)
                 short_rows.push_back(i);
         }
         std::sort(short_rows.begin(), short_rows.end(),
-            [&](int a, int b) { return dot(M[a], M[a]) < dot(M[b], M[b]); });
+            [&](size_t a, size_t b) { return dot(M[a], M[a]) < dot(M[b], M[b]); });
         return short_rows;
     }
 
@@ -1137,17 +1186,17 @@ namespace clpoly{
 
     inline std::vector<std::vector<int>>
     __extract_candidates(
-        const std::vector<int>& short_rows,
+        const std::vector<size_t>& short_rows,
         const LLLMatrix&        U,
         int                     r)
     {
         if (short_rows.empty()) return {};
 
-        int s = (int)short_rows.size();
+        const size_t s = short_rows.size();
 
         // U_short[k][j] = U[short_rows[k]][j]，仅取前 r 列
         std::vector<std::vector<ZZ>> U_short(s, std::vector<ZZ>(r));
-        for (int k = 0; k < s; ++k)
+        for (size_t k = 0; k < s; ++k)
             for (int j = 0; j < r; ++j)
                 U_short[k][j] = U[short_rows[k]][j];
 
@@ -1163,7 +1212,7 @@ namespace clpoly{
             {
                 if (part[j2] != -1) continue;
                 bool equal = true;
-                for (int k = 0; k < s; ++k)
+                for (size_t k = 0; k < s; ++k)
                     if (U_short[k][j] != U_short[k][j2]) { equal = false; break; }
                 if (equal)
                     part[j2] = num_classes;
@@ -1179,9 +1228,247 @@ namespace clpoly{
         return candidates;
     }
 
+    // Keep a prefix spanning every lattice vector of squared norm <= bound.
+    // If k is the last nonzero coefficient of a lattice vector in this
+    // basis, its squared norm is at least ||b_k^*||^2.  Thus only a suffix
+    // whose Gram--Schmidt norms are ALL greater than bound may be removed.
+    // This deliberately does not filter by the ordinary norms of basis rows.
+    inline std::vector<size_t> __lll_short_span_from_norms(
+        const std::vector<QQ>& norms, const ZZ& bound)
+    {
+        size_t retained = norms.size();
+        while (retained > 0 && norms[retained - 1] > QQ(bound, ZZ(1)))
+            --retained;
+        std::vector<size_t> rows(retained);
+        std::iota(rows.begin(), rows.end(), size_t(0));
+        return rows;
+    }
+
+    inline std::vector<size_t> __lll_short_span(const LLLMatrix& basis,
+                                              const ZZ& bound)
+    {
+        const size_t n = basis.size();
+        std::vector<std::vector<QQ>> orthogonal(n);
+        std::vector<QQ> norms(n, QQ(0));
+        for (size_t i = 0; i < n; ++i)
+        {
+            for (const auto& value : basis[i])
+                orthogonal[i].push_back(QQ(value, ZZ(1)));
+            for (size_t j = 0; j < i; ++j)
+            {
+                QQ dot(0);
+                for (size_t k = 0; k < basis[i].size(); ++k)
+                    dot += QQ(basis[i][k], ZZ(1)) * orthogonal[j][k];
+                assert(norms[j] > QQ(0));
+                QQ coefficient = dot / norms[j];
+                for (size_t k = 0; k < basis[i].size(); ++k)
+                    orthogonal[i][k] -= coefficient * orthogonal[j][k];
+            }
+            for (const auto& value : orthogonal[i])
+                norms[i] += value * value;
+        }
+        return __lll_short_span_from_norms(norms, bound);
+    }
+
+    // For every primitive divisor g of f, each coefficient of (f/g)*g'
+    // is bounded by n*2^(n-1)*||f||_1.  Write it as a sum over roots of g:
+    // every omitted-root product is bounded by 2^(n-1)*Mahler(f), and
+    // Mahler(f) <= ||f||_1.  This also covers nonmonic f and g.
+    inline ZZ __vanhoeij_cld_bound(const upolynomial_<ZZ>& f)
+    {
+        int n = (int)get_deg(f);
+        assert(n > 0);
+        return ZZ(n) * (ZZ(1) << (n - 1)) * __upoly_norm_l1(f);
+    }
+
+    // Shared by the production certificate path and its strict-model B2B
+    // boundary. The same positive divisor is used for every coefficient.
+    inline void __vanhoeij_truncate_cld(
+        std::vector<upolynomial_<ZZ>>& cld, const ZZ& divisor)
+    {
+        assert(divisor > ZZ(0));
+        for (auto& poly : cld)
+        {
+            for (auto& term : poly)
+                ZZ::fdiv_q(term.second, term.second, divisor);
+            poly.normalization();
+        }
+    }
+
+    struct __vanhoeij_result {
+        std::vector<upolynomial_<ZZ>> factors;
+        bool complete = false;
+        int cld_columns = 0;
+        int retained_rows = 0;
+    };
+
+    // Validate a whole partition, publishing the answer only after every
+    // group divides exactly and the final quotient is one.
+    inline bool __vanhoeij_validate_partition(
+        const upolynomial_<ZZ>& f,
+        const std::vector<upolynomial_<ZZ>>& lifted,
+        const ZZ& m, const std::vector<std::vector<int>>& groups,
+        __vanhoeij_result& answer)
+    {
+        if (groups.empty()) return false;
+        upolynomial_<ZZ> remaining = f;
+        std::vector<upolynomial_<ZZ>> factors;
+        for (const auto& group : groups)
+        {
+            if (remaining.empty() || get_deg(remaining) <= 0) return false;
+            upolynomial_<ZZ> candidate;
+            candidate.push_back({umonomial(0), remaining.front().second});
+            int64_t degree = 0;
+            for (int index : group)
+            {
+                candidate = __upoly_mul_mod(candidate, lifted[index], m);
+                degree += get_deg(lifted[index]);
+            }
+            auto primitive = __upoly_primitive(__upoly_symmetric_mod(candidate, m));
+            auto& factor = primitive.second;
+            if (factor.empty() || get_deg(factor) != degree || degree <= 0)
+                return false;
+            upolynomial_<ZZ> quotient, remainder;
+            pair_vec_div(quotient.data(), remainder.data(),
+                         remaining.data(), factor.data(), remaining.comp());
+            if (!remainder.empty()) return false;
+            factors.push_back(std::move(factor));
+            remaining = std::move(quotient);
+        }
+        if (remaining.size() != 1 || get_deg(remaining) != 0 ||
+            remaining.front().second != ZZ(1)) return false;
+        std::sort(factors.begin(), factors.end(),
+            [](const upolynomial_<ZZ>& left, const upolynomial_<ZZ>& right) {
+                return get_deg(left) < get_deg(right);
+            });
+        answer.factors = std::move(factors);
+        answer.complete = true;
+        return true;
+    }
+
+    inline std::vector<std::vector<int>> __vanhoeij_singleton_groups(int r)
+    {
+        assert(r >= 0);
+        std::vector<std::vector<int>> singletons(r);
+        for (int i = 0; i < r; ++i) singletons[i].push_back(i);
+        return singletons;
+    }
+
+    inline int __vanhoeij_next_target(int target, int width)
+    {
+        return target > width / 2 ? width : 2 * target;
+    }
+
+    struct __vanhoeij_parameters
+    {
+        ZZ divisor;
+        ZZ modulus;
+        ZZ residual_bound;
+    };
+
+    // The parameter block shared by the production entry and direct B2B tests.
+    // Failure leaves the output untouched.
+    inline bool __vanhoeij_choose_parameters(
+        int r, const ZZ& coefficient_bound, const ZZ& m,
+        __vanhoeij_parameters& output)
+    {
+        if (m <= coefficient_bound) return false;
+        const ZZ scale(32);
+        // Use the SAME divisor for CLD and modulus. Under H<m and r>=2,
+        // flooring leaves residual <=ceil(H/D)+2*r.
+        ZZ divisor(1);
+        while (divisor * scale < coefficient_bound) divisor *= ZZ(2);
+        const ZZ divisor_limit = divisor * divisor;
+        // Limit the precision fed to exact rational LLL after Hensel overshoot.
+        // The divisor must stay bounded by the input, so further lifting can
+        // eventually supply arbitrarily many effective lattice bits.
+        const size_t virtual_bits = size_t(r) + 16;
+        const size_t modulus_bits = m.sizeinbase(2);
+        if (modulus_bits > virtual_bits)
+            divisor = std::min(divisor_limit,
+                std::max(divisor, ZZ(1) << (modulus_bits - virtual_bits)));
+        ZZ modulus;
+        ZZ::fdiv_q(modulus, m, divisor);
+        if (modulus <= ZZ(1)) return false;
+        ZZ residual_bound;
+        ZZ::fdiv_q(residual_bound, coefficient_bound + divisor - ZZ(1), divisor);
+        residual_bound += ZZ(2) * ZZ(r);
+        // Uninformative precision requests lifting instead of another LLL.
+        if (modulus <= ZZ(8) * ZZ(r) * residual_bound) return false;
+        output.divisor = std::move(divisor);
+        output.modulus = std::move(modulus);
+        output.residual_bound = std::move(residual_bound);
+        return true;
+    }
+
+    inline int __vanhoeij_cld_width(const std::vector<upolynomial_<ZZ>>& cld)
+    {
+        int width = 0;
+        for (const auto& poly : cld)
+            if (!poly.empty()) width = std::max(width, (int)get_deg(poly) + 1);
+        return width;
+    }
+
+    // Requires: primitive squarefree f with positive leading coefficient;
+    // monic lifted factors reduce to distinct irreducibles modulo a prime p,
+    // m is a positive power of p, p does not divide lc(f), and
+    // lc(f)*product(lifted) = f mod m.
+    // A successful result certifies the WHOLE partition.  Trial division of
+    // only some classes is insufficient: unverified classes can be proper
+    // pieces of a true factor.  No Zassenhaus call is made in this function.
+    inline __vanhoeij_result __vanhoeij_try_recombine(
+        const upolynomial_<ZZ>& f,
+        const std::vector<upolynomial_<ZZ>>& lifted,
+        const ZZ& m)
+    {
+        const int r = (int)lifted.size();
+        assert(r >= 2 && m > ZZ(1));
+        const ZZ scale(32);
+        const ZZ coefficient_bound = __vanhoeij_cld_bound(f);
+
+        // With W = Q^r, all classes are singletons.  This cheap certificate
+        // handles inputs whose modular factors already are integer factors.
+        __vanhoeij_result answer;
+        auto singletons = __vanhoeij_singleton_groups(r);
+        if (__vanhoeij_validate_partition(f, lifted, m, singletons, answer)) return answer;
+        __vanhoeij_parameters parameters;
+        if (!__vanhoeij_choose_parameters(r, coefficient_bound, m, parameters)) return answer;
+        const ZZ& divisor = parameters.divisor;
+        const ZZ& modulus = parameters.modulus;
+        const ZZ& residual_bound = parameters.residual_bound;
+        auto cld = __cld_polys(f, lifted, m);
+        __vanhoeij_truncate_cld(cld, divisor);
+        int width = __vanhoeij_cld_width(cld);
+        int target = std::min(2, width);
+        while (target > 0)
+        {
+            LLLMatrix matrix(r, std::vector<ZZ>(r, ZZ(0)));
+            for (int i = 0; i < r; ++i) matrix[i][i] = scale;
+            int added = __build_cld_matrix(matrix, cld, 0, target, modulus);
+#ifdef CLPOLY_PROFILE
+            __g_profile.lattice_rounds++;
+            __g_profile.lattice_columns += added;
+#endif
+            ZZ bound = ZZ(r) * scale * scale +
+                       ZZ(added) * residual_bound * residual_bound;
+            LLLMatrix transform;
+            std::vector<QQ> norms;
+            __lll_reduce(matrix, transform, bound, &norms);
+            auto retained = __lll_short_span_from_norms(norms, bound);
+            answer.cld_columns = added;
+            answer.retained_rows = (int)retained.size();
+            auto groups = __extract_candidates(retained, transform, r);
+            if (__vanhoeij_validate_partition(f, lifted, m, groups, answer)) return answer;
+            if (target == width) break;
+            target = __vanhoeij_next_target(target, width);
+        }
+        return answer;
+    }
+
     // ================================================================
     // §7.11 M5: __vanhoeij_recombine
-    //   van Hoeij LLL 因子重组主控循环。
+    //   Fixed-precision compatibility entry: certified van Hoeij first,
+    //   exhaustive recombination only when no complete certificate is found.
     //   前置条件：f 本原，deg(f)≥2，lc(f)>0；|lifted|≥2；m > 2·lc(f)·B_Mig(f)
     // ================================================================
 
@@ -1191,153 +1478,15 @@ namespace clpoly{
         const std::vector<upolynomial_<ZZ>>& lifted,
         const ZZ&                            m)
     {
-        int r = (int)lifted.size();
-        int N = (int)get_deg(f);
-
-        // === 初始化参数 ===
-        int U_exp = (int)ZZ(r > 20 ? r : 20).sizeinbase(2);
-        ZZ  B     = ZZ(r + 1) * (ZZ(1) << (2 * U_exp));
-        int J_max = (N + 1) / 2;
-        int J0    = (3 * r > N + 1) ? 30 : 10;
-        J0        = std::min(J0, J_max);
-
-        // 活跃因子下标集合：active[k] = lifted 中的原始下标
-        std::vector<int> active(r);
-        std::iota(active.begin(), active.end(), 0);
-
-        upolynomial_<ZZ>              f_star = f;
-        std::vector<upolynomial_<ZZ>> result;
-
-        // 构造初始格矩阵辅助 lambda
-        auto make_initial_M = [](int rr, int U_exp_) -> LLLMatrix {
-            LLLMatrix M(rr, std::vector<ZZ>(rr, ZZ(0)));
-            ZZ scale = ZZ(1) << U_exp_;
-            for (int i = 0; i < rr; ++i)
-                M[i][i] = scale;
-            return M;
-        };
-
-        LLLMatrix M = make_initial_M(r, U_exp);
-        int J_cur    = 0;
-        // 先以 J_target=0 做一次对角 LLL（等价于 s=1 Zassenhaus，近零开销）：
-        // 若所有模因子已各自对应真因子，可在不建 CLD 列的情况下提取所有因子；
-        // 若对角 LLL 未提取全部因子，再增加 CLD 列重试（J_target → J0 → 2·J0 → …）。
-        int J_target = 0;
-
-        while ((int)active.size() > 1)
-        {
-            // [M1] 计算当前活跃因子的 CLD 多项式（仅在需要添加列时才计算）
-            std::vector<upolynomial_<ZZ>> active_lifted;
-            for (int k : active)
-                active_lifted.push_back(lifted[k]);
-            std::vector<upolynomial_<ZZ>> cld;
-            if (J_target > 0)
-                cld = __cld_polys(f_star, active_lifted, m);
-
-            // [M2] 喂入 CLD 列（J_target=0 时跳过，矩阵保持纯对角）
-            int J_new = 0;
-            if (J_target > 0)
-            {
-                J_new = __build_cld_matrix(M, cld, J_cur, J_target, m);
-                J_cur += J_new;
-            }
-
-            // [M3] LLL 规约
-            LLLMatrix U;
-            auto short_rows = __lll_reduce(M, U, B);
-
-            // [M4] 提取候选子集
-            auto candidates = __extract_candidates(short_rows, U, (int)active.size());
-
-            // === 候选子集验证（本轮内批量提取所有因子）===
-            // consumed[j] = true 表示 active_lifted[j] 已在本轮被某候选消耗
-            bool found_any = false;
-            std::vector<bool> consumed((int)active.size(), false);
-            int remaining_active = (int)active.size();
-
-            for (auto& cand : candidates)
-            {
-                if (cand.empty()) continue;
-                // 跳过覆盖全部剩余活跃因子的候选（等价于平凡分割）
-                if ((int)cand.size() >= remaining_active) continue;
-                // 跳过已被前一候选消耗的因子
-                bool any_consumed = false;
-                for (int k : cand)
-                    if (consumed[k]) { any_consumed = true; break; }
-                if (any_consumed) continue;
-
-                // 构造候选乘积：lc(f_star) × ∏ active_lifted[k]，逐步 normalization + mod
-                ZZ lc_fstar = f_star.front().second;
-                upolynomial_<ZZ> g_trial;
-                g_trial.push_back({umonomial(0), lc_fstar});
-                for (int k : cand)
-                {
-                    g_trial = g_trial * active_lifted[k];
-                    g_trial.normalization();
-                    __upoly_mod_coeff(g_trial, m);
-                }
-                g_trial = __upoly_symmetric_mod(g_trial, m);
-
-                auto [c_g, pp_g] = __upoly_primitive(std::move(g_trial));
-
-                // 试除（针对当前 f_star，已从前一成功候选中约去）
-                upolynomial_<ZZ> q_trial, r_trial;
-                pair_vec_div(q_trial.data(), r_trial.data(),
-                             f_star.data(), pp_g.data(), f_star.comp());
-
-                if (!r_trial.empty()) continue;
-
-                // 成功：记录因子，更新 f_star 和消耗标记
-                result.push_back(std::move(pp_g));
-                auto [c_q, pp_q] = __upoly_primitive(std::move(q_trial));
-                f_star = std::move(pp_q);
-
-                for (int k : cand) consumed[k] = true;
-                remaining_active -= (int)cand.size();
-                found_any = true;
-            }
-
-            if (found_any)
-            {
-                // 按逆序从 active 中移除本轮消耗的所有因子
-                for (int j = (int)active.size() - 1; j >= 0; --j)
-                    if (consumed[j]) active.erase(active.begin() + j);
-
-                // 重建格矩阵参数
-                int r_new   = (int)active.size();
-                int U_exp_n = (int)ZZ(r_new > 20 ? r_new : 20).sizeinbase(2);
-                B           = ZZ(r_new + 1) * (ZZ(1) << (2 * U_exp_n));
-                M           = make_initial_M(r_new, U_exp_n);
-                J_cur       = 0;
-                J_target    = 0;  // 找到因子后重置：新子问题先尝试对角 LLL
-                continue;
-            }
-
-            // 本轮无新因子：
-            //   J_target == 0 时（对角 LLL 失败）：升至 J0，开始加入 CLD 列
-            //   J_target > 0 时：翻倍 J_target，超出 J_max 则回退 Zassenhaus
-            if (J_target == 0)
-                J_target = J0;
-            else
-                J_target *= 2;
-            if (J_target > J_max)
-            {
-                auto zass = __zassenhaus_recombine(f_star, active_lifted, m);
-                for (auto& g : zass)
-                    result.push_back(std::move(g));
-                return result;
-            }
-        }
-
-        // active 剩余 ≤ 1：若 f_star 仍有正次数则加入结果
-        if (!f_star.empty() && get_deg(f_star) > 0)
-            result.push_back(std::move(f_star));
-
-        std::sort(result.begin(), result.end(),
-            [](const upolynomial_<ZZ>& a, const upolynomial_<ZZ>& b) {
-                return get_deg(a) < get_deg(b);
-            });
-        return result;
+        if (lifted.size() < 2)
+            return get_deg(f) > 0 ? std::vector<upolynomial_<ZZ>>{f}
+                                  : std::vector<upolynomial_<ZZ>>{};
+        auto result = __vanhoeij_try_recombine(f, lifted, m);
+        if (result.complete) return std::move(result.factors);
+#ifdef CLPOLY_PROFILE
+        __g_profile.zassenhaus_fallbacks++;
+#endif
+        return __zassenhaus_recombine(f, lifted, m);
     }
 
     // ================================================================
@@ -1471,15 +1620,20 @@ namespace clpoly{
 
     // ================================================================
     // §8.3 van Hoeij LLL 因子重组（P1a+P1b 统一入口）
-    // 初始提升：二次 Hensel（快速到达完整精度）
-    // 重组：van Hoeij LLL（所有 r，移除 Zassenhaus 阈值）
-    // 安全网：Zassenhaus（当 LLL 列耗尽时）
-    //
-    // 注：线性 Hensel 基础设施（__hensel_step_linear、__hensel_lift_linear_recursive）
-    //   已在 §6.7 实现，保留供未来真正的线性交织优化使用（P1b 完整版）。
-    //   Van Hoeij LLL 需要在满精度（a_mig 或 a_h）下运行才能高效收敛；
-    //   低精度下运行 LLL 会导致格基规约需 O(n^4) 次迭代而非 O(n)，性能急剧下降。
+    // Try a complete lattice certificate, increasing Hensel precision when
+    // necessary.  Mignotte precision alone is not a lattice separation bound.
+    // Continue until the complete certificate is found.  Exhausting the
+    // representable exponent is an overflow, never an exhaustive recomputation.
     // ================================================================
+
+    inline int __vanhoeij_next_precision(int precision, int full_precision)
+    {
+        if (precision == std::numeric_limits<int>::max())
+            throw std::overflow_error("van Hoeij precision exceeds int range");
+        if (precision > std::numeric_limits<int>::max() / 2)
+            return std::numeric_limits<int>::max();
+        return std::max(full_precision, std::max(1, 2 * precision));
+    }
 
     inline std::vector<upolynomial_<ZZ>>
     __lll_factorize(
@@ -1487,44 +1641,41 @@ namespace clpoly{
         const std::vector<upolynomial_<Zp>>& factors,
         uint64_t                             p)
     {
-        int r   = (int)factors.size();
-        auto [a_h, a_mig] = __heuristic_starting_precision(f, r, p);
-
-        // Phase 1：提升到启发式精度 a_h（当 a_h < a_mig 时节省提升代价）
+        int r = (int)factors.size();
+        auto [precision, full_precision] = __heuristic_starting_precision(f, r, p);
+        std::vector<upolynomial_<ZZ>> lifted;
+        ZZ modulus;
 #ifdef CLPOLY_PROFILE
-        auto _t0 = _PROF_NOW();
+        bool first = true;
 #endif
-        auto [lifted_h, m_h] = __hensel_lift(f, factors, p, a_h);
+        for (;;)
+        {
 #ifdef CLPOLY_PROFILE
-        auto _t1 = _PROF_NOW();
+            auto start = _PROF_NOW();
 #endif
-        auto result = __vanhoeij_recombine(f, lifted_h, m_h);
+            auto current = __hensel_lift(f, factors, p, precision);
+            lifted = std::move(current.first);
+            modulus = std::move(current.second);
 #ifdef CLPOLY_PROFILE
-        auto _t2 = _PROF_NOW();
-        __g_profile.hensel_lift_ns += _PROF_NS(_t0, _t1);
-        __g_profile.recombine_ns   += _PROF_NS(_t1, _t2);
+            auto lifted_at = _PROF_NOW();
 #endif
-
-        // Phase 2：启发式精度不足以完全分解时，提升到满 Mignotte 精度（命题 7.3）。
-        // 触发条件：(1) 未找到所有因子 (2) 使用了低于 Mignotte 的精度
-        if ((int)result.size() < r && a_h < a_mig) {
+            auto result = __vanhoeij_try_recombine(f, lifted, modulus);
 #ifdef CLPOLY_PROFILE
-            auto _t3 = _PROF_NOW();
+            auto recombined_at = _PROF_NOW();
+            if (first) {
+                __g_profile.hensel_lift_ns += _PROF_NS(start, lifted_at);
+                __g_profile.recombine_ns += _PROF_NS(lifted_at, recombined_at);
+            } else {
+                __g_profile.phase2_hensel_ns += _PROF_NS(start, lifted_at);
+                __g_profile.phase2_recombine_ns += _PROF_NS(lifted_at, recombined_at);
+                __g_profile.phase2_triggers++;
+            }
+            first = false;
+            if (result.complete) __g_profile.certified_recombinations++;
 #endif
-            auto [lifted_mig, m_mig] = __hensel_lift(f, factors, p);
-#ifdef CLPOLY_PROFILE
-            auto _t4 = _PROF_NOW();
-#endif
-            auto result2 = __vanhoeij_recombine(f, lifted_mig, m_mig);
-#ifdef CLPOLY_PROFILE
-            auto _t5 = _PROF_NOW();
-            __g_profile.phase2_hensel_ns    += _PROF_NS(_t3, _t4);
-            __g_profile.phase2_recombine_ns += _PROF_NS(_t4, _t5);
-            __g_profile.phase2_triggers++;
-#endif
-            return result2;
+            if (result.complete) return std::move(result.factors);
+            precision = __vanhoeij_next_precision(precision, full_precision);
         }
-        return result;
     }
 
     // ================================================================
@@ -1625,7 +1776,8 @@ namespace clpoly{
         }
 
         std::sort(result.factors.begin(), result.factors.end(),
-            [](const auto& a, const auto& b) {
+            [](const std::pair<upolynomial_<ZZ>, uint64_t>& a,
+               const std::pair<upolynomial_<ZZ>, uint64_t>& b) {
                 return degree(a.first) < degree(b.first);
             });
 

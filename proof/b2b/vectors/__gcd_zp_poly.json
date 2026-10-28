@@ -1,0 +1,21 @@
+{
+  "fn": "__gcd_zp_poly",
+  "cases": [
+    {
+      "name": "x2_minus_1_and_x_minus_1_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["4", "5"]]]},
+        {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["4", "5"]]]}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["4", "5"]]]}
+    },
+    {
+      "name": "coprime_F7",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "7"]], [0, ["1", "7"]]]},
+        {"type": "SparsePolyZp", "val": [[1, ["1", "7"]], [0, ["1", "7"]]]}
+      ],
+      "expected": {"type": "SparsePolyZp", "val": [[0, ["1", "7"]]]}
+    }
+  ]
+}

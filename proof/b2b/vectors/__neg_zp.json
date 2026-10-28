@@ -1,0 +1,54 @@
+{
+  "fn": "__neg_zp",
+  "cases": [
+    {
+      "name": "basic",
+      "args": [
+        {"type": "Zp", "val": ["3", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["4", "7"]}
+    },
+    {
+      "name": "zero",
+      "args": [
+        {"type": "Zp", "val": ["0", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["0", "7"]}
+    },
+    {
+      "name": "max",
+      "args": [
+        {"type": "Zp", "val": ["6", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "7"]}
+    },
+    {
+      "name": "one",
+      "args": [
+        {"type": "Zp", "val": ["1", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["12", "13"]}
+    },
+    {
+      "name": "p13_basic",
+      "args": [
+        {"type": "Zp", "val": ["5", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["8", "13"]}
+    },
+    {
+      "name": "large_prime_one",
+      "args": [
+        {"type": "Zp", "val": ["1", "4294967311"]}
+      ],
+      "expected": {"type": "Zp", "val": ["4294967310", "4294967311"]}
+    },
+    {
+      "name": "large_prime_basic",
+      "args": [
+        {"type": "Zp", "val": ["1000000000", "4294967311"]}
+      ],
+      "expected": {"type": "Zp", "val": ["3294967311", "4294967311"]}
+    }
+  ]
+}

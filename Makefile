@@ -136,6 +136,13 @@ $(BIN_DEB)/test_factorize_stress: test/test_factorize_stress.cc $(CLPoly_LIB_DIR
 	mkdir -p $(BIN_DEB)
 	$(CXX) $(CLPoly_DEB) $(DEPFLAGS) $(CLPoly_IPATHS) $< -o $@ $(CLPoly_LIB_DIR)/debug/libclpoly.a $(CLPoly_LDFLAGS) $(Numberlib) $(FLINT_LIBS)
 
+# `make test/<name>` 形式也走上面带 FLINT/NTL 的显式规则；
+# 必须带空命令 `@:`，否则 make 会回落到通用的 test/% 模式规则（不链接 FLINT/NTL）
+.PHONY: test/test_crosscheck_flint test/test_crosscheck_ntl test/test_factorize_stress
+test/test_crosscheck_flint: $(BIN_DEB)/test_crosscheck_flint ; @:
+test/test_crosscheck_ntl: $(BIN_DEB)/test_crosscheck_ntl ; @:
+test/test_factorize_stress: $(BIN_DEB)/test_factorize_stress ; @:
+
 .PHONY: crosscheck
 crosscheck: $(BIN_DEB)/test_crosscheck_flint $(BIN_DEB)/test_crosscheck_ntl
 	$(BIN_DEB)/test_crosscheck_flint

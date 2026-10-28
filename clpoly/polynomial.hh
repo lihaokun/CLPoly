@@ -71,7 +71,7 @@ namespace clpoly{
         return m.empty()?0:m.front().second;
     }
     template <class var_order>
-    constexpr variable get_first_var(const basic_monomial<lex_<var_order>>& m)
+    inline variable get_first_var(const basic_monomial<lex_<var_order>>& m)
     {
         return m.empty()?variable():m.front().first;
     }
@@ -81,7 +81,7 @@ namespace clpoly{
         return p.empty()?0:(p.front().first.empty()?0:p.front().first.front().second);
     }
     template <class Tc,class var_order>
-    constexpr variable get_first_var(const polynomial_<Tc,lex_<var_order>>& p)
+    inline variable get_first_var(const polynomial_<Tc,lex_<var_order>>& p)
     {
         return p.empty()?variable():(p.front().first.empty()?variable():p.front().first.front().first);
     }

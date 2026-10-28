@@ -1,0 +1,33 @@
+{
+  "fn": "__derivative_zz_poly",
+  "cases": [
+    {
+      "name": "deriv_3x2_5x_7",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "3"], [1, "5"], [0, "7"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[1, "6"], [0, "5"]]}
+    },
+    {
+      "name": "deriv_constant_zero",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[0, "7"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": []}
+    },
+    {
+      "name": "deriv_x3",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[3, "1"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[2, "3"]]}
+    },
+    {
+      "name": "deriv_negative",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "-3"], [1, "2"]]}
+      ],
+      "expected": {"type": "SparsePolyZZ", "val": [[1, "-6"], [0, "2"]]}
+    }
+  ]
+}

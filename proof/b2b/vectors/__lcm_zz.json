@@ -1,0 +1,37 @@
+{
+  "fn": "__lcm_zz",
+  "cases": [
+    {
+      "name": "lcm_4_6",
+      "args": [
+        {"type": "ZZ", "val": "4"},
+        {"type": "ZZ", "val": "6"}
+      ],
+      "expected": {"type": "ZZ", "val": "12"}
+    },
+    {
+      "name": "lcm_with_zero",
+      "args": [
+        {"type": "ZZ", "val": "0"},
+        {"type": "ZZ", "val": "5"}
+      ],
+      "expected": {"type": "ZZ", "val": "0"}
+    },
+    {
+      "name": "lcm_coprime",
+      "args": [
+        {"type": "ZZ", "val": "7"},
+        {"type": "ZZ", "val": "13"}
+      ],
+      "expected": {"type": "ZZ", "val": "91"}
+    },
+    {
+      "name": "lcm_neg",
+      "args": [
+        {"type": "ZZ", "val": "-4"},
+        {"type": "ZZ", "val": "6"}
+      ],
+      "expected": {"type": "ZZ", "val": "12"}
+    }
+  ]
+}

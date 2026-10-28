@@ -1,0 +1,23 @@
+{
+  "fn": "__assign_mv_zz",
+  "cases": [
+    {
+      "name": "assign_2x_plus_3y_x_eq_5",
+      "args": [
+        {"type": "MvPolyZZ", "val": [[[[1, 1]], "2"], [[["2", 1]], "3"]]},
+        {"type": "Variable", "val": "1"},
+        {"type": "ZZ", "val": "5"}
+      ],
+      "expected": {"type": "MvPolyZZ", "val": [[[["2", 1]], "3"], [[], "10"]]}
+    },
+    {
+      "name": "assign_x2_minus_4_x_eq_3",
+      "args": [
+        {"type": "MvPolyZZ", "val": [[[[1, 2]], "1"], [[], "-4"]]},
+        {"type": "Variable", "val": "1"},
+        {"type": "ZZ", "val": "3"}
+      ],
+      "expected": {"type": "MvPolyZZ", "val": [[[], "5"]]}
+    }
+  ]
+}

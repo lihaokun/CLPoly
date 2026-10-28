@@ -1,0 +1,51 @@
+[ TEST ] checked heuristic conversion handles nonfinite and boundary values
+[ TEST ] van Hoeij precision growth reaches the int boundary without overflow
+[ TEST ] van Hoeij effective precision grows after truncation saturates
+[ TEST ] __hensel_factor_count_fits int boundary
+[ TEST ] __upoly_norm_l1
+[ TEST ] __upoly_primitive
+[ TEST ] recombine (x+1)(x+2)
+[ TEST ] recombine (x+1)(x-2)(x+3)
+[ TEST ] recombine irreducible (x^2+1)
+[ TEST ] recombine (x+1)(x-1)(x+2)(x-3)
+[ TEST ] recombine (x+100)(x-200)
+[ TEST ] recombine (2x+3)(x+1)
+[ TEST ] recombine (x^2+x+1)(x^2-x+1)
+[ TEST ] recombine (x^2+1)(x^2+2)
+[ TEST ] recombine x^4+1 (irreducible over Z, splits mod p)
+[ TEST ] recombine (3x^2+2x+1)(x+5)
+[ TEST ] recombine Swinnerton-Dyer (x^2-2)(x^2-3)+(...)
+[ TEST ] __cld_polys basic: f=(x-1)(x+1), 两因子
+[ TEST ] __cld_polys additivity: Σ C_i ≡ 2x (mod 7)
+[ TEST ] __cld_polys three factors: f=(x-1)(x-2)(x-3)
+[ TEST ] __cld_polys coefficients in symmetric range
+[ TEST ] __build_cld_matrix basic: J_target=1, adds constant-term column
+[ TEST ] __build_cld_matrix J_target=2: adds both spiral columns
+[ TEST ] __build_cld_matrix spiral exhaustion: returns N when J_target > N
+[ TEST ] __build_cld_matrix continuation: J_cur=1 adds next spiral column
+[ TEST ] __lll_reduce: identity matrix (already reduced)
+[ TEST ] __lll_reduce: diagonal [[3,0],[0,5]], B=10 returns only short row
+[ TEST ] __lll_reduce: non-reduced 2×2, unimodular check
+[ TEST ] __lll_reduce: generic nonsymmetric matrix, unimodular check
+[ TEST ] __extract_candidates: empty short_rows → empty
+[ TEST ] __extract_candidates: all columns different → r independent classes
+[ TEST ] __extract_candidates: columns 0,1 equal → merged into one class
+[ TEST ] __extract_candidates: all columns equal → one class
+[ TEST ] van Hoeij (x+1)(x+2)
+[ TEST ] van Hoeij (x+1)(x-2)(x+3)
+[ TEST ] van Hoeij irreducible (x^2+1)
+[ TEST ] van Hoeij (x+1)(x-1)(x+2)(x-3)
+[ TEST ] van Hoeij (x+100)(x-200)
+[ TEST ] van Hoeij (2x+3)(x+1)
+[ TEST ] van Hoeij groups modular factors into irreducible ZZ factors
+[ TEST ] short-vector span retains combinations of long basis rows
+[ TEST ] certified CLD groups four modular factors without fallback
+[ TEST ] certified CLD proves integer irreducibility despite modular splitting
+[ TEST ] fixed-precision compatibility fallback is counted exactly once
+[ TEST ] cached LLL GS norms retain the same span as exact recomputation
+[ TEST ] certified nonmonic grouping and insufficient-precision rejection
+[ TEST ] deterministic primitive quadratics: exact factors over varying precisions
+
+========================================
+  Total: 406  Passed: 406  Failed: 0
+========================================

@@ -1,0 +1,37 @@
+{
+  "fn": "__nat_extgcd",
+  "cases": [
+    {
+      "name": "gcd_12_18",
+      "args": [
+        {"type": "ZZ", "val": "12"},
+        {"type": "ZZ", "val": "18"}
+      ],
+      "expected": {"type": "ZZTriple", "val": ["6", "-1", "1"]}
+    },
+    {
+      "name": "gcd_coprime_7_13",
+      "args": [
+        {"type": "ZZ", "val": "7"},
+        {"type": "ZZ", "val": "13"}
+      ],
+      "expected": {"type": "ZZTriple", "val": ["1", "2", "-1"]}
+    },
+    {
+      "name": "gcd_with_zero",
+      "args": [
+        {"type": "ZZ", "val": "0"},
+        {"type": "ZZ", "val": "5"}
+      ],
+      "expected": {"type": "ZZTriple", "val": ["5", "0", "1"]}
+    },
+    {
+      "name": "gcd_one_with_one",
+      "args": [
+        {"type": "ZZ", "val": "1"},
+        {"type": "ZZ", "val": "1"}
+      ],
+      "expected": {"type": "ZZTriple", "val": ["1", "0", "1"]}
+    }
+  ]
+}

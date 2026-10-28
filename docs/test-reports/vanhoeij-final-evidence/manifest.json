@@ -1,0 +1,17 @@
+{
+  "presafety": {
+    "revision": "eb45ca4845640bd38d0a4d507cda86c3988f1a83",
+    "source_header_sha256": "4537c39449e3b43a800ea84a965a76b3d4e00be7d5a090412763862f49a9d3b9",
+    "instrumented_header_sha256": "ab5db9ea496575fcc8026fb21d5573cdd78b6f72831bcd9ea9d670f10feab03a"
+  },
+  "safetynet": {
+    "revision": "428a27fe2c22dcbeee100d1100e310d8a08f1e77",
+    "source_header_sha256": "1799605298ede7775db30eb4a98c3ed8958607f5f7cb5228075aebcc80940a7d",
+    "instrumented_header_sha256": "717cb299828abedd04617bf81f5401d4c96337f29e101b7748818683894deb2a"
+  },
+  "repaired": {
+    "revision": "worktree",
+    "source_header_sha256": "bb9a94cad5234cdb61b72d879c8f2bb88ab034064b7ec252206b6c1290b65663",
+    "instrumented_header_sha256": "86722b0afba196ec4ec41b8baee37cc8319016474a82203390eea8e27023d237"
+  }
+}

@@ -105,7 +105,8 @@ namespace clpoly{
 
         // 按 degree 排序
         std::sort(result.factors.begin(), result.factors.end(),
-            [](const auto& a, const auto& b) {
+            [](const std::pair<Poly, uint64_t>& a,
+               const std::pair<Poly, uint64_t>& b) {
                 return degree(a.first) < degree(b.first);
             });
 

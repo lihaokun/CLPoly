@@ -1,0 +1,5435 @@
+{
+  "fn": "__vanhoeij_try_recombine",
+  "cases": [
+    {
+      "name": "two_quadratics_p17_a1_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "10"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a1_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "10"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a1_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "10"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3306091772"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3669665669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3669665669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3306091772"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3669665669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3306091772"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "861085506756503646"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "47800106368910364835"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "47800106368910364835"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "861085506756503646"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_quadratics_p17_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              2,
+              "3"
+            ],
+            [
+              0,
+              "2"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "47800106368910364835"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "861085506756503646"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a1_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "15"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "9"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a1_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "9"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "15"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a1_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "15"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "9"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4879236842"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5766186268"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1209571173"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2096520599"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2096520599"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1209571173"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5766186268"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4879236842"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1209571173"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4879236842"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5766186268"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2096520599"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "34451905517028761171"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13348200851881603664"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "35312991023785264817"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "14209286358638107310"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "14209286358638107310"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "35312991023785264817"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13348200851881603664"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "34451905517028761171"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quartic_p17_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "14209286358638107310"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13348200851881603664"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "35312991023785264817"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "34451905517028761171"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                4,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a1_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a1_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a1_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "13"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "17"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3596107669"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3379649772"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "irreducible_quadratic_p17_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              2,
+              "1"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "42949774758062711577"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5711417117604156904"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a1_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "80"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "75"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "71"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "26"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "22"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "17"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a1_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "17"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "22"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "26"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "71"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "75"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "80"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a1_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "26"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "80"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "22"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "75"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "71"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "17"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3002238670370490"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2369608176604944"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3962453405582480"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3874980188794481"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5467825417772017"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4835194924006471"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4835194924006471"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5467825417772017"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3874980188794481"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3962453405582480"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2369608176604944"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3002238670370490"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3962453405582480"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "4835194924006471"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3874980188794481"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "5467825417772017"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3002238670370490"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2369608176604944"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "36665638234007702196802636932405"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "52885706715133002209535695235747"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "54216906076507901341576162560921"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7208459269760669104621605034600"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8539658631135568236662072359774"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24759727112260868249395130663116"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24759727112260868249395130663116"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8539658631135568236662072359774"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7208459269760669104621605034600"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "54216906076507901341576162560921"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "52885706715133002209535695235747"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "36665638234007702196802636932405"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "three_quadratics_p97_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              6,
+              "1"
+            ],
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "11"
+            ],
+            [
+              0,
+              "6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "52885706715133002209535695235747"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "36665638234007702196802636932405"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24759727112260868249395130663116"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "7208459269760669104621605034600"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "8539658631135568236662072359774"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "54216906076507901341576162560921"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "1"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a1_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "57"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "56"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "41"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "40"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a1_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "40"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "41"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "56"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "57"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a1_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "41"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "40"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "57"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "56"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "97"
+        },
+        false,
+        []
+      ],
+      "expected": [
+        false,
+        [],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6336314259191716"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3933295666653147"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3904137927723814"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1501119335185245"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1501119335185245"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3904137927723814"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3933295666653147"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6336314259191716"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6336314259191716"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3933295666653147"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3904137927723814"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "1501119335185245"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "7837433594376961"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "12379863556130434124697565331558"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "18072302025502633780525387520307"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "43353063320765936665672380075214"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "49045501790138136321500202263963"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "49045501790138136321500202263963"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "43353063320765936665672380075214"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "18072302025502633780525387520307"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "12379863556130434124697565331558"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "nonmonic_quadratics_p97_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              4,
+              "6"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              0,
+              "1"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "18072302025502633780525387520307"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "43353063320765936665672380075214"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "49045501790138136321500202263963"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "12379863556130434124697565331558"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "61425365346268570446197767595521"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "2"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                2,
+                "3"
+              ],
+              [
+                0,
+                "1"
+              ]
+            ]
+          }
+        ]
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a8_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6975757440"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3487878722"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a8_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3487878722"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6975757440"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a8_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "3487878722"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "6975757440"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "6975757441"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a16_order0",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "48661191875666868480"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24330595937833434242"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a16_order1",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24330595937833434242"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "48661191875666868480"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    },
+    {
+      "name": "linear_fast_path_p17_a16_order2",
+      "args": [
+        {
+          "type": "SparsePolyZZ",
+          "val": [
+            [
+              3,
+              "2"
+            ],
+            [
+              2,
+              "5"
+            ],
+            [
+              1,
+              "-1"
+            ],
+            [
+              0,
+              "-6"
+            ]
+          ]
+        },
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "48661191875666868480"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "24330595937833434242"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          }
+        ],
+        {
+          "type": "ZZ",
+          "val": "48661191875666868481"
+        },
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ]
+      ],
+      "expected": [
+        true,
+        [
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "-1"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "1"
+              ],
+              [
+                0,
+                "2"
+              ]
+            ]
+          },
+          {
+            "type": "SparsePolyZZ",
+            "val": [
+              [
+                1,
+                "2"
+              ],
+              [
+                0,
+                "3"
+              ]
+            ]
+          }
+        ],
+        0,
+        0
+      ]
+    }
+  ]
+}

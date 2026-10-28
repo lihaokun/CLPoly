@@ -27,9 +27,26 @@ make                        # 构建全部库 (lib/ 下 debug/release × .a/.so)
 make test/test_name         # 构建单个测试 → _build/debug/bin/test_name
 _build/debug/bin/test_name  # 运行单个测试
 bash test/run_all_tests.sh  # 构建并运行全部测试
+make crosscheck             # 与 FLINT / NTL 交叉验证（需要 libflint-dev、libntl-dev）
+make test/test_factorize_stress && _build/debug/bin/test_factorize_stress  # 因式分解 stress（对比 FLINT）
 make bench-clpoly           # 构建并运行性能基准 (release)
 make clean                  # 清除所有构建产物
 ```
+
+Lean 形式化验证、cpp2lean 翻译器和 C++/Lean 对拍测试（`proof/`）的构建方式与规范见 [`proof/CLAUDE.md`](proof/CLAUDE.md)。
+
+## 工作态度（重要）
+
+**不要拿 ROI / 工作量 / "性价比"作为不修的理由。**
+
+目标是**最终完成**——例如 lake build 0 errors、所有测试通过、所有 sorry 清零。
+
+- **禁止**：在该完成的工作前提"ROI 不高"、"剩余 X 错每个独立、修起来慢"、"接受当前 N% 状态作为终点"
+- **禁止**：在用户没要求"权衡"时主动提供 trade-off，作为不继续的暗示
+- **要求**：剩余多少错就修多少错，剩余多少 sorry 就清多少 sorry。一个一个 trace + 修，直到目标达成
+- **唯一例外**：当**有两条以上达成同一目标的路径**时，可以提 ROI 作为路径选择依据（不是为了停止工作）
+
+如果某个具体修复确实不可行（如 Lean / Mathlib 缺基础设施），用 §5.1 的修正方案文档明确写"为什么不可行 + 替代方案"，由用户决策——而不是用 ROI 模糊推回。
 
 ## 工作流程
 
@@ -49,3 +66,15 @@ Bug 修复：
 每步操作：
   说明计划 → [等待确认] → 执行单步 → 报告结果 → [等待反馈]
 ```
+
+### 开发日志
+
+每完成一个功能步骤或一个 Bug 修复后，必须在 `docs/devlog/` 下写一条开发日志，记录：
+- 日期
+- 做了什么（简述变更内容）
+- 为什么做（动机/背景）
+- 关键决策及其理由
+- 遇到的问题与解决方式（如有）
+- 涉及的文件列表
+
+文件命名：`YYYY-MM-DD-简短标题.md`（如 `2026-03-13-ddf-hensel-type-experiment.md`）。

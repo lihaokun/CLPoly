@@ -1,0 +1,69 @@
+{
+  "fn": "__mul_zp",
+  "cases": [
+    {
+      "name": "basic",
+      "args": [
+        {"type": "Zp", "val": ["3", "7"]},
+        {"type": "Zp", "val": ["5", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "7"]}
+    },
+    {
+      "name": "zero_kills",
+      "args": [
+        {"type": "Zp", "val": ["0", "7"]},
+        {"type": "Zp", "val": ["5", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["0", "7"]}
+    },
+    {
+      "name": "max_max",
+      "args": [
+        {"type": "Zp", "val": ["6", "7"]},
+        {"type": "Zp", "val": ["6", "7"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "7"]}
+    },
+    {
+      "name": "one_id",
+      "args": [
+        {"type": "Zp", "val": ["1", "13"]},
+        {"type": "Zp", "val": ["7", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["7", "13"]}
+    },
+    {
+      "name": "p13_wrap",
+      "args": [
+        {"type": "Zp", "val": ["10", "13"]},
+        {"type": "Zp", "val": ["8", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["2", "13"]}
+    },
+    {
+      "name": "max_minus_one_squared",
+      "args": [
+        {"type": "Zp", "val": ["12", "13"]},
+        {"type": "Zp", "val": ["12", "13"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "13"]}
+    },
+    {
+      "name": "large_prime_basic",
+      "args": [
+        {"type": "Zp", "val": ["100", "4294967311"]},
+        {"type": "Zp", "val": ["200", "4294967311"]}
+      ],
+      "expected": {"type": "Zp", "val": ["20000", "4294967311"]}
+    },
+    {
+      "name": "large_prime_overflow",
+      "args": [
+        {"type": "Zp", "val": ["4294967310", "4294967311"]},
+        {"type": "Zp", "val": ["4294967310", "4294967311"]}
+      ],
+      "expected": {"type": "Zp", "val": ["1", "4294967311"]}
+    }
+  ]
+}

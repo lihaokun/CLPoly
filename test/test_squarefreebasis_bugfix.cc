@@ -138,6 +138,54 @@ int main()
     }
 
     // ============================================================
+    // Joint #14 + #17：多变量 + 负首项 + 非常数 cont（联合通过 sqf/squarefreebasis）
+    //   - #14: sqf 首项 sign 归一化（PR #16）
+    //   - #17: 多变量 cont 始终非负（PR #18）
+    //   - 联合：input 含 -2xy+3x 这类 mv 项时，cont 提取 + pp 重建 + 乘积不变量
+    //     必须仍精确成立
+    // ============================================================
+    std::cout << "\n=== Joint #14+#17：mv 负首项 + 非常数 cont ===" << std::endl;
+    {
+        // F = -2xy + 3x = x * (-2y + 3) → mv cont 涉及非常数（y 多项式）
+        // 修后 cont(F w.r.t. x) = 2y - 3（首项正），pp = -x
+        polynomial_<ZZ> f = -2*x*y + 3*x;
+        auto sqf = squarefreefactorize(f);
+        polynomial_<ZZ> reconstructed({{monomial(), ZZ(1)}});
+        for (auto& [p, e] : sqf) reconstructed = reconstructed * pow(p, e);
+        std::cout << "    sqf(-2xy+3x) = ";
+        for (auto& [p, e] : sqf) std::cout << "(" << p << "," << e << ") ";
+        std::cout << " | rebuild = " << reconstructed << std::endl;
+        CHECK(reconstructed == f, "joint_mv_nonconst_cont: ∏ pᵢ^eᵢ = -2xy+3x");
+    }
+    {
+        // squarefreebasis 端到端：联合两个 fix 的最敏感路径
+        std::vector<polynomial_<ZZ>> polys = {-2*x*y + 3*x, (-2*x*y + 3*x) * x};
+        auto [basis, idx] = squarefreebasis(polys);
+        show("joint_mv_basis", basis);
+        CHECK(basis_no_unit(basis) && basis_all_squarefree(basis),
+              "joint_mv_basis: mv+sign 联合输入 basis 无 unit + 全 squarefree");
+    }
+    {
+        // 多 mv 项，含负 leading 与非平凡 cont
+        polynomial_<ZZ> f = -6 * (x*y - 1) * (x*y + 2);
+        auto sqf = squarefreefactorize(f);
+        polynomial_<ZZ> reconstructed({{monomial(), ZZ(1)}});
+        for (auto& [p, e] : sqf) reconstructed = reconstructed * pow(p, e);
+        std::cout << "    sqf(-6(xy-1)(xy+2)) = ";
+        for (auto& [p, e] : sqf) std::cout << "(" << p << "," << e << ") ";
+        std::cout << std::endl;
+        CHECK(reconstructed == f, "joint_mv_const_cont: ∏ pᵢ^eᵢ = -6(xy-1)(xy+2)");
+        // 同时断言：所有非常数 factor 首项 > 0
+        bool sign_ok = true;
+        for (auto it = sqf.begin() + 1; it != sqf.end(); ++it) {
+            if (!is_number(it->first) && it->first.front().second < ZZ(0)) {
+                sign_ok = false; break;
+            }
+        }
+        CHECK(sign_ok, "joint_mv_const_cont: 非常数 factor 首项 > 0");
+    }
+
+    // ============================================================
     // Sanity（不破坏正向用例）
     // ============================================================
     std::cout << "\n=== Sanity（修复不破坏其他正向用例） ===" << std::endl;

@@ -84,7 +84,7 @@ void _classical_mul(uint64_t* C,
   - n > 0
   - A, B 长度均为 n（调用方已零填充）
   - C 预分配长度 >= 2n-1
-  - scratch 预分配长度 >= 6n
+  - scratch 预分配长度 >= 7n
   - C 与 A, B, scratch 无重叠
 
 后置条件（Ensures）：
@@ -213,7 +213,7 @@ static void mul(dense_upoly_zp& C,
         std::memcpy(b_pad.data(), B._coeffs.data(), len_b * sizeof(uint64_t));
 
         C._coeffs.resize(2 * n - 1);
-        std::vector<uint64_t> scratch(6 * n);
+        std::vector<uint64_t> scratch(7 * n);
         C._kar_mul(C._coeffs.data(), a_pad.data(), b_pad.data(),
                    n, scratch.data());
         C.__strip();

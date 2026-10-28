@@ -1,0 +1,60 @@
+{
+  "fn": "__factor_squarefree_primitive_ZZ",
+  "cases": [
+    {
+      "name": "x_squared_minus_one_small_prime",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "-1"]]},
+        {"type": "Bool", "val": false}
+      ],
+      "expected": {"type": "ArraySPZZ", "val": [
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "-1"]]},
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "1"]]}
+      ]}
+    },
+    {
+      "name": "irreducible_x_squared_plus_one",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "1"]]},
+        {"type": "Bool", "val": false}
+      ],
+      "expected": {"type": "ArraySPZZ", "val": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "1"]]}
+      ]}
+    },
+    {
+      "name": "three_linear_factors",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[3, "1"], [2, "-2"], [1, "-1"], [0, "2"]]},
+        {"type": "Bool", "val": false}
+      ],
+      "expected": {"type": "ArraySPZZ", "val": [
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "-1"]]},
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "-2"]]},
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "1"]]}
+      ]}
+    },
+    {
+      "name": "large_coefficients_require_lifting",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [1, "1"], [0, "-10100"]]},
+        {"type": "Bool", "val": false}
+      ],
+      "expected": {"type": "ArraySPZZ", "val": [
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "-100"]]},
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "101"]]}
+      ]}
+    },
+    {
+      "name": "x_squared_minus_one_large_prime",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "1"], [0, "-1"]]},
+        {"type": "Bool", "val": true}
+      ],
+      "expected": {"type": "ArraySPZZ", "val": [
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "-1"]]},
+        {"type": "SparsePolyZZ", "val": [[1, "1"], [0, "1"]]}
+      ]}
+    }
+  ]
+}

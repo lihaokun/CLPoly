@@ -1,0 +1,45 @@
+{
+  "fn": "__invert_zz",
+  "cases": [
+    {
+      "name": "3_mod_7",
+      "args": [
+        {"type": "ZZ", "val": "3"},
+        {"type": "ZZ", "val": "7"}
+      ],
+      "expected": {"type": "BoolZZ", "val": [true, "5"]}
+    },
+    {
+      "name": "5_mod_13",
+      "args": [
+        {"type": "ZZ", "val": "5"},
+        {"type": "ZZ", "val": "13"}
+      ],
+      "expected": {"type": "BoolZZ", "val": [true, "8"]}
+    },
+    {
+      "name": "2_mod_4_no_inverse",
+      "args": [
+        {"type": "ZZ", "val": "2"},
+        {"type": "ZZ", "val": "4"}
+      ],
+      "expected": {"type": "BoolZZ", "val": [false, "0"]}
+    },
+    {
+      "name": "1_mod_5",
+      "args": [
+        {"type": "ZZ", "val": "1"},
+        {"type": "ZZ", "val": "5"}
+      ],
+      "expected": {"type": "BoolZZ", "val": [true, "1"]}
+    },
+    {
+      "name": "7_mod_13",
+      "args": [
+        {"type": "ZZ", "val": "7"},
+        {"type": "ZZ", "val": "13"}
+      ],
+      "expected": {"type": "BoolZZ", "val": [true, "2"]}
+    }
+  ]
+}

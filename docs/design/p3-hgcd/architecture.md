@@ -394,7 +394,7 @@ W_hgcd = 22 * n + 16 * (ceil_log2(n) + 1)
 `_gcd_hgcd` 循环额外需要：
 
 ```
-A_buf[n]  B_buf[n]  R_buf[n]  Q_buf[n]  scratch[6n]
+A_buf[n]  B_buf[n]  R_buf[n]  Q_buf[n]  scratch[7n]
 ```
 
 约 `10n` 元素。

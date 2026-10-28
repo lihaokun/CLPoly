@@ -1,0 +1,47 @@
+{
+  "fn": "__cont_zz_poly",
+  "cases": [
+    {
+      "name": "cont_2x2_4x_6",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "2"], [1, "4"], [0, "6"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "2"}
+    },
+    {
+      "name": "cont_neg_x_issue17",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-1"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "1"}
+    },
+    {
+      "name": "cont_neg_2x_issue17",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-2"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "2"}
+    },
+    {
+      "name": "cont_const_neg_6_issue17",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[0, "-6"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "6"}
+    },
+    {
+      "name": "cont_neg_2x_plus_2",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[1, "-2"], [0, "2"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "2"}
+    },
+    {
+      "name": "cont_coprime_coefs",
+      "args": [
+        {"type": "SparsePolyZZ", "val": [[2, "6"], [1, "10"], [0, "15"]]}
+      ],
+      "expected": {"type": "ZZ", "val": "1"}
+    }
+  ]
+}

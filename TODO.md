@@ -4,7 +4,24 @@
 
 ### P1: 单变量因式分解优化
 
-#### P1a: van Hoeij LLL 重组（**已完成**）
+#### P1a: van Hoeij LLL 重组（**已完成；2026-10 由 #21 重写**）
+
+**2026-10 重写（PR #21）**：形式化过程中发现，原实现的 CLD 格缺少 p^a 行，LLL 实际上从未分离出因子，需要分组时全部退回 Zassenhaus。现在的实现：
+
+- 格为标准的 `[sI | C; 0 | p^a·I]`，CLD 系数按 FLINT 方式截断（`__vanhoeij_choose_parameters`、`__vanhoeij_truncate_cld`）；
+- 按 Gram-Schmidt 范数保留短向量张成的空间（`__lll_short_span_from_norms`）；
+- 只有整组分组都能整除、且乘积等于 f 才接受（`__vanhoeij_validate_partition`），由此保证输出因子不可约；
+- 证书失败就提高 Hensel 精度重试（`__lll_factorize`），主路径不调用 Zassenhaus。
+
+修复方案：`docs/fixes/vanhoeij-fix-lattice-certificate.md`
+
+| 用例（公开 `factorize`） | r | 重写前 | 重写后 |
+|---|---:|---:|---:|
+| 3 个平移 SD4 的乘积（48 次） | 24 | 1.91 s | 0.40 s |
+| 4 个平移 SD4 的乘积（64 次） | 32 | 30.1 s | 5.84 s |
+| SD6（64 次，不可约） | 32 | > 900 s | 1.16 s |
+
+**最初实现**（以下为 2026-02 的历史记录；M2 的格构造、M5 的主控循环和"关键设计"两条已在 #21 中替换）
 
 **实现结果**（2026-02-22 benchmark）：
 
@@ -37,7 +54,7 @@
 - [x] 线性 Hensel 基础设施：`__hensel_step_linear`、`__hensel_lift_linear_recursive`（保留供未来真正线性交织优化）
 - [x] `__heuristic_starting_precision`：FLINT 启发式精度估算
 
-**结论**：van Hoeij LLL 需在满精度（Mignotte 界）下运行才能高效收敛；低精度 LLL 导致 O(n^4) 规约退化。P1a 的二次 Hensel + van Hoeij LLL 已达到实用性能，P1b 完整实现（精度自适应 + 早期因子检测）可作为后续优化项。
+**结论**（2026-10 更新）：Mignotte 精度本身并不是格分离的界。#21 之后 `__lll_factorize` 从启发式精度开始，证书失败就把精度翻倍重试；目前启发式起始精度几乎总是不够（见 #23）。P1b 完整实现（线性提升 + 早期因子检测）仍可作为后续优化项。
 
 参考：van Hoeij 2002, Belabas 2009, Hart 2011（P1a）；Monagan 2019（P1b）
 
@@ -105,9 +122,14 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 - **Monagan 2019 (ISSAC)**: *"Linear Hensel Lifting for F_p[x,y] and Z[x] with Cubic Cost"* — P1b 核心算法，Bézout 系数固定 mod p，每步代价从 O(n²d) → O(n²)（d = 精度 bit 数）
 - **Monagan & Tuncer 2019 (CASC)**: *"Polynomial Factorization in Maple 2019"* — Maple 2019 的线性 Hensel + van Hoeij LLL 交织架构，早期终止减少提升步数
 
-**当前状态**：P1b 已实现启发式起始精度（`__heuristic_starting_precision`）和 Phase 2 fallback，但完整的线性 Hensel + LLL 交织循环（`__linear_hensel_lift_with_lll`）尚未实现。详细设计见 `docs/design/vanhoeij/detailed-design-p1b.md`。
+**当前状态**：P1b 已实现启发式起始精度（`__heuristic_starting_precision`）；原来的 Phase 2 fallback 已被 #21 的精度重试循环取代。完整的线性 Hensel + LLL 交织循环（`__linear_hensel_lift_with_lll`）尚未实现。详细设计见 `docs/design/vanhoeij/detailed-design-p1b.md`。
 
 - [ ] 实现 P1b 完整线性 Hensel 交织循环（M0–M3，约 247 行，见 linear-hensel-research.md §5）
+
+#### P1e: van Hoeij follow-up（#21 之后）
+
+- [ ] #22 小规模输入（次数 ≤ 16、r 较小）比旧实现慢 1.5–3 倍：考虑 r 小时直接走 Zassenhaus（该路径已有证明）
+- [ ] #23 启发式起始精度总是不够，每次调用多做一次 Hensel 提升：起始精度与 CLD 界对齐，或在已有提升结果上继续提升
 
 ### P2: 多变量因式分解算法选择与稀疏路径
 
@@ -127,6 +149,7 @@ W(20) 等高次多项式中 `hensel_lift` 占 52%。这与 **P1b（线性 Hensel
 
 **算法分流策略**（参考 FLINT/Maple）：稠密 → Wang EEZ，稀疏 → Zippel/MTSHL，回退 → Zassenhaus。
 
+- [ ] #27 三变量多因子随机输入下 Wang 极慢（单个输入 2 分钟到 25 分钟以上，卡在 `__wang_core` 的子集试除）；修复后把 `test_factorize_stress` 加回 CI
 - [ ] 评估 Zippel vs MTSHL 的适用场景
 - [ ] 实现选定的稀疏算法作为 Wang EEZ 的备选路径
 - [ ] 实现密度计算 + 根据密度/变量数自动选择算法路径
@@ -213,7 +236,7 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 **修复**（2026-03-12，形式化证明驱动）：
 - Hensel 提升后首一归一化：消除 lc-baking 不对称性（定理 6.1）
 - Zassenhaus 统一恢复公式：`pp(sym_m(ℓ* · ∏ H_i)) = g_j`（定理 6.2）
-- Phase 2 触发：`result.size() < r && a_h < a_mig`（命题 7.3）
+- Phase 2 触发：`result.size() < r && a_h < a_mig`（命题 7.3；已被 #21 的证书 + 精度重试取代）
 - `__heuristic_starting_precision` 返回 `pair<int,int>` 同时提供 a_h 和 a_mig
 
 **验证**：1410 随机用例 FLINT 交叉对比全部通过，24 个测试文件 + 258 组 crosscheck 通过。
@@ -249,15 +272,15 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 - [ ] （低优先级）实现随机采样 `α ∈ [-B, B]^{n-1}`，`B = max(100, 2*tdeg_sum)`
 - [ ] 设计文档：`docs/design/factorization/fix-oversplit.md` §4
 
-### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（UB）
+### H1: GCDHEU `(uint64_t)(-v)` 有符号溢出（**短期已修复**）
 
 `clpoly/polynomial_gcd.cc:57`：当 `v == INT64_MIN` 时，`-v` 在 `int64_t` 域溢出，是 C++ 未定义行为。
 
-**快速修复**：用 `clpoly_zz_to_mpz` 替代手动 small/large 分支，避免有符号取负。
+**短期修复**（commit `67f653e`）：改用 `static_cast<uint64_t>(-(v + 1)) + 1` 的 safe negation pattern，规避 `-INT64_MIN` 溢出。
 
 **长期方案**：给 ZZ 补上位操作（`mul_2exp`/`tdiv_q_2exp`/`tdiv_r_2exp`），GCDHEU 直接用 ZZ，参考 FLINT fmpz 接口。
 
-- [ ] 快速修复：GCDHEU 系数加法改用 `clpoly_zz_to_mpz`
+- [x] 短期修复：safe negation pattern (commit `67f653e`，含 INT64_MIN 边界回归测试)
 - [ ] 长期：ZZ 补充位操作接口（`mul_2exp`, `tdiv_q_2exp`, `tdiv_r_2exp`）
 
 ## 文档完善
@@ -266,3 +289,100 @@ HGCD 给出常数因子加速（~1.5x），但有效指数 α ≈ 2.0（与 Eucl
 - [ ] 算法文档：补充各模块采用的算法描述和参考文献
 - [ ] 示例代码：在 `examples/` 目录添加典型用例
 - [ ] 性能指南：记录各操作的复杂度和适用场景
+
+## Lean 形式化验证 / B2B 测试
+
+### 单变量因式分解 strict L1 → L2 精化（**已完成，PR #21**）
+
+C++ `__factor_Zp`、`__factor_squarefree_primitive_ZZ` 经 cpp2lean 生成的 strict L1 程序，精化到 `FactorZpCorrect` / `FactorZZCorrect`；van Hoeij 证书 + 精度重试一定成功的证明见 `Refinement/VanHoeijRetryTotal.lean`。入口索引、前提条件和信任边界见 `proof/lean/CLPoly/Refinement/README.md`。
+
+### L1 实现模型 stub（`proof/lean/CLPoly/Model.lean`，通用 Pass 8 corpus 用）
+
+Phase 2A–E 全部完成（当时 `lake build` 3071/3071、0 sorry）：
+
+- [x] **Phase 2A.0** `Nat.log` → `Float.log`（Pass 5 emit 修正，避免 Mathlib 冲突）
+- [x] **Phase 2A.1** `ZZ.fdiv_q/r/ui` 实现 + spec proof
+- [x] **Phase 2A.2** `ZZ.sizeinbase` 实现 + spec proof
+- [x] **Phase 2A.3** `ZZ.invert` 扩展欧几里得 + Bezout proof
+- [x] **Phase 2A.4a** SparsePolyZp 加/减/乘实现 + Mathlib `Polynomial (ZMod p)` bridge 基础
+- [x] **Phase 2A.4b** `Zp.toZMod_add/_neg/_mul` + `toPoly_add/_neg/_sub` + `WellFormed.add/sub/neg` + 加法部分 ring 公理
+- [x] **Phase 2A.5** SparsePolyZp.divmod 长除法（仅 impl）
+- [x] **Phase 2A.6** SparsePolyZp.gcd 欧几里得（仅 impl）
+- [x] **Phase 2A.7** `cont/pp` 实现（仅 impl）
+- [x] **Phase 2A.8** `polynomial_GCD/_eea`/`pair_vec_div(5)`/`polynomial_mod` typeclass dispatch
+- [x] **Phase 2A.9** `ZZ.invert` 签名修复（`class_map` OUTPUT_PARAMS + Pass 2b destructure + corpus 重生）
+- [x] **Phase A.1** `polynomial_GCD_eea`（SparsePolyZp 扩展欧几里得）
+- [x] **Phase A.2** SparsePolyZZ `derivative`/`normalization`/`leadcoeff1`
+- [x] **Phase B** Pass 3 vestigial artifacts 调研 + 清理（`compute_theta`/`upzp_coeff`/`next_p`/`all_div`/`rd`）
+- [x] **Phase C** `MonomialOrder` 结构化（避开 Mathlib `Lex` 冲突）+ MvPoly 算术
+- [x] **Phase D** MvPoly typeclass 实例
+- [x] **Phase E** 多变量高阶函数：`assign` / `assign2` / `leadcoeff` (2-arg) / `squarefreefactorize` (stub) / `poly_convert` / `poly_convert3`
+
+#### Stub 补完中发现的 silent bug（已修复 2026-05-07）
+
+逐项验证"占位"是否真按设计时发现 5 处 silent bug：
+
+| 项 | 旧实现 | 影响 | 修复 |
+|----|--------|------|------|
+| `SparsePolyZZ.normalization` (autoImplicit) | 多态恒等 | corpus 3 处归一化空跑 | 改名 + 删除占位 |
+| `Array.sort` | 恒等返回 | corpus 8 处 std::sort 未排序 | 派发到 `Array.qsort` |
+| `Iterator = Unit` + `find/end` | `() == ()` 恒真 | StdMap accumulation 不触发 | `Iterator := Bool`，find=isSome |
+| `MvMonomial.normalization` | 恒等 | corpus L2060 mono 未规范化 | 派发到 `Monomial.normalize` |
+| `next_prime_64 := p + 1` | 完全错 | select_prime 拿到非素数 | trial-division 实现 |
+| `.mk {α} _ := #[]` 4 处 | 拷贝 ctor 丢结果 | corpus L26 函数返回空多项式 | `HasPolyMk` typeclass 派发 |
+| `ZASSENHAUS_THRESHOLD := 8` | 与 C++ 不一致（实值 10） | 分流决策错 | 改为 10 |
+
+**经验**：每个"占位"宣称都需对照 C++ 行为 + corpus 实际调用方式验证；
+"按设计"不能基于注释信任，必须实测。
+
+#### 已知债务
+
+- [x] ~~**Phase 2A.4c**：SparsePolyZp 乘法的 ring 公理证明 + canonical injection~~ — 2026-05-15 完成
+  - Stage 1: scaleByMonomial 同态 + WellFormed 保持（commit `5da715b`）
+  - Stage 2: toPoly_mul + WellFormed_arr.mul（commit `a445719`）
+  - Stage 3a: 4 个 toPoly-level ring 公理（commit `ac84154`）
+  - Stage 3b core: Canonical + toPoly_inj_canonical（commit `1a983d2`）
+  - Stage 3b 收尾 (2A.4d): mergeAdd_chain + Canonical.add/.mul + 4 个 Array-level ring 公理（commit `0441b66`）
+  - 总 ~1021 行 Lean 0 sorry；fix doc: `docs/fixes/2026-05-15-phase-2a4c-mul-ring-proof.md`
+- [ ] **squarefreefactorize MvPolyZZ** 仍是 `#[(f, 1)]` 占位（**blocked-deferred**）
+  - 当前对 squarefree 输入（最常见情形）结果正确；对有重复因子输入会丢失重数
+  - 实现需要的依赖链：
+    1. `HasPolyGCD MvPolyZZ`（多变量 GCD over Z）—— ~200-400 行（模算法+Hensel 提升 / Zippel / SPMOD）
+    2. `HasPolyDivmod MvPolyZZ`（多变量精确除法）—— ~50-100 行
+    3. Yun's loop 本体 —— ~30 行
+  - 总 ~300-500 行新代码；属于**新 Phase 范畴**，单做 stub 修复反而引入"半成品多变量 GCD" 的隐患
+  - 当 B2B 多变量路径被覆盖到时再回来攻这一组
+
+### B2B 语义测试覆盖（`proof/b2b/`）
+
+框架：C++ driver、Lean driver via interpreter、NDJSON 协议、runner/diff。向量在 `proof/b2b/vectors/`（目前 55 个文件，覆盖到两个因式分解入口；PR #21 报告全量 3107/3107 通过）。
+
+已完成的向量（从底向上）：
+
+- [x] **B2B-Zp**：Zp 算术（add/sub/mul/neg + inv/pow）—— 完成 2026-05-14（Phase A1）
+- [x] **B2B-ZZ**：gcd/lcm/fdiv_q/r/ui/sizeinbase/invert（含 BoolZZ tuple）—— 完成 2026-05-14（Phase A2.1+A2.2+A2.3）
+- [x] **B2B-SparsePolyZp**：add/sub/mul/divmod/gcd/gcd_eea/derivative/normalization —— 完成 2026-05-14（Phase A3，发现 2 Lean stub bug）
+- [x] **B2B-SparsePolyZZ**：cont/pp/derivative/normalization/polynomial_mod —— 完成 2026-05-14（Phase A4，验证 issue #17 修复）
+- [x] **B2B-MvPoly**：assign/assign2/leadcoeff (2-arg)/poly_convert/poly_convert3 —— 完成 2026-05-14（Phase A5）
+- [x] **B2B-Bezout**：`__nat_extgcd`（spec 验证）—— 完成 2026-05-14（Phase A6）
+
+**Phase A 累计**：138 个 B2B 测例（102 PASS + 1 expected smoke + 0 真 fail）。发现 2 个 Lean stub bug（derivative 漏剔零、gcd 漏首一化），已修。**翻译器质量验证**：所有 bug 都在 Model.lean 手写 stub，Corpus.lean 翻译产物 0 bug。
+
+后续 B2B：
+- [x] **B2B-Pipeline（因式分解入口）**：`__factor_Zp`、`__factor_squarefree_primitive_ZZ`（含 van Hoeij 向量）—— 完成（#21）
+- [ ] **B2B-Pipeline（公开主入口）**：`factorize` / `squarefreefactorize`
+- [ ] **B2B 性能基准**：跟踪 B2B 测试运行时间
+
+### cpp2lean 翻译器后续
+
+- [x] 单变量因式分解两个入口的 L1 → L2 精化证明（#21）
+- [ ] 多变量因式分解（Wang / FactorMv）的 L1 精化；`Algorithm/Wang.lean`、`Pipeline/FactorMv.lean`、`Math/MvGCD.lean` 目前不在任何 CI 构建目标里
+- [ ] Pass 视图层进一步扩展（current: Pass 1-7 + 2b ref-elim）
+
+### CI / 文档收尾（#25）
+
+- [x] 公理审计接入 CI（`lean-proofs.yml` 构建三个审计文件，只允许 propext / Classical.choice / Quot.sound）
+- [x] C++ 测试 CI 覆盖 `feature/formal-proofs`，新增 FLINT/NTL 交叉验证 job（stress 测试待 #27 修复后加入）
+- [x] workflow 统一 `shell: bash`（`pipefail`），管道中的失败不再被掩盖
+- [x] `make test/test_crosscheck_flint` 等走带 FLINT/NTL 的规则
+- [ ] devlog 目录统一（`docs/devlog/`、`proof/devlog/`、`proof/docs/devlog/`，其中 54 个同名文件）

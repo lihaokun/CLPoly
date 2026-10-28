@@ -1,5 +1,7 @@
 # 调研报告：van Hoeij LLL 因子重组
 
+> **2026-10-15 更正**：下文 §2.2 的格矩阵、§2.3 的 removal 解释及局部 U 分组推断有误，不能作为实现依据。正确的规范行格是 `[sI | C; 0 | mI]`；安全移除保留全部相关短向量，不能按普通行范数筛选。参见[修正方案](../fixes/vanhoeij-fix-lattice-certificate.md)及[证明草稿](../../proof/nl-proof/vanhoeij-certificate-repair.md)。原文保留用于追溯。
+
 > 调研日期：2026-02-21
 > 目标：替换 `__factor_recombine` 中的 Zassenhaus O(2^r) 子集枚举
 > **一手资料状态**：§2.2–§2.4 已基于 FLINT 源码（`factor_van_hoeij.c`、`CLD_mat.c`）核实并修正；van Hoeij 2002 原文 PDF 未能直接获取，算法逻辑以 FLINT 实现为准。

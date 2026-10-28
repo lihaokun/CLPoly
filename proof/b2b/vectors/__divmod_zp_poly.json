@@ -1,0 +1,27 @@
+{
+  "fn": "__divmod_zp_poly",
+  "cases": [
+    {
+      "name": "x2_minus_1_div_x_minus_1_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["4", "5"]]]},
+        {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["4", "5"]]]}
+      ],
+      "expected": {"type": "PairSPZp", "val": [
+        {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["1", "5"]]]},
+        {"type": "SparsePolyZp", "val": []}
+      ]}
+    },
+    {
+      "name": "with_remainder_F7",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "7"]], [1, ["3", "7"]], [0, ["2", "7"]]]},
+        {"type": "SparsePolyZp", "val": [[1, ["1", "7"]], [0, ["1", "7"]]]}
+      ],
+      "expected": {"type": "PairSPZp", "val": [
+        {"type": "SparsePolyZp", "val": [[1, ["1", "7"]], [0, ["2", "7"]]]},
+        {"type": "SparsePolyZp", "val": []}
+      ]}
+    }
+  ]
+}

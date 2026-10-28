@@ -1,0 +1,123 @@
+{
+  "fn": "__factor_Zp",
+  "cases": [
+    {
+      "name": "irreducible_quadratic_F5_strict_no_retry",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["2", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [[
+            {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["2", "5"]]]},
+            {"type": "UInt64", "val": "1"}
+          ]]
+        ]
+      }
+    },
+    {
+      "name": "edf_splits_x_squared_minus_one_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["4", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["1", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ],
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["4", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "nonmonic_repeated_factor_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[2, ["3", "5"]], [1, ["1", "5"]], [0, ["3", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["3", "5"]},
+          [[
+            {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["1", "5"]]]},
+            {"type": "UInt64", "val": "2"}
+          ]]
+        ]
+      }
+    },
+    {
+      "name": "pth_root_multiplicity_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[5, ["1", "5"]], [0, ["1", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [[
+            {"type": "SparsePolyZp", "val": [[1, ["1", "5"]], [0, ["1", "5"]]]},
+            {"type": "UInt64", "val": "5"}
+          ]]
+        ]
+      }
+    },
+    {
+      "name": "edf_splits_two_quadratics_F5",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[4, ["1", "5"]], [0, ["1", "5"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "5"]},
+          [
+            [
+              {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["2", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ],
+            [
+              {"type": "SparsePolyZp", "val": [[2, ["1", "5"]], [0, ["3", "5"]]]},
+              {"type": "UInt64", "val": "1"}
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "name": "large_prime_x_cubed_minus_x",
+      "args": [
+        {"type": "SparsePolyZp", "val": [[3, ["1", "18446744073709551557"]], [1, ["-1", "18446744073709551557"]]]}
+      ],
+      "expected": {
+        "type": "FactorZpResult",
+        "val": [
+          {"type": "Zp", "val": ["1", "18446744073709551557"]},
+          [
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "18446744073709551557"]], [0, ["1", "18446744073709551557"]]]},
+              {"type": "UInt64", "val": "1"}
+            ],
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "18446744073709551557"]], [0, ["18446744073709551556", "18446744073709551557"]]]},
+              {"type": "UInt64", "val": "1"}
+            ],
+            [
+              {"type": "SparsePolyZp", "val": [[1, ["1", "18446744073709551557"]]]},
+              {"type": "UInt64", "val": "1"}
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -56,8 +56,11 @@ theorem __factor_Zp_raw_ir_refines_FactorZpCorrect
 
 /-- Public contract for the new source-shaped
 C++ `__factor_squarefree_primitive_ZZ` model: strict prime selection followed
-by certified van Hoeij retries and a bounded fallback. The outer control flow
-comes from an explicit template; this wrapper is not an AST-equivalence proof. -/
+by certificate-only van Hoeij retries at increasing Hensel precision, with no
+Zassenhaus fallback. This wrapper states partial correctness (a successful run
+is correct); retry success is proved separately in
+`Refinement.StrictRecombine.concrete_lllFactorize_succeeds`. The outer control
+flow comes from an explicit template; this wrapper is not an AST-equivalence proof. -/
 theorem __factor_squarefree_primitive_ZZ_raw_ir_refines_FactorZZCorrect
     {State : Type} (engine : Generated.StrictEDF.RandomEngine State)
     (provider : StrictSelectPrime.CandidateRuntimeProvider engine)

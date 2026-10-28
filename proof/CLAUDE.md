@@ -4,18 +4,22 @@
 
 CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实现的数学正确性，不是重写算法。
 
-依赖：Mathlib4 (stable)，Lean 4.28.0+
+依赖：Mathlib4 (stable)，Lean 4.29.0（以 `proof/lean/lean-toolchain` 为准）
 
 ## 当前状态与目标
 
-### 已完成（6,276 行 Lean，0 sorry，L2 与 C++ 1:1 一致）
-- L3 数学基石：Phase 1-2 全部完成（有限域性质、不可约刻画、EDF 三分性、半幂根计数）
-- L2 单变量：SQF(Yun), DDF, EDF, Hensel(单步+多步+多因子), Mignotte(L1范数), Hensel 唯一性, 因子恢复, Recombination
-- L2 多变量：Wang/EEZ 全流程（eval → LC 分配 → conservation check → trial division → MTSHL Newton 迭代 → MDP → Vandermonde → 稀疏插值）
-- Pipeline：FactorZp + FactorZZ + FactorMv 框架 + 端到端实例化
-- lake build 3071 jobs 全通过
+### 已完成
+- **L3 数学基石**：有限域性质、不可约刻画、EDF 三分性、半幂根计数、Mignotte 界、van Hoeij 最终分离（`Algorithm/VanHoeijSeparation.lean`）
+- **L2 单变量**：SQF(Yun)、DDF、EDF、Hensel（单步 + 多步 + 多因子）、Hensel 唯一性、因子恢复、Recombination
+- **L2 多变量**：Wang/EEZ 全流程（eval → LC 分配 → conservation check → trial division → MTSHL Newton 迭代 → MDP → Vandermonde → 稀疏插值）
+- **L1 → L2 strict 精化（PR #21）**：C++ `__factor_Zp`、`__factor_squarefree_primitive_ZZ` 经 cpp2lean 生成的 strict L1 程序，精化到 `FactorZpCorrect` / `FactorZZCorrect`。
+  - 公开定理在 `CLPoly/Refinement/Generated.lean`，入口索引、前提条件和信任边界见 [`CLPoly/Refinement/README.md`](lean/CLPoly/Refinement/README.md)。
+  - van Hoeij 证书 + 精度重试一定成功（在精度指数可表示的前提下）：`Refinement.StrictRecombine.concrete_lllFactorize_succeeds`（`Refinement/VanHoeijRetryTotal.lean`）。
+  - 因式分解链路用到的单变量 Zp 稠密运算（加减、乘法、除法、Euclid/HGCD GCD）也有 strict L1 精化：`Generated/Strict*.lean` + `Impl/`。
+- **B2B**：C++/Lean 对拍（`proof/b2b/`），向量覆盖到两个因式分解入口。
+- 具体行数、job 数等数字不再写在这里，以 CI（`.github/workflows/lean-proofs.yml`）和 Refinement README 为准。
 
-### L2 与 C++ 1:1 一致性评估
+### L2 与 C++ 1:1 一致性评估（L2 阶段的历史记录）
 
 #### 完全 1:1 的模块
 | 模块 | 行数 | 说明 |
@@ -41,31 +45,39 @@ CLPoly 因式分解模块的 Lean 4 机器检查证明。验证目标是 C++ 实
 #### 按设计不覆盖
 | 内容 | 理由 |
 |------|------|
-| GCD 算法 | 独立模块，后续处理 |
-| 多项式算术 (*/div) | 独立模块，后续处理 |
-| L1 实现模型 | 大工程，需 uint64/Vec 语义 |
-| 随机性 | Lean/Mathlib 无原生概率论 |
+| 多变量 GCD、通用多项式算术 | 独立模块，后续处理（单变量 Zp 稠密运算已随因式分解链路精化） |
+| 多变量因式分解的 L1 精化 | 目前只有 L2（Wang/EEZ） |
+| 随机性 | Lean/Mathlib 无原生概率论；EDF 以 RNG 引擎/provider 接口建模 |
 
 ### 下一步
 1. **MDP 求解器细化**：补充 sparse_int / multi_bdp / wmds 各自算法模型
-2. **GCD L2 验证**：Euclidean 算法正确性
-3. **L1 实现模型**：1:1 对应 C++ 控制流
+2. **多变量 L1 精化**：Wang / FactorMv。注意 `Algorithm/Wang.lean`、`Pipeline/FactorMv.lean`、`Math/MvGCD.lean` 目前不在任何 CI 构建目标的导入闭包里
+3. **van Hoeij / CI follow-up**：见 issue #22、#23、#25
 
 ## 构建指令
 
 ```bash
 export PATH="$HOME/.elan/bin:$PATH"
 cd proof/lean
-lake build              # 编译全部
+lake build              # 编译默认目标（CLPoly.lean 的导入闭包）
 lake env lean FILE.lean # 单文件检查
+
+# 公理审计：三个审计文件不在默认目标里，构建它们会顺带编译 van Hoeij 完全正确性证明链
+lake build CLPoly.Refinement.FinalAxiomAudit CLPoly.Refinement.VanHoeijRetryAudit CLPoly.Refinement.VanHoeijSeparationAudit
+lake env lean CLPoly/Refinement/FinalAxiomAudit.lean > /tmp/audit.out
+python3 scripts/check_axiom_audit.py CLPoly/Refinement/FinalAxiomAudit.lean /tmp/audit.out   # 只允许 propext / Classical.choice / Quot.sound
 ```
+
+CI（`lean-proofs.yml`）会依次跑默认构建、sorry 检查、上面三个审计文件的公理检查和 B2B 目标构建。
 
 ## 验证架构：三层自顶向下
 
 ```
 L3  数学基石    CLPoly/Math/         Mathlib 定理组合，纯数学定义与性质
 L2  算法模型    CLPoly/Algorithm/    CLPoly 算法逻辑，抽象掉实现细节，证明满足 L3 Spec
-L1  实现模型    CLPoly/Impl/         1:1 对应 C++（uint64 语义、数组越界、move），精化 L2
+L1  实现模型    CLPoly/Generated/Strict*.lean   cpp2lean 生成的 strict L1 程序（1:1 对应 C++ 控制流）
+                CLPoly/Impl/                    C++ 语义原语与底层运算的精化（uint64、数组、HGCD 等）
+    精化证明    CLPoly/Refinement/              L1 → L2；公开定理汇总在 Refinement/Generated.lean
 ```
 
 **工作顺序**：Spec（接口规约）→ Pipeline（顶层骨架）→ Math（L3）→ Algorithm（L2）→ Impl（L1）
@@ -152,8 +164,11 @@ nl-proof 审核必须逐条验证以下 5 项，全部通过才可形式化：
 - `CLPoly/Pipeline/` — 顶层正确性定理
 - `CLPoly/Math/` — L3 纯数学定理
 - `CLPoly/Algorithm/` — L2 算法模型（抽象算法逻辑）
-- `CLPoly/Impl/` — L1 实现模型（1:1 对应 C++）
-- `CLPoly/Experiment/` — Phase 0 实验（保留参考）
+- `CLPoly/Impl/` — L1 语义原语与底层运算精化
+- `CLPoly/Generated/` — cpp2lean 生成的 L1 程序（`Strict*.lean` 为 strict 精化用；`Corpus.lean` 为通用 Pass 8 产物）
+- `CLPoly/Refinement/` — L1 → L2 精化证明、公理审计文件
+- `B2B/` — C++/Lean 对拍的 Lean 驱动
+- `CLPoly/Experiment/` — Phase 0 实验（保留参考，允许 sorry）
 
 ### 命名
 - 规约 Prop：`SquarefreeDecomp`、`DDFCorrect`、`EDFCorrect`
@@ -170,11 +185,19 @@ nl-proof 审核必须逐条验证以下 5 项，全部通过才可形式化：
 | C++ 构造 | L2 算法模型 | L1 实现模型 |
 |---------|-----------|-----------|
 | `for` 循环 | 数学归纳 / 递归 | 顶层递归 + `termination_by`（1:1 控制流） |
-| `while(true)` | 存在性论证 | `partial def` 或 fuel 参数 |
+| `while(true)` | 存在性论证 | 结构递归或良基递归（`termination_by`）；strict 边界禁止 `partial def` 和 fuel |
 | `polynomial_GCD(a, b)` | `GCDMonoid.gcd a b` | 调用 Euclid GCD 的 L1 模型 |
 | `(int64_t)(p - 1)` | `p - 1`（自然数） | `cast_u64_to_i64 (p - 1)`（显式溢出语义） |
 | `vec[i]` | `list.get i` | `Vec.get i (proof : i < size)` |
 | `std::move(v)` | 无对应（纯函数式） | `Ownership.move_from v (proof : ¬moved)` |
+
+## cpp2lean 翻译器原则
+
+翻译器设计详见 `docs/design/l1-translation-validation/blueprint.md` §2a。核心原则：
+
+1. **翻译器不做类型推断——所有类型信息从 Clang AST 传播。** Clang 的 `ImplicitCastExpr` 已经标注了每一个隐式转换（含源类型和目标类型）。翻译器直接使用，不自己猜。违反此原则的代码是 bug。
+2. **翻译规则与 C++ 构造一一对应，不合并不拆分。** 生成的 Lean 可能冗余但忠实。
+3. **未知构造保留为 sorry，不丢弃不猜测。** strict 生成器例外：strict 边界内不允许 sorry、`partial def` 或 fuel（由 `proof/cpp2lean_v2/tests/check_strict_refinement_boundary.py` 检查）。
 
 ## Mathlib API 速查
 

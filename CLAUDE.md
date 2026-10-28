@@ -27,9 +27,13 @@ make                        # 构建全部库 (lib/ 下 debug/release × .a/.so)
 make test/test_name         # 构建单个测试 → _build/debug/bin/test_name
 _build/debug/bin/test_name  # 运行单个测试
 bash test/run_all_tests.sh  # 构建并运行全部测试
+make crosscheck             # 与 FLINT / NTL 交叉验证（需要 libflint-dev、libntl-dev）
+make test/test_factorize_stress && _build/debug/bin/test_factorize_stress  # 因式分解 stress（对比 FLINT）
 make bench-clpoly           # 构建并运行性能基准 (release)
 make clean                  # 清除所有构建产物
 ```
+
+Lean 形式化验证、cpp2lean 翻译器和 C++/Lean 对拍测试（`proof/`）的构建方式与规范见 [`proof/CLAUDE.md`](proof/CLAUDE.md)。
 
 ## 工作态度（重要）
 
@@ -43,14 +47,6 @@ make clean                  # 清除所有构建产物
 - **唯一例外**：当**有两条以上达成同一目标的路径**时，可以提 ROI 作为路径选择依据（不是为了停止工作）
 
 如果某个具体修复确实不可行（如 Lean / Mathlib 缺基础设施），用 §5.1 的修正方案文档明确写"为什么不可行 + 替代方案"，由用户决策——而不是用 ROI 模糊推回。
-
-## cpp2lean 翻译器原则
-
-翻译器设计详见 `docs/design/l1-translation-validation/blueprint.md` §2a。核心原则：
-
-1. **翻译器不做类型推断——所有类型信息从 Clang AST 传播。** Clang 的 `ImplicitCastExpr` 已经标注了每一个隐式转换（含源类型和目标类型）。翻译器直接使用，不自己猜。违反此原则的代码是 bug。
-2. **翻译规则与 C++ 构造一一对应，不合并不拆分。** 生成的 Lean 可能冗余但忠实。
-3. **未知构造保留为 sorry，不丢弃不猜测。**
 
 ## 工作流程
 

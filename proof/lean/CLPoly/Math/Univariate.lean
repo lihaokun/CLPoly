@@ -48,21 +48,22 @@ def Zp.toZMod (p : Nat) (z : Zp) : ZMod p :=
     Zp.toZMod p { val := 0, prime := 1 } = 0 := by
   simp [Zp.toZMod]
 
--- Zp 加法对应 ZMod 加法（前提：a.prime = b.prime = p 且 UInt64 不溢出）
--- 不溢出条件：a.val + b.val 在 UInt64 内不 wrap around
+-- Zp 加法对应 ZMod 加法。实现先在 `Nat` 中求和再模约化，因此只需
+-- 模数为正；无需关于未约化和的 UInt64 人工界限。
 theorem Zp.toZMod_add (p : Nat) (a b : Zp)
     (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
-    (hno : a.val.toNat + b.val.toNat < UInt64.size) :
+    (hp : 0 < p) :
     Zp.toZMod p (a + b) = Zp.toZMod p a + Zp.toZMod p b := by
   -- Add Zp 实例（Nat-based 防大素数溢出）：
   -- (a + b).val = ((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64
   show Zp.toZMod p ⟨((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩ = _
   unfold Zp.toZMod
-  -- 关键 round-trip: (((a+b)%p).toUInt64).toNat = (a+b)%p（因 (a+b)%p ≤ a+b < UInt64.size）
-  have h_mod_le : (a.val.toNat + b.val.toNat) % a.prime.toNat ≤
-                  a.val.toNat + b.val.toNat := Nat.mod_le _ _
+  -- 约化结果小于运行时模数，而运行时模数本身存于 UInt64。
+  have h_mod_prime : (a.val.toNat + b.val.toNat) % a.prime.toNat < p := by
+    rw [ha]
+    exact Nat.mod_lt _ hp
   have h_mod_lt : (a.val.toNat + b.val.toNat) % a.prime.toNat < UInt64.size :=
-    Nat.lt_of_le_of_lt h_mod_le hno
+    lt_trans h_mod_prime (by rw [← ha]; exact UInt64.toNat_lt_size a.prime)
   have step1 : (((a.val.toNat + b.val.toNat) % a.prime.toNat).toUInt64).toNat =
                (a.val.toNat + b.val.toNat) % p := by
     change (OfNat.ofNat _ : UInt64).toNat = _
@@ -153,7 +154,7 @@ def SparsePolyZp.AllReduced (p : Nat) (xs : List (UMonomial × Zp)) : Prop :=
 
 -- 把 AllReduced 假设放进 conclusion，以便 mergeAdd.induct 自动生成的 IH 包含
 theorem listSum_mergeAdd (p : Nat)
-    (h2p : 2 * p ≤ UInt64.size)
+    (hp : 0 < p)
     (xs ys : List (UMonomial × Zp)) :
     SparsePolyZp.AllReduced p xs → SparsePolyZp.AllReduced p ys →
     listSum p (SparsePolyZp.mergeAdd xs ys) = listSum p xs + listSum p ys := by
@@ -198,10 +199,6 @@ theorem listSum_mergeAdd (p : Nat)
       · exact absurd h hnlt
       · exact h
       · exact absurd h hngt
-    have hno : f.snd.val.toNat + g.snd.val.toNat < UInt64.size := by
-      have h1 := hf_red.2
-      have h2 := hg_red.2
-      omega
     -- LHS = listSum p (mergeAdd (f::fs) (g::gs))
     -- 由 case5 hypothesis（s.val = 0）：mergeAdd 落到 mergeAdd fs gs 分支
     have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) = SparsePolyZp.mergeAdd fs gs := by
@@ -214,7 +211,7 @@ theorem listSum_mergeAdd (p : Nat)
     simp only [listSum_cons]
     -- 用 toZMod_add: 由 s.val = 0 推 cf.toZMod + cg.toZMod = 0
     have h_sum_zero : Zp.toZMod p cf + Zp.toZMod p cg = 0 := by
-      rw [← Zp.toZMod_add p cf cg hf_red.1 hg_red.1 hno]
+      rw [← Zp.toZMod_add p cf cg hf_red.1 hg_red.1 hp]
       unfold Zp.toZMod
       rw [show (cf + cg).val = 0 from heq_zero]
       simp
@@ -243,10 +240,6 @@ theorem listSum_mergeAdd (p : Nat)
       · exact absurd h hnlt
       · exact h
       · exact absurd h hngt
-    have hno : f.snd.val.toNat + g.snd.val.toNat < UInt64.size := by
-      have h1 := hf_red.2
-      have h2 := hg_red.2
-      omega
     have h_eq : SparsePolyZp.mergeAdd (f :: fs) (g :: gs) =
         (f.fst, f.snd + g.snd) :: SparsePolyZp.mergeAdd fs gs := by
       conv_lhs => rw [SparsePolyZp.mergeAdd]
@@ -257,7 +250,7 @@ theorem listSum_mergeAdd (p : Nat)
     rcases f with ⟨mf, cf⟩
     rcases g with ⟨mg, cg⟩
     simp only [listSum_cons]
-    rw [Zp.toZMod_add p cf cg hf_red.1 hg_red.1 hno]
+    rw [Zp.toZMod_add p cf cg hf_red.1 hg_red.1 hp]
     rw [Polynomial.monomial_add]
     rw [show mf.deg = mg.deg from hdeg]
     ring
@@ -287,18 +280,19 @@ theorem Zp.toZMod_neg (p : Nat) (a : Zp) (ha : a.prime.toNat = p)
   rw [Nat.cast_sub (by omega : a.val.toNat ≤ p)]
   rw [ZMod.natCast_self, zero_sub]
 
--- Zp 乘法对应 ZMod 乘法（前提：a.prime = b.prime = p，无溢出 p^2 ≤ UInt64.size）
+-- Zp 乘法对应 ZMod 乘法。乘积在 `Nat` 中形成并在转回 UInt64 前约化。
 theorem Zp.toZMod_mul (p : Nat) (a b : Zp)
     (ha : a.prime.toNat = p) (_hb : b.prime.toNat = p)
-    (hno : a.val.toNat * b.val.toNat < UInt64.size) :
+    (hp : 0 < p) :
     Zp.toZMod p (a * b) = Zp.toZMod p a * Zp.toZMod p b := by
   -- Mul Zp 实例（Nat-based）：(a*b).val = ((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64
   show Zp.toZMod p ⟨((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64, a.prime⟩ = _
   unfold Zp.toZMod
-  have h_mod_le : (a.val.toNat * b.val.toNat) % a.prime.toNat ≤
-                  a.val.toNat * b.val.toNat := Nat.mod_le _ _
+  have h_mod_prime : (a.val.toNat * b.val.toNat) % a.prime.toNat < p := by
+    rw [ha]
+    exact Nat.mod_lt _ hp
   have h_mod_lt : (a.val.toNat * b.val.toNat) % a.prime.toNat < UInt64.size :=
-    Nat.lt_of_le_of_lt h_mod_le hno
+    lt_trans h_mod_prime (by rw [← ha]; exact UInt64.toNat_lt_size a.prime)
   have step1 : (((a.val.toNat * b.val.toNat) % a.prime.toNat).toUInt64).toNat =
                (a.val.toNat * b.val.toNat) % p := by
     change (OfNat.ofNat _ : UInt64).toNat = _
@@ -316,7 +310,7 @@ def SparsePolyZp.WellFormed_arr (p : Nat) (f : SparsePolyZp) : Prop :=
   SparsePolyZp.AllReduced p f.toList
 
 -- toPoly_add: 由 listSum_mergeAdd 直接推
-theorem SparsePolyZp.toPoly_add (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.toPoly_add (p : Nat) (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f + g) = SparsePolyZp.toPoly p f + SparsePolyZp.toPoly p g := by
@@ -325,7 +319,7 @@ theorem SparsePolyZp.toPoly_add (p : Nat) (h2p : 2 * p ≤ UInt64.size)
     unfold SparsePolyZp.addImpl
     simp
   rw [h_toList]
-  exact listSum_mergeAdd p h2p f.toList g.toList hf hg
+  exact listSum_mergeAdd p hp f.toList g.toList hf hg
 
 -- listSum_map_neg: 取负在列表上的同态
 theorem listSum_map_neg (p : Nat) (xs : List (UMonomial × Zp))
@@ -378,7 +372,7 @@ theorem SparsePolyZp.WellFormed_arr.neg (p : Nat) (f : SparsePolyZp)
     rw [hp_eq]
     exact Nat.mod_lt _ hp_pos
 
-theorem SparsePolyZp.toPoly_sub (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.toPoly_sub (p : Nat) (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f - g) = SparsePolyZp.toPoly p f - SparsePolyZp.toPoly p g := by
@@ -394,7 +388,7 @@ theorem SparsePolyZp.toPoly_sub (p : Nat) (h2p : 2 * p ≤ UInt64.size)
         SparsePolyZp.mergeAdd f.toList (SparsePolyZp.negImpl g).toList := by
       unfold SparsePolyZp.addImpl; simp
     rw [h_toList]
-    exact listSum_mergeAdd p h2p f.toList (SparsePolyZp.negImpl g).toList hf hg_neg
+    exact listSum_mergeAdd p hp f.toList (SparsePolyZp.negImpl g).toList hf hg_neg
   rw [h1]
   -- listSum p (negImpl g).toList = -listSum p g.toList
   unfold SparsePolyZp.negImpl
@@ -537,15 +531,15 @@ theorem SparsePolyZp.WellFormed_arr.sub (p : Nat) (f g : SparsePolyZp)
 -- ============================================================
 
 -- 加法交换律
-theorem SparsePolyZp.add_comm_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.add_comm_via_toPoly (p : Nat) (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f + g) = SparsePolyZp.toPoly p (g + f) := by
-  rw [SparsePolyZp.toPoly_add p h2p f g hf hg, SparsePolyZp.toPoly_add p h2p g f hg hf]
+  rw [SparsePolyZp.toPoly_add p hp f g hf hg, SparsePolyZp.toPoly_add p hp g f hg hf]
   ring
 
 -- 加法结合律
-theorem SparsePolyZp.add_assoc_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.add_assoc_via_toPoly (p : Nat) (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f)
     (hg : SparsePolyZp.WellFormed_arr p g)
@@ -553,30 +547,30 @@ theorem SparsePolyZp.add_assoc_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size
     SparsePolyZp.toPoly p ((f + g) + h) = SparsePolyZp.toPoly p (f + (g + h)) := by
   have hfg := SparsePolyZp.WellFormed_arr.add p f g hf hg
   have hgh := SparsePolyZp.WellFormed_arr.add p g h hg hh
-  rw [SparsePolyZp.toPoly_add p h2p _ _ hfg hh,
-      SparsePolyZp.toPoly_add p h2p f g hf hg,
-      SparsePolyZp.toPoly_add p h2p f _ hf hgh,
-      SparsePolyZp.toPoly_add p h2p g h hg hh]
+  rw [SparsePolyZp.toPoly_add p hp _ _ hfg hh,
+      SparsePolyZp.toPoly_add p hp f g hf hg,
+      SparsePolyZp.toPoly_add p hp f _ hf hgh,
+      SparsePolyZp.toPoly_add p hp g h hg hh]
   ring
 
 -- 零元（左/右）：toPoly p (0 + f) = toPoly p f, toPoly p (f + 0) = toPoly p f
 -- 注意：0 在 SparsePolyZp 是 #[]（OfNat instance），WellFormed_arr p 0 trivially holds.
-theorem SparsePolyZp.zero_add_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.zero_add_via_toPoly (p : Nat) (hp : 0 < p)
     (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
     SparsePolyZp.toPoly p (0 + f) = SparsePolyZp.toPoly p f := by
   have h0 : SparsePolyZp.WellFormed_arr p (0 : SparsePolyZp) := by
     intro x hx
     simp [show (0 : SparsePolyZp) = #[] from rfl] at hx
-  rw [SparsePolyZp.toPoly_add p h2p _ _ h0 hf]
+  rw [SparsePolyZp.toPoly_add p hp _ _ h0 hf]
   show SparsePolyZp.toPoly p (#[] : SparsePolyZp) + _ = _
   rw [SparsePolyZp.toPoly_empty]
   ring
 
 -- 加法逆元：toPoly p (f - f) = 0
-theorem SparsePolyZp.sub_self_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
+theorem SparsePolyZp.sub_self_via_toPoly (p : Nat) (hp : 0 < p)
     (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
     SparsePolyZp.toPoly p (f - f) = 0 := by
-  rw [SparsePolyZp.toPoly_sub p h2p f f hf hf]
+  rw [SparsePolyZp.toPoly_sub p hp f f hf hf]
   ring
 
 -- ============================================================
@@ -585,7 +579,7 @@ theorem SparsePolyZp.sub_self_via_toPoly (p : Nat) (h2p : 2 * p ≤ UInt64.size)
 
 -- Lemma 1: scaleByMonomial 内层 filterMap 在 list 上对应 polynomial 单项式乘
 -- 每项 (mf, cf) 映射到 monomial(m+mf, c*cf)；零项被 filterMap 丢掉
-theorem listSum_filterMap_scale (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+theorem listSum_filterMap_scale (p : Nat) (hp : 0 < p)
     (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
     (xs : List (UMonomial × Zp)) (hxs : SparsePolyZp.AllReduced p xs) :
     listSum p (xs.filterMap (fun term : UMonomial × Zp =>
@@ -599,16 +593,8 @@ theorem listSum_filterMap_scale (p : Nat) (h_p2 : p * p ≤ UInt64.size)
     rcases x with ⟨mf, cf⟩
     have hcf_red : Zp.Reduced p cf := hxs (mf, cf) List.mem_cons_self
     have hxs' : SparsePolyZp.AllReduced p rest := fun y hy => hxs y (List.mem_cons_of_mem _ hy)
-    -- c.val * cf.val < p * p ≤ UInt64.size，故 Zp.toZMod_mul 前提满足
-    have h_no_overflow : c.val.toNat * cf.val.toNat < UInt64.size := by
-      have h1 : c.val.toNat < p := hc.2
-      have h2 : cf.val.toNat < p := hcf_red.2
-      have hp_pos : 0 < p := Nat.zero_lt_of_lt h1
-      calc c.val.toNat * cf.val.toNat
-          < p * p := Nat.mul_lt_mul_of_lt_of_le h1 (Nat.le_of_lt h2) hp_pos
-        _ ≤ UInt64.size := h_p2
     have h_toZMod_mul : Zp.toZMod p (c * cf) = Zp.toZMod p c * Zp.toZMod p cf :=
-      Zp.toZMod_mul p c cf hc.1 hcf_red.1 h_no_overflow
+      Zp.toZMod_mul p c cf hc.1 hcf_red.1 hp
     -- monomial 乘法等式：monomial(m+mf, toZMod(c*cf)) = monomial m (toZMod c) * monomial mf (toZMod cf)
     have h_mono_eq : Polynomial.monomial (m.deg + mf.deg) (Zp.toZMod p (c * cf))
                     = Polynomial.monomial m.deg (Zp.toZMod p c) *
@@ -634,7 +620,7 @@ theorem listSum_filterMap_scale (p : Nat) (h_p2 : p * p ≤ UInt64.size)
       rw [listSum_cons, mul_add, h_mono_eq]
 
 -- Lemma 2: toPoly_scaleByMonomial — 整 SparsePoly 对应 polynomial 单项式乘
-theorem SparsePolyZp.toPoly_scaleByMonomial (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+theorem SparsePolyZp.toPoly_scaleByMonomial (p : Nat) (hp : 0 < p)
     (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
     (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
     SparsePolyZp.toPoly p (SparsePolyZp.scaleByMonomial m c f)
@@ -657,11 +643,11 @@ theorem SparsePolyZp.toPoly_scaleByMonomial (p : Nat) (h_p2 : p * p ≤ UInt64.s
     -- 现在目标 listSum p (f.toList.filterMap _) = monomial _ _ * toPoly p f
     -- toPoly p f = listSum p f.toList
     show listSum p (f.toList.filterMap _) = _ * listSum p f.toList
-    exact listSum_filterMap_scale p h_p2 m c hc f.toList hf
+    exact listSum_filterMap_scale p hp m c hc f.toList hf
 
 -- Lemma 3: WellFormed_arr 在 scaleByMonomial 下闭合
 theorem SparsePolyZp.WellFormed_arr.scaleByMonomial (p : Nat)
-    (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (m : UMonomial) (c : Zp) (hc : Zp.Reduced p c)
     (f : SparsePolyZp) (hf : SparsePolyZp.WellFormed_arr p f) :
     SparsePolyZp.WellFormed_arr p (SparsePolyZp.scaleByMonomial m c f) := by
@@ -693,17 +679,12 @@ theorem SparsePolyZp.WellFormed_arr.scaleByMonomial (p : Nat)
       · -- (c*cy).val.toNat < p
         -- Mul Zp 实例: (c*cy).val = ((c.val.toNat * cy.val.toNat) % c.prime.toNat).toUInt64
         show (((c.val.toNat * cy.val.toNat) % c.prime.toNat).toUInt64).toNat < p
-        have hp_pos : 0 < p := Nat.zero_lt_of_lt hc.2
-        have h_no : c.val.toNat * cy.val.toNat < UInt64.size := by
-          calc c.val.toNat * cy.val.toNat
-              < p * p := Nat.mul_lt_mul_of_lt_of_le hc.2 (Nat.le_of_lt hcy_red.2) hp_pos
-            _ ≤ UInt64.size := h_p2
         have h_mod_lt_prime : (c.val.toNat * cy.val.toNat) % c.prime.toNat <
                               c.prime.toNat := by
-          apply Nat.mod_lt; rw [hc.1]; exact hp_pos
+          apply Nat.mod_lt; rw [hc.1]; exact hp
         have h_mod_lt_size : (c.val.toNat * cy.val.toNat) % c.prime.toNat <
                              UInt64.size :=
-          Nat.lt_of_le_of_lt (Nat.mod_le _ _) h_no
+          lt_trans h_mod_lt_prime (UInt64.toNat_lt_size c.prime)
         change (OfNat.ofNat _ : UInt64).toNat < p
         rw [UInt64.toNat_ofNat, Nat.mod_eq_of_lt h_mod_lt_size, hc.1]
         rw [hc.1] at h_mod_lt_prime
@@ -717,7 +698,7 @@ theorem SparsePolyZp.WellFormed_arr.scaleByMonomial (p : Nat)
 -- foldl 累积 acc：每步 acc' = acc + scaleByMonomial (mf, cf) g
 -- 不变量：toPoly p (foldl ... acc xs) = toPoly p acc + listSum p xs * toPoly p g
 theorem toPoly_foldl_mulStep (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (g : SparsePolyZp) (hg : SparsePolyZp.WellFormed_arr p g)
     (xs : List (UMonomial × Zp)) :
     ∀ acc : SparsePolyZp,
@@ -737,7 +718,7 @@ theorem toPoly_foldl_mulStep (p : Nat)
       fun y hy => hxs y (List.mem_cons_of_mem _ hy)
     have h_scale_wf : SparsePolyZp.WellFormed_arr p
         (SparsePolyZp.scaleByMonomial mf cf g) :=
-      SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 mf cf hcf_red g hg
+      SparsePolyZp.WellFormed_arr.scaleByMonomial p hp mf cf hcf_red g hg
     have hacc' : SparsePolyZp.WellFormed_arr p
         (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) :=
       SparsePolyZp.WellFormed_arr.add p acc _ hacc h_scale_wf
@@ -747,14 +728,14 @@ theorem toPoly_foldl_mulStep (p : Nat)
     --     = toPoly p acc + listSum ((mf,cf) :: rest) * toPoly g
     show SparsePolyZp.toPoly p (acc + SparsePolyZp.scaleByMonomial mf cf g) +
          listSum p rest * SparsePolyZp.toPoly p g = _
-    rw [SparsePolyZp.toPoly_add p h_2p acc _ hacc h_scale_wf]
-    rw [SparsePolyZp.toPoly_scaleByMonomial p h_p2 mf cf hcf_red g hg]
+    rw [SparsePolyZp.toPoly_add p hp acc _ hacc h_scale_wf]
+    rw [SparsePolyZp.toPoly_scaleByMonomial p hp mf cf hcf_red g hg]
     rw [listSum_cons, add_mul]
     ring
 
 -- Lemma 4 (核心): toPoly_mul — SparsePolyZp 乘法的 polynomial 同态
 theorem SparsePolyZp.toPoly_mul (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f * g) = SparsePolyZp.toPoly p f * SparsePolyZp.toPoly p g := by
@@ -764,7 +745,7 @@ theorem SparsePolyZp.toPoly_mul (p : Nat)
   have h_empty_wf : SparsePolyZp.WellFormed_arr p (#[] : SparsePolyZp) := by
     intro x hx
     simp at hx
-  rw [toPoly_foldl_mulStep p h_2p h_p2 g hg f.toList #[] h_empty_wf hf]
+  rw [toPoly_foldl_mulStep p hp g hg f.toList #[] h_empty_wf hf]
   rw [SparsePolyZp.toPoly_empty p, zero_add]
   -- 目标: listSum p f.toList * toPoly p g = toPoly p f * toPoly p g
   show listSum p f.toList * SparsePolyZp.toPoly p g = SparsePolyZp.toPoly p f * _
@@ -772,7 +753,7 @@ theorem SparsePolyZp.toPoly_mul (p : Nat)
 
 -- Lemma 5: WellFormed_arr 在 * 下闭合
 theorem SparsePolyZp.WellFormed_arr.mul (p : Nat)
-    (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.WellFormed_arr p (f * g) := by
@@ -800,7 +781,7 @@ theorem SparsePolyZp.WellFormed_arr.mul (p : Nat)
       fun y hy => hxs y (List.mem_cons_of_mem _ hy)
     have h_scale_wf : SparsePolyZp.WellFormed_arr p
         (SparsePolyZp.scaleByMonomial mf cf g) :=
-      SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 mf cf hcf_red g hg
+      SparsePolyZp.WellFormed_arr.scaleByMonomial p hp mf cf hcf_red g hg
     have hacc' : SparsePolyZp.WellFormed_arr p
         (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) :=
       SparsePolyZp.WellFormed_arr.add p acc _ hacc h_scale_wf
@@ -815,54 +796,54 @@ theorem SparsePolyZp.WellFormed_arr.mul (p : Nat)
 -- 不是 Array-level 等式。Array-level 等式需 toPoly_inj_canonical（Stage 3b）。
 
 theorem SparsePolyZp.mul_comm_via_toPoly (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g) :
     SparsePolyZp.toPoly p (f * g) = SparsePolyZp.toPoly p (g * f) := by
-  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg]
-  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 g f hg hf]
+  rw [SparsePolyZp.toPoly_mul p hp f g hf hg]
+  rw [SparsePolyZp.toPoly_mul p hp g f hg hf]
   ring
 
 theorem SparsePolyZp.mul_assoc_via_toPoly (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
     (hh : SparsePolyZp.WellFormed_arr p h) :
     SparsePolyZp.toPoly p ((f * g) * h) = SparsePolyZp.toPoly p (f * (g * h)) := by
-  have hfg := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf hg
-  have hgh := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg hh
-  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg hh,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf hgh,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg hh]
+  have hfg := SparsePolyZp.WellFormed_arr.mul p hp f g hf hg
+  have hgh := SparsePolyZp.WellFormed_arr.mul p hp g h hg hh
+  rw [SparsePolyZp.toPoly_mul p hp _ h hfg hh,
+      SparsePolyZp.toPoly_mul p hp f g hf hg,
+      SparsePolyZp.toPoly_mul p hp f _ hf hgh,
+      SparsePolyZp.toPoly_mul p hp g h hg hh]
   ring
 
 theorem SparsePolyZp.left_distrib_via_toPoly (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
     (hh : SparsePolyZp.WellFormed_arr p h) :
     SparsePolyZp.toPoly p (f * (g + h)) =
     SparsePolyZp.toPoly p (f * g) + SparsePolyZp.toPoly p (f * h) := by
   have hgh := SparsePolyZp.WellFormed_arr.add p g h hg hh
-  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf hgh,
-      SparsePolyZp.toPoly_add p h_2p g h hg hh,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf hg,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf hh]
+  rw [SparsePolyZp.toPoly_mul p hp f _ hf hgh,
+      SparsePolyZp.toPoly_add p hp g h hg hh,
+      SparsePolyZp.toPoly_mul p hp f g hf hg,
+      SparsePolyZp.toPoly_mul p hp f h hf hh]
   ring
 
 theorem SparsePolyZp.right_distrib_via_toPoly (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.WellFormed_arr p f) (hg : SparsePolyZp.WellFormed_arr p g)
     (hh : SparsePolyZp.WellFormed_arr p h) :
     SparsePolyZp.toPoly p ((f + g) * h) =
     SparsePolyZp.toPoly p (f * h) + SparsePolyZp.toPoly p (g * h) := by
   have hfg := SparsePolyZp.WellFormed_arr.add p f g hf hg
-  rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg hh,
-      SparsePolyZp.toPoly_add p h_2p f g hf hg,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf hh,
-      SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg hh]
+  rw [SparsePolyZp.toPoly_mul p hp _ h hfg hh,
+      SparsePolyZp.toPoly_add p hp f g hf hg,
+      SparsePolyZp.toPoly_mul p hp f h hf hh,
+      SparsePolyZp.toPoly_mul p hp g h hg hh]
   ring
 
 -- 单位元：toPoly p (1 * f) = toPoly p f
@@ -1419,18 +1400,18 @@ theorem SparsePolyZp.scaleByMonomial_nonzero {p : Nat} (m : UMonomial) (c : Zp)
       exact h_prod_zero
 
 -- Canonical.scaleByMonomial: Canonical 在 scaleByMonomial 下闭合（需 c reduced）
-theorem SparsePolyZp.Canonical.scaleByMonomial (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+theorem SparsePolyZp.Canonical.scaleByMonomial (p : Nat) (hp : 0 < p)
     (m : UMonomial) (c : Zp) (hc_red : Zp.Reduced p c)
     (f : SparsePolyZp) (hf : SparsePolyZp.Canonical p f) :
     SparsePolyZp.Canonical p (SparsePolyZp.scaleByMonomial m c f) := by
   obtain ⟨hf_wf, hf_chain, hf_nz⟩ := hf
   refine ⟨?_, ?_, ?_⟩
-  · exact SparsePolyZp.WellFormed_arr.scaleByMonomial p h_p2 m c hc_red f hf_wf
+  · exact SparsePolyZp.WellFormed_arr.scaleByMonomial p hp m c hc_red f hf_wf
   · exact SparsePolyZp.scaleByMonomial_chain m c f hf_chain
   · exact SparsePolyZp.scaleByMonomial_nonzero (p := p) m c f hc_red hf_nz
 
 -- Canonical.mul: Canonical 在 * 下闭合
-theorem SparsePolyZp.Canonical.mul (p : Nat) (h_p2 : p * p ≤ UInt64.size)
+theorem SparsePolyZp.Canonical.mul (p : Nat) (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g) :
     SparsePolyZp.Canonical p (f * g) := by
@@ -1462,7 +1443,7 @@ theorem SparsePolyZp.Canonical.mul (p : Nat) (h_p2 : p * p ≤ UInt64.size)
       fun y hy => hxs y (List.mem_cons_of_mem _ hy)
     have h_scale_canon : SparsePolyZp.Canonical p
         (SparsePolyZp.scaleByMonomial mf cf g) :=
-      SparsePolyZp.Canonical.scaleByMonomial p h_p2 mf cf hcf_red g hg
+      SparsePolyZp.Canonical.scaleByMonomial p hp mf cf hcf_red g hg
     have hacc' : SparsePolyZp.Canonical p
         (SparsePolyZp.addImpl acc (SparsePolyZp.scaleByMonomial mf cf g)) := by
       show SparsePolyZp.Canonical p
@@ -1477,92 +1458,92 @@ theorem SparsePolyZp.Canonical.mul (p : Nat) (h_p2 : p * p ≤ UInt64.size)
 
 -- mul_comm: f * g = g * f as Arrays (前提：均 Canonical)
 theorem SparsePolyZp.mul_comm_canonical (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g : SparsePolyZp)
     (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g) :
     f * g = g * f := by
   apply SparsePolyZp.toPoly_inj_canonical p
-  · exact SparsePolyZp.Canonical.mul p h_p2 f g hf hg
-  · exact SparsePolyZp.Canonical.mul p h_p2 g f hg hf
+  · exact SparsePolyZp.Canonical.mul p hp f g hf hg
+  · exact SparsePolyZp.Canonical.mul p hp g f hg hf
   · obtain ⟨hf_wf, _, _⟩ := hf
     obtain ⟨hg_wf, _, _⟩ := hg
-    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf]
-    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 g f hg_wf hf_wf]
+    rw [SparsePolyZp.toPoly_mul p hp f g hf_wf hg_wf]
+    rw [SparsePolyZp.toPoly_mul p hp g f hg_wf hf_wf]
     ring
 
 -- mul_assoc
 theorem SparsePolyZp.mul_assoc_canonical (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
     (hh : SparsePolyZp.Canonical p h) :
     (f * g) * h = f * (g * h) := by
   apply SparsePolyZp.toPoly_inj_canonical p
-  · exact SparsePolyZp.Canonical.mul p h_p2 _ _
-      (SparsePolyZp.Canonical.mul p h_p2 f g hf hg) hh
-  · exact SparsePolyZp.Canonical.mul p h_p2 _ _ hf
-      (SparsePolyZp.Canonical.mul p h_p2 g h hg hh)
+  · exact SparsePolyZp.Canonical.mul p hp _ _
+      (SparsePolyZp.Canonical.mul p hp f g hf hg) hh
+  · exact SparsePolyZp.Canonical.mul p hp _ _ hf
+      (SparsePolyZp.Canonical.mul p hp g h hg hh)
   · obtain ⟨hf_wf, _, _⟩ := hf
     obtain ⟨hg_wf, _, _⟩ := hg
     obtain ⟨hh_wf, _, _⟩ := hh
-    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf_wf hg_wf
-    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg_wf hh_wf
-    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg_wf hh_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf_wf hgh_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg_wf hh_wf]
+    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p hp f g hf_wf hg_wf
+    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p hp g h hg_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p hp _ h hfg_wf hh_wf,
+        SparsePolyZp.toPoly_mul p hp f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_mul p hp f _ hf_wf hgh_wf,
+        SparsePolyZp.toPoly_mul p hp g h hg_wf hh_wf]
     ring
 
 -- left_distrib
 theorem SparsePolyZp.left_distrib_canonical (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
     (hh : SparsePolyZp.Canonical p h) :
     f * (g + h) = f * g + f * h := by
   apply SparsePolyZp.toPoly_inj_canonical p
-  · exact SparsePolyZp.Canonical.mul p h_p2 _ _ hf
+  · exact SparsePolyZp.Canonical.mul p hp _ _ hf
       (SparsePolyZp.Canonical.add p g h hg hh)
   · exact SparsePolyZp.Canonical.add p _ _
-      (SparsePolyZp.Canonical.mul p h_p2 f g hf hg)
-      (SparsePolyZp.Canonical.mul p h_p2 f h hf hh)
+      (SparsePolyZp.Canonical.mul p hp f g hf hg)
+      (SparsePolyZp.Canonical.mul p hp f h hf hh)
   · obtain ⟨hf_wf, _, _⟩ := hf
     obtain ⟨hg_wf, _, _⟩ := hg
     obtain ⟨hh_wf, _, _⟩ := hh
     have hgh_wf := SparsePolyZp.WellFormed_arr.add p g h hg_wf hh_wf
-    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f g hf_wf hg_wf
-    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f h hf_wf hh_wf
-    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 f _ hf_wf hgh_wf,
-        SparsePolyZp.toPoly_add p h_2p g h hg_wf hh_wf,
-        SparsePolyZp.toPoly_add p h_2p _ _ hfg_wf hfh_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 f g hf_wf hg_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf_wf hh_wf]
+    have hfg_wf := SparsePolyZp.WellFormed_arr.mul p hp f g hf_wf hg_wf
+    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p hp f h hf_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p hp f _ hf_wf hgh_wf,
+        SparsePolyZp.toPoly_add p hp g h hg_wf hh_wf,
+        SparsePolyZp.toPoly_add p hp _ _ hfg_wf hfh_wf,
+        SparsePolyZp.toPoly_mul p hp f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_mul p hp f h hf_wf hh_wf]
     ring
 
 -- right_distrib
 theorem SparsePolyZp.right_distrib_canonical (p : Nat)
-    (h_2p : 2 * p ≤ UInt64.size) (h_p2 : p * p ≤ UInt64.size)
+    (hp : 0 < p)
     (f g h : SparsePolyZp)
     (hf : SparsePolyZp.Canonical p f) (hg : SparsePolyZp.Canonical p g)
     (hh : SparsePolyZp.Canonical p h) :
     (f + g) * h = f * h + g * h := by
   apply SparsePolyZp.toPoly_inj_canonical p
-  · exact SparsePolyZp.Canonical.mul p h_p2 _ _
+  · exact SparsePolyZp.Canonical.mul p hp _ _
       (SparsePolyZp.Canonical.add p f g hf hg) hh
   · exact SparsePolyZp.Canonical.add p _ _
-      (SparsePolyZp.Canonical.mul p h_p2 f h hf hh)
-      (SparsePolyZp.Canonical.mul p h_p2 g h hg hh)
+      (SparsePolyZp.Canonical.mul p hp f h hf hh)
+      (SparsePolyZp.Canonical.mul p hp g h hg hh)
   · obtain ⟨hf_wf, _, _⟩ := hf
     obtain ⟨hg_wf, _, _⟩ := hg
     obtain ⟨hh_wf, _, _⟩ := hh
     have hfg_wf := SparsePolyZp.WellFormed_arr.add p f g hf_wf hg_wf
-    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 f h hf_wf hh_wf
-    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p h_p2 g h hg_wf hh_wf
-    rw [SparsePolyZp.toPoly_mul p h_2p h_p2 _ h hfg_wf hh_wf,
-        SparsePolyZp.toPoly_add p h_2p f g hf_wf hg_wf,
-        SparsePolyZp.toPoly_add p h_2p _ _ hfh_wf hgh_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 f h hf_wf hh_wf,
-        SparsePolyZp.toPoly_mul p h_2p h_p2 g h hg_wf hh_wf]
+    have hfh_wf := SparsePolyZp.WellFormed_arr.mul p hp f h hf_wf hh_wf
+    have hgh_wf := SparsePolyZp.WellFormed_arr.mul p hp g h hg_wf hh_wf
+    rw [SparsePolyZp.toPoly_mul p hp _ h hfg_wf hh_wf,
+        SparsePolyZp.toPoly_add p hp f g hf_wf hg_wf,
+        SparsePolyZp.toPoly_add p hp _ _ hfh_wf hgh_wf,
+        SparsePolyZp.toPoly_mul p hp f h hf_wf hh_wf,
+        SparsePolyZp.toPoly_mul p hp g h hg_wf hh_wf]
     ring
 
 -- ============================================================
@@ -1585,3 +1566,10 @@ example : Zp.toZMod 7 ⟨3, 7⟩ = (3 : ZMod 7) := by decide
 example : SparsePolyZp.WellFormed 7 #[] := SparsePolyZp.WellFormed.empty 7
 
 end CLPoly.Math
+
+-- ============================================================
+-- §8. SparsePolyZZ.toPoly：SparsePolyZZ → Polynomial ℤ 桥
+-- ============================================================
+
+noncomputable def SparsePolyZZ.toPoly (f : SparsePolyZZ) : Polynomial ℤ :=
+  (f.toList.map (fun (t : UMonomial × Int) => Polynomial.monomial t.1.deg t.2)).sum

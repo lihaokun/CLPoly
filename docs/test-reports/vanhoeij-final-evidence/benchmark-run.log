@@ -1,0 +1,868 @@
+Suspended B2B interpreter 78373
+Running quadratic presafety r=24
+Finished quadratic presafety r=24: passed, 3 validated samples
+Running quadratic presafety r=32
+Finished quadratic presafety r=32: passed, 3 validated samples
+Running quadratic safetynet r=24
+Finished quadratic safetynet r=24: passed, 3 validated samples
+Running quadratic safetynet r=32
+Finished quadratic safetynet r=32: passed, 3 validated samples
+Running quadratic repaired r=24
+Finished quadratic repaired r=24: passed, 3 validated samples
+Running quadratic repaired r=32
+Finished quadratic repaired r=32: passed, 3 validated samples
+Running nonmonic repaired r=24
+Finished nonmonic repaired r=24: passed, 3 validated samples
+Running nonmonic repaired r=32
+Finished nonmonic repaired r=32: passed, 3 validated samples
+Running nonmonic safetynet r=24
+Finished nonmonic safetynet r=24: passed, 3 validated samples
+Running nonmonic safetynet r=32
+Finished nonmonic safetynet r=32: passed, 3 validated samples
+Running nonmonic presafety r=24
+Finished nonmonic presafety r=24: passed, 3 validated samples
+Running nonmonic presafety r=32
+Finished nonmonic presafety r=32: passed, 3 validated samples
+Running hard presafety r=24
+Finished hard presafety r=24: passed, 3 validated samples
+Running hard presafety r=32
+Finished hard presafety r=32: timeout, 0 validated samples
+Running hard safetynet r=24
+Finished hard safetynet r=24: timeout, 2 validated samples
+Running hard safetynet r=32
+Finished hard safetynet r=32: timeout, 0 validated samples
+Running hard repaired r=24
+Finished hard repaired r=24: passed, 3 validated samples
+Running hard repaired r=32
+Finished hard repaired r=32: passed, 3 validated samples
+[
+  {
+    "mode": "quadratic",
+    "version": "presafety",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 1.3107840828597546,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      74.3579,
+      73.5337,
+      72.8557
+    ],
+    "median_ms": 73.5337,
+    "flint_samples_ms": [
+      3.20292,
+      1.11396,
+      1.09729
+    ],
+    "phases": [
+      {
+        "hensel_ns": 3469584,
+        "lll_ns": 66649582,
+        "inner_zass_ns": 606000,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 3369875,
+        "lll_ns": 65970624,
+        "inner_zass_ns": 623000,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 3412167,
+        "lll_ns": 65351376,
+        "inner_zass_ns": 597000,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "version": "presafety",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.7587161660194397,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      232.296,
+      236.458,
+      241.304
+    ],
+    "median_ms": 236.458,
+    "flint_samples_ms": [
+      2.28117,
+      2.30092,
+      2.25079
+    ],
+    "phases": [
+      {
+        "hensel_ns": 6771667,
+        "lll_ns": 216719459,
+        "inner_zass_ns": 995625,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6857416,
+        "lll_ns": 220596958,
+        "inner_zass_ns": 1054501,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6766083,
+        "lll_ns": 225665957,
+        "inner_zass_ns": 1026751,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "version": "safetynet",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 0.6807699170894921,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      76.3151,
+      70.8744,
+      70.8417
+    ],
+    "median_ms": 70.8744,
+    "flint_samples_ms": [
+      1.14971,
+      1.0235,
+      1.02479
+    ],
+    "phases": [
+      {
+        "hensel_ns": 4018000,
+        "lll_ns": 67621708,
+        "inner_zass_ns": 582209,
+        "outer_zass_ns": 321584,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 3311334,
+        "lll_ns": 63320375,
+        "inner_zass_ns": 568334,
+        "outer_zass_ns": 298958,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 3313166,
+        "lll_ns": 63262335,
+        "inner_zass_ns": 573584,
+        "outer_zass_ns": 304583,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "version": "safetynet",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.7301645833067596,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      231.727,
+      230.652,
+      231.366
+    ],
+    "median_ms": 231.366,
+    "flint_samples_ms": [
+      2.31529,
+      2.18779,
+      2.20854
+    ],
+    "phases": [
+      {
+        "hensel_ns": 6774333,
+        "lll_ns": 215713500,
+        "inner_zass_ns": 956833,
+        "outer_zass_ns": 533125,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 6567542,
+        "lll_ns": 215018124,
+        "inner_zass_ns": 960084,
+        "outer_zass_ns": 508042,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 6644459,
+        "lll_ns": 215453124,
+        "inner_zass_ns": 999792,
+        "outer_zass_ns": 555084,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "version": "repaired",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 0.7076902501285076,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      95.2284,
+      78.9829,
+      78.8691
+    ],
+    "median_ms": 78.9829,
+    "flint_samples_ms": [
+      1.16029,
+      1.03442,
+      1.01025
+    ],
+    "phases": [
+      {
+        "hensel_ns": 8747959,
+        "lll_ns": 84584667,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4149209,
+        "lll_ns": 73775458,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4147376,
+        "lll_ns": 73660667,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "quadratic",
+    "version": "repaired",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.640126584097743,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      200.969,
+      202.097,
+      200.093
+    ],
+    "median_ms": 200.969,
+    "flint_samples_ms": [
+      2.36317,
+      2.29392,
+      2.22429
+    ],
+    "phases": [
+      {
+        "hensel_ns": 6600667,
+        "lll_ns": 192220917,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6742249,
+        "lll_ns": 193280542,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6564500,
+        "lll_ns": 191555417,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "repaired",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 0.3127012918703258,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      83.1104,
+      108.497,
+      83.1319
+    ],
+    "median_ms": 83.1319,
+    "flint_samples_ms": [
+      1.2595,
+      1.19267,
+      1.15425
+    ],
+    "phases": [
+      {
+        "hensel_ns": 4302209,
+        "lll_ns": 77644417,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4102208,
+        "lll_ns": 103297708,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4291458,
+        "lll_ns": 77696833,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "repaired",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.6796709997579455,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      194.616,
+      193.617,
+      220.472
+    ],
+    "median_ms": 194.616,
+    "flint_samples_ms": [
+      3.41146,
+      2.86021,
+      2.88258
+    ],
+    "phases": [
+      {
+        "hensel_ns": 6764792,
+        "lll_ns": 185683459,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6547376,
+        "lll_ns": 184939125,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6557250,
+        "lll_ns": 211812041,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 1,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "safetynet",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 0.246993999928236,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      72.0067,
+      79.2844,
+      74.0913
+    ],
+    "median_ms": 74.0913,
+    "flint_samples_ms": [
+      1.22837,
+      1.23158,
+      1.169
+    ],
+    "phases": [
+      {
+        "hensel_ns": 4509708,
+        "lll_ns": 62432958,
+        "inner_zass_ns": 635916,
+        "outer_zass_ns": 347125,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 4404584,
+        "lll_ns": 69601874,
+        "inner_zass_ns": 678417,
+        "outer_zass_ns": 376500,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 4433959,
+        "lll_ns": 64556625,
+        "inner_zass_ns": 660208,
+        "outer_zass_ns": 345000,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "safetynet",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.8383480827324092,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      277.783,
+      244.608,
+      245.821
+    ],
+    "median_ms": 245.821,
+    "flint_samples_ms": [
+      3.02829,
+      2.85808,
+      2.88808
+    ],
+    "phases": [
+      {
+        "hensel_ns": 7570208,
+        "lll_ns": 258876252,
+        "inner_zass_ns": 1122833,
+        "outer_zass_ns": 684500,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 6645916,
+        "lll_ns": 228847083,
+        "inner_zass_ns": 1110667,
+        "outer_zass_ns": 624000,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 6569834,
+        "lll_ns": 229902541,
+        "inner_zass_ns": 1176291,
+        "outer_zass_ns": 693625,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "presafety",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 0.2437900840304792,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      74.226,
+      73.7201,
+      72.5639
+    ],
+    "median_ms": 73.7201,
+    "flint_samples_ms": [
+      1.28125,
+      1.19762,
+      1.18233
+    ],
+    "phases": [
+      {
+        "hensel_ns": 4569458,
+        "lll_ns": 64819583,
+        "inner_zass_ns": 679083,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4440959,
+        "lll_ns": 64524958,
+        "inner_zass_ns": 662376,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4353916,
+        "lll_ns": 63550500,
+        "inner_zass_ns": 656416,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "nonmonic",
+    "version": "presafety",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 0.7962668752297759,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      246.751,
+      246.183,
+      246.095
+    ],
+    "median_ms": 246.183,
+    "flint_samples_ms": [
+      3.007,
+      2.91692,
+      2.87263
+    ],
+    "phases": [
+      {
+        "hensel_ns": 6792083,
+        "lll_ns": 231296208,
+        "inner_zass_ns": 1139833,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6556834,
+        "lll_ns": 231080166,
+        "inner_zass_ns": 1135958,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 6588584,
+        "lll_ns": 230856251,
+        "inner_zass_ns": 1119166,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "hard",
+    "version": "presafety",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 123.28384541673586,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      41980.1,
+      40864.2,
+      40393.6
+    ],
+    "median_ms": 40864.2,
+    "flint_samples_ms": [
+      1.96842,
+      1.85688,
+      1.80987
+    ],
+    "phases": [
+      {
+        "hensel_ns": 4430500,
+        "lll_ns": 99998166,
+        "inner_zass_ns": 41870769501,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4180584,
+        "lll_ns": 99943541,
+        "inner_zass_ns": 40755173792,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 4263418,
+        "lll_ns": 99996208,
+        "inner_zass_ns": 40284545958,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "hard",
+    "version": "presafety",
+    "r": 32,
+    "status": "timeout",
+    "elapsed_seconds": 300.00416225008667,
+    "timeout_seconds": 300.0,
+    "samples_ms": [],
+    "median_ms": null,
+    "flint_samples_ms": [],
+    "phases": []
+  },
+  {
+    "mode": "hard",
+    "version": "safetynet",
+    "r": 24,
+    "status": "timeout",
+    "elapsed_seconds": 300.0100296670571,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      140621.0,
+      81374.4
+    ],
+    "median_ms": null,
+    "flint_samples_ms": [
+      3.47025,
+      2.92517
+    ],
+    "phases": [
+      {
+        "hensel_ns": 8566750,
+        "lll_ns": 220675501,
+        "inner_zass_ns": 86269803291,
+        "outer_zass_ns": 54111696042,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      },
+      {
+        "hensel_ns": 5772125,
+        "lll_ns": 151361709,
+        "inner_zass_ns": 55565917251,
+        "outer_zass_ns": 25644621292,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 2,
+        "outer_zass_calls": 1
+      }
+    ]
+  },
+  {
+    "mode": "hard",
+    "version": "safetynet",
+    "r": 32,
+    "status": "timeout",
+    "elapsed_seconds": 300.02572899963707,
+    "timeout_seconds": 300.0,
+    "samples_ms": [],
+    "median_ms": null,
+    "flint_samples_ms": [],
+    "phases": []
+  },
+  {
+    "mode": "hard",
+    "version": "repaired",
+    "r": 24,
+    "status": "passed",
+    "elapsed_seconds": 13.687108917161822,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      3491.54,
+      3679.39,
+      6331.49
+    ],
+    "median_ms": 3679.39,
+    "flint_samples_ms": [
+      13.0133,
+      4.61967,
+      6.05513
+    ],
+    "phases": [
+      {
+        "hensel_ns": 12173833,
+        "lll_ns": 3473663250,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 13000167,
+        "lll_ns": 3661703709,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 11066082,
+        "lll_ns": 6315639833,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 2,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  },
+  {
+    "mode": "hard",
+    "version": "repaired",
+    "r": 32,
+    "status": "passed",
+    "elapsed_seconds": 152.56964675011113,
+    "timeout_seconds": 300.0,
+    "samples_ms": [
+      67347.1,
+      45454.6,
+      39648.8
+    ],
+    "median_ms": 45454.6,
+    "flint_samples_ms": [
+      25.7968,
+      12.295,
+      6.91371
+    ],
+    "phases": [
+      {
+        "hensel_ns": 22556708,
+        "lll_ns": 67312419958,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 29440292,
+        "lll_ns": 45413232041,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      },
+      {
+        "hensel_ns": 19243083,
+        "lll_ns": 39621083501,
+        "inner_zass_ns": 0,
+        "outer_zass_ns": 0,
+        "hensel_calls": 2,
+        "lll_calls": 4,
+        "inner_zass_calls": 0,
+        "outer_zass_calls": 0
+      }
+    ]
+  }
+]
+Resumed B2B interpreter 78373

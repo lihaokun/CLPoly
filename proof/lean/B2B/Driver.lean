@@ -6,7 +6,7 @@ import B2B.Registry
 open Lean B2B
 
 -- 处理一行请求，返回响应 Json
-def handleRequest (line : String) : Json :=
+unsafe def handleRequest (line : String) : Json :=
   let trimmed := line.trimAscii.toString
   if trimmed.isEmpty then Json.null else
   match Json.parse trimmed with
@@ -28,7 +28,7 @@ def handleRequest (line : String) : Json :=
     | _, .error e =>
       Json.mkObj [("id", Json.str id), ("ok", Json.bool false), ("err", Json.str s!"args: {e}")]
 
-partial def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
+unsafe def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
   let line ← stdin.getLine
   if line.isEmpty then return ()
   let resp := handleRequest line
@@ -38,7 +38,7 @@ partial def loop (stdin : IO.FS.Stream) (stdout : IO.FS.Stream) : IO Unit := do
     stdout.flush
   loop stdin stdout
 
-def main : IO Unit := do
+unsafe def main : IO Unit := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout
   loop stdin stdout

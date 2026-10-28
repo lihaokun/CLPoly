@@ -2,7 +2,7 @@
 // 覆盖：多语句、VarDecl+LetStmt、CallExpr、MemberExpr
 // 源：clpoly/polynomial_factorize_zp.hh:39-46
 
-#include <clpoly/polynomial_factorize.hh>
+#include <clpoly/upolynomial.hh>
 
 namespace clpoly {
     // §4.1.2 多项式取模: f mod g in Zp[x]

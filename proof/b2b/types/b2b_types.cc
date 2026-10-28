@@ -84,6 +84,18 @@ json serialize_BoolZZ(bool ok, const ZZ& z) {
     return {{"type","BoolZZ"}, {"val", json::array({ ok, os.str() })}};
 }
 
+bool parse_Bool(const json& j) {
+    _check_type(j, "Bool");
+    const auto& value = j.at("val");
+    if (!value.is_boolean())
+        throw std::runtime_error("Bool val: expected boolean");
+    return value.get<bool>();
+}
+
+json serialize_Bool(bool value) {
+    return json{{"type", "Bool"}, {"val", value}};
+}
+
 // ---- SparsePolyZp ----
 
 upolynomial_<Zp> parse_SparsePolyZp(const json& j) {
@@ -177,6 +189,43 @@ json serialize_TripleSPZp(const upolynomial_<Zp>& g,
         serialize_SparsePolyZp(s),
         serialize_SparsePolyZp(t)
     })}};
+}
+
+json serialize_FactorZpResult(
+    const std::pair<Zp,
+      std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>& result) {
+    std::vector<json> canonical_factors;
+    for (const auto& item : result.second) {
+        canonical_factors.push_back(json::array({
+            serialize_SparsePolyZp(item.first),
+            serialize_UInt64(item.second)
+        }));
+    }
+    std::sort(canonical_factors.begin(), canonical_factors.end(),
+        [](const json& left, const json& right) {
+            return left.dump() < right.dump();
+        });
+    json factors = json::array();
+    for (auto& factor : canonical_factors)
+        factors.push_back(std::move(factor));
+    return {{"type", "FactorZpResult"}, {"val", json::array({
+        serialize_Zp(result.first), factors
+    })}};
+}
+
+json serialize_ArraySPZZ(const std::vector<upolynomial_<ZZ>>& factors) {
+    std::vector<json> canonical_factors;
+    for (const auto& factor : factors) {
+        canonical_factors.push_back(serialize_SparsePolyZZ(factor));
+    }
+    std::sort(canonical_factors.begin(), canonical_factors.end(),
+        [](const json& left, const json& right) {
+            return left.dump() < right.dump();
+        });
+    json encoded = json::array();
+    for (auto& factor : canonical_factors)
+        encoded.push_back(std::move(factor));
+    return {{"type", "ArraySPZZ"}, {"val", encoded}};
 }
 
 // ---- A5: Variable ----

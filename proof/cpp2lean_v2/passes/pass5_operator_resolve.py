@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ir_types import (
     BaseType, NamedType, UnknownType, TypeIR, PairType, TupleType, RefType,
+    PtrType,
     ArrayType, StdMapType,
     Var, Lit, BinOp, UnaryOp, CondExpr, UnresolvedOp, Call,
     ArrayAccess, FieldAccess, Cast, Capture, LambdaExpr,
@@ -262,12 +263,22 @@ def _resolve_cast(cast: Cast, typectx: dict, gap: GapLog) -> ExprIR:
     new_cast = replace(cast, expr=inner)
     disposition = CAST_KIND_DISPOSITION.get(cast.cast_kind, "unknown")
 
+    if isinstance(cast.source_ty, PtrType) and \
+            isinstance(cast.target_ty, PtrType):
+        if cast.source_ty.elem == cast.target_ty.elem:
+            return replace(inner, ty=cast.target_ty)
+        return Call(callee="RawPtr.reinterpret", args=[inner],
+                    ty=cast.target_ty)
+
     if disposition == "strip":
         return inner
 
     if disposition == "table":
         if is_safe_to_strip_lit_cast(new_cast):
-            return inner
+            # The numeric value is unchanged, but retaining the destination
+            # type is essential for enclosing machine operations such as
+            # `~(uint64_t)0`; otherwise codegen would perform a 32-bit not.
+            return replace(inner, ty=cast.target_ty)
 
         resolution = lookup_cast(cast.source_ty, cast.target_ty)
         if resolution is None:
@@ -354,6 +365,18 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
     """
     args = [_walk_expr(a, typectx, gap) for a in call.args]
 
+    if len(args) == 2:
+        lhs_ty = _strip_ref(_expr_ty(args[0], typectx))
+        rhs_ty = _strip_ref(_expr_ty(args[1], typectx))
+        if isinstance(lhs_ty, PtrType):
+            if op_sym == "+":
+                return Call(callee="RawPtr.add", args=args, ty=lhs_ty)
+            if op_sym in ("==", "!=") and isinstance(rhs_ty, PtrType):
+                same = Call(callee="RawPtr.sameAddress", args=args,
+                            ty=BaseType.BOOL)
+                return same if op_sym == "==" else UnaryOp(
+                    op="!", operand=same, ty=BaseType.BOOL)
+
     # P2-A（轮 2 修复）：识别 STL set::find == set::end 惯用法 →
     # `(c.find? k).isNone` / `.isSome`。形态：
     #   args[0] = Call("Array.find?" / "StdMap.find", [c, k])
@@ -405,6 +428,8 @@ def _resolve_operator_call(call: Call, op_sym: str, typectx: dict, gap: GapLog
         # ArrayAccess for vector/Array
         elem_ty = None
         if isinstance(recv_ty, ArrayType):
+            elem_ty = recv_ty.elem
+        elif isinstance(recv_ty, PtrType):
             elem_ty = recv_ty.elem
         return ArrayAccess(arr=args[0], idx=args[1], ty=elem_ty)
 
@@ -766,6 +791,8 @@ def _typename_to_typeir(name: str) -> TypeIR | None:
         "QQ": NamedType("QQ"),
         "umonomial": NamedType("UMonomial"),
         "UMonomial": NamedType("UMonomial"),
+        "dense_upoly_zp": NamedType("DenseUPolyZp"),
+        "DenseUPolyZp": NamedType("DenseUPolyZp"),
         "Monomial": NamedType("Monomial"),
         "Variable": NamedType("Variable"),
         "variable": NamedType("Variable"),
@@ -859,8 +886,19 @@ def _walk_expr(e: ExprIR, typectx: dict, gap: GapLog) -> ExprIR:
                     args=[_walk_expr(a, typectx, gap) for a in e.args],
                     ty=e.ty)
     if isinstance(e, BinOp):
-        return BinOp(op=e.op, lhs=_walk_expr(e.lhs, typectx, gap),
-                     rhs=_walk_expr(e.rhs, typectx, gap), ty=e.ty)
+        lhs = _walk_expr(e.lhs, typectx, gap)
+        rhs = _walk_expr(e.rhs, typectx, gap)
+        lhs_ty = _strip_ref(_expr_ty(lhs, typectx))
+        rhs_ty = _strip_ref(_expr_ty(rhs, typectx))
+        if isinstance(lhs_ty, PtrType):
+            if e.op == "+":
+                return Call(callee="RawPtr.add", args=[lhs, rhs], ty=lhs_ty)
+            if e.op in ("==", "!=") and isinstance(rhs_ty, PtrType):
+                same = Call(callee="RawPtr.sameAddress", args=[lhs, rhs],
+                            ty=BaseType.BOOL)
+                return same if e.op == "==" else UnaryOp(
+                    op="!", operand=same, ty=BaseType.BOOL)
+        return BinOp(op=e.op, lhs=lhs, rhs=rhs, ty=e.ty)
     if isinstance(e, UnaryOp):
         return UnaryOp(op=e.op, operand=_walk_expr(e.operand, typectx, gap), ty=e.ty)
     if isinstance(e, CondExpr):

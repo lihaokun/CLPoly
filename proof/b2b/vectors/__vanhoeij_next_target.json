@@ -1,0 +1,1789 @@
+{
+  "fn": "__vanhoeij_next_target",
+  "cases": [
+    {
+      "name": "target_1_width_1",
+      "args": [
+        1,
+        1
+      ],
+      "expected": 1
+    },
+    {
+      "name": "target_1_width_2",
+      "args": [
+        1,
+        2
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_3",
+      "args": [
+        1,
+        3
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_4",
+      "args": [
+        1,
+        4
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_5",
+      "args": [
+        1,
+        5
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_7",
+      "args": [
+        1,
+        7
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_8",
+      "args": [
+        1,
+        8
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_15",
+      "args": [
+        1,
+        15
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_16",
+      "args": [
+        1,
+        16
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_24",
+      "args": [
+        1,
+        24
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_32",
+      "args": [
+        1,
+        32
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_63",
+      "args": [
+        1,
+        63
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_64",
+      "args": [
+        1,
+        64
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_97",
+      "args": [
+        1,
+        97
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_255",
+      "args": [
+        1,
+        255
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_256",
+      "args": [
+        1,
+        256
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_1023",
+      "args": [
+        1,
+        1023
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_1024",
+      "args": [
+        1,
+        1024
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_1073741823",
+      "args": [
+        1,
+        1073741823
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_1073741824",
+      "args": [
+        1,
+        1073741824
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_1073741825",
+      "args": [
+        1,
+        1073741825
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_2147483646",
+      "args": [
+        1,
+        2147483646
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_1_width_2147483647",
+      "args": [
+        1,
+        2147483647
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_2_width_2",
+      "args": [
+        2,
+        2
+      ],
+      "expected": 2
+    },
+    {
+      "name": "target_2_width_3",
+      "args": [
+        2,
+        3
+      ],
+      "expected": 3
+    },
+    {
+      "name": "target_2_width_4",
+      "args": [
+        2,
+        4
+      ],
+      "expected": 4
+    },
+    {
+      "name": "target_2_width_5",
+      "args": [
+        2,
+        5
+      ],
+      "expected": 4
+    },
+    {
+      "name": "target_2_width_7",
+      "args": [
+        2,
+        7
+      ],
+      "expected": 4
+    },
+    {
+      "name": "target_3_width_3",
+      "args": [
+        3,
+        3
+      ],
+      "expected": 3
+    },
+    {
+      "name": "target_3_width_4",
+      "args": [
+        3,
+        4
+      ],
+      "expected": 4
+    },
+    {
+      "name": "target_3_width_5",
+      "args": [
+        3,
+        5
+      ],
+      "expected": 5
+    },
+    {
+      "name": "target_3_width_7",
+      "args": [
+        3,
+        7
+      ],
+      "expected": 6
+    },
+    {
+      "name": "target_3_width_8",
+      "args": [
+        3,
+        8
+      ],
+      "expected": 6
+    },
+    {
+      "name": "target_4_width_4",
+      "args": [
+        4,
+        4
+      ],
+      "expected": 4
+    },
+    {
+      "name": "target_4_width_5",
+      "args": [
+        4,
+        5
+      ],
+      "expected": 5
+    },
+    {
+      "name": "target_4_width_7",
+      "args": [
+        4,
+        7
+      ],
+      "expected": 7
+    },
+    {
+      "name": "target_4_width_8",
+      "args": [
+        4,
+        8
+      ],
+      "expected": 8
+    },
+    {
+      "name": "target_5_width_5",
+      "args": [
+        5,
+        5
+      ],
+      "expected": 5
+    },
+    {
+      "name": "target_5_width_8",
+      "args": [
+        5,
+        8
+      ],
+      "expected": 8
+    },
+    {
+      "name": "target_6_width_7",
+      "args": [
+        6,
+        7
+      ],
+      "expected": 7
+    },
+    {
+      "name": "target_6_width_15",
+      "args": [
+        6,
+        15
+      ],
+      "expected": 12
+    },
+    {
+      "name": "target_7_width_7",
+      "args": [
+        7,
+        7
+      ],
+      "expected": 7
+    },
+    {
+      "name": "target_7_width_8",
+      "args": [
+        7,
+        8
+      ],
+      "expected": 8
+    },
+    {
+      "name": "target_7_width_15",
+      "args": [
+        7,
+        15
+      ],
+      "expected": 14
+    },
+    {
+      "name": "target_7_width_16",
+      "args": [
+        7,
+        16
+      ],
+      "expected": 14
+    },
+    {
+      "name": "target_8_width_8",
+      "args": [
+        8,
+        8
+      ],
+      "expected": 8
+    },
+    {
+      "name": "target_8_width_15",
+      "args": [
+        8,
+        15
+      ],
+      "expected": 15
+    },
+    {
+      "name": "target_8_width_16",
+      "args": [
+        8,
+        16
+      ],
+      "expected": 16
+    },
+    {
+      "name": "target_9_width_16",
+      "args": [
+        9,
+        16
+      ],
+      "expected": 16
+    },
+    {
+      "name": "target_11_width_24",
+      "args": [
+        11,
+        24
+      ],
+      "expected": 22
+    },
+    {
+      "name": "target_12_width_24",
+      "args": [
+        12,
+        24
+      ],
+      "expected": 24
+    },
+    {
+      "name": "target_13_width_24",
+      "args": [
+        13,
+        24
+      ],
+      "expected": 24
+    },
+    {
+      "name": "target_14_width_15",
+      "args": [
+        14,
+        15
+      ],
+      "expected": 15
+    },
+    {
+      "name": "target_15_width_15",
+      "args": [
+        15,
+        15
+      ],
+      "expected": 15
+    },
+    {
+      "name": "target_15_width_16",
+      "args": [
+        15,
+        16
+      ],
+      "expected": 16
+    },
+    {
+      "name": "target_15_width_32",
+      "args": [
+        15,
+        32
+      ],
+      "expected": 30
+    },
+    {
+      "name": "target_16_width_16",
+      "args": [
+        16,
+        16
+      ],
+      "expected": 16
+    },
+    {
+      "name": "target_16_width_32",
+      "args": [
+        16,
+        32
+      ],
+      "expected": 32
+    },
+    {
+      "name": "target_17_width_32",
+      "args": [
+        17,
+        32
+      ],
+      "expected": 32
+    },
+    {
+      "name": "target_23_width_24",
+      "args": [
+        23,
+        24
+      ],
+      "expected": 24
+    },
+    {
+      "name": "target_24_width_24",
+      "args": [
+        24,
+        24
+      ],
+      "expected": 24
+    },
+    {
+      "name": "target_30_width_63",
+      "args": [
+        30,
+        63
+      ],
+      "expected": 60
+    },
+    {
+      "name": "target_31_width_32",
+      "args": [
+        31,
+        32
+      ],
+      "expected": 32
+    },
+    {
+      "name": "target_31_width_63",
+      "args": [
+        31,
+        63
+      ],
+      "expected": 62
+    },
+    {
+      "name": "target_31_width_64",
+      "args": [
+        31,
+        64
+      ],
+      "expected": 62
+    },
+    {
+      "name": "target_32_width_32",
+      "args": [
+        32,
+        32
+      ],
+      "expected": 32
+    },
+    {
+      "name": "target_32_width_63",
+      "args": [
+        32,
+        63
+      ],
+      "expected": 63
+    },
+    {
+      "name": "target_32_width_64",
+      "args": [
+        32,
+        64
+      ],
+      "expected": 64
+    },
+    {
+      "name": "target_33_width_64",
+      "args": [
+        33,
+        64
+      ],
+      "expected": 64
+    },
+    {
+      "name": "target_47_width_97",
+      "args": [
+        47,
+        97
+      ],
+      "expected": 94
+    },
+    {
+      "name": "target_48_width_97",
+      "args": [
+        48,
+        97
+      ],
+      "expected": 96
+    },
+    {
+      "name": "target_49_width_97",
+      "args": [
+        49,
+        97
+      ],
+      "expected": 97
+    },
+    {
+      "name": "target_62_width_63",
+      "args": [
+        62,
+        63
+      ],
+      "expected": 63
+    },
+    {
+      "name": "target_63_width_63",
+      "args": [
+        63,
+        63
+      ],
+      "expected": 63
+    },
+    {
+      "name": "target_63_width_64",
+      "args": [
+        63,
+        64
+      ],
+      "expected": 64
+    },
+    {
+      "name": "target_64_width_64",
+      "args": [
+        64,
+        64
+      ],
+      "expected": 64
+    },
+    {
+      "name": "target_96_width_97",
+      "args": [
+        96,
+        97
+      ],
+      "expected": 97
+    },
+    {
+      "name": "target_97_width_97",
+      "args": [
+        97,
+        97
+      ],
+      "expected": 97
+    },
+    {
+      "name": "target_126_width_255",
+      "args": [
+        126,
+        255
+      ],
+      "expected": 252
+    },
+    {
+      "name": "target_127_width_255",
+      "args": [
+        127,
+        255
+      ],
+      "expected": 254
+    },
+    {
+      "name": "target_127_width_256",
+      "args": [
+        127,
+        256
+      ],
+      "expected": 254
+    },
+    {
+      "name": "target_128_width_255",
+      "args": [
+        128,
+        255
+      ],
+      "expected": 255
+    },
+    {
+      "name": "target_128_width_256",
+      "args": [
+        128,
+        256
+      ],
+      "expected": 256
+    },
+    {
+      "name": "target_129_width_256",
+      "args": [
+        129,
+        256
+      ],
+      "expected": 256
+    },
+    {
+      "name": "target_254_width_255",
+      "args": [
+        254,
+        255
+      ],
+      "expected": 255
+    },
+    {
+      "name": "target_255_width_255",
+      "args": [
+        255,
+        255
+      ],
+      "expected": 255
+    },
+    {
+      "name": "target_255_width_256",
+      "args": [
+        255,
+        256
+      ],
+      "expected": 256
+    },
+    {
+      "name": "target_256_width_256",
+      "args": [
+        256,
+        256
+      ],
+      "expected": 256
+    },
+    {
+      "name": "target_510_width_1023",
+      "args": [
+        510,
+        1023
+      ],
+      "expected": 1020
+    },
+    {
+      "name": "target_511_width_1023",
+      "args": [
+        511,
+        1023
+      ],
+      "expected": 1022
+    },
+    {
+      "name": "target_511_width_1024",
+      "args": [
+        511,
+        1024
+      ],
+      "expected": 1022
+    },
+    {
+      "name": "target_512_width_1023",
+      "args": [
+        512,
+        1023
+      ],
+      "expected": 1023
+    },
+    {
+      "name": "target_512_width_1024",
+      "args": [
+        512,
+        1024
+      ],
+      "expected": 1024
+    },
+    {
+      "name": "target_513_width_1024",
+      "args": [
+        513,
+        1024
+      ],
+      "expected": 1024
+    },
+    {
+      "name": "target_1022_width_1023",
+      "args": [
+        1022,
+        1023
+      ],
+      "expected": 1023
+    },
+    {
+      "name": "target_1023_width_1023",
+      "args": [
+        1023,
+        1023
+      ],
+      "expected": 1023
+    },
+    {
+      "name": "target_1023_width_1024",
+      "args": [
+        1023,
+        1024
+      ],
+      "expected": 1024
+    },
+    {
+      "name": "target_1024_width_1024",
+      "args": [
+        1024,
+        1024
+      ],
+      "expected": 1024
+    },
+    {
+      "name": "target_2255053_width_3345010",
+      "args": [
+        2255053,
+        3345010
+      ],
+      "expected": 3345010
+    },
+    {
+      "name": "target_4413421_width_69274997",
+      "args": [
+        4413421,
+        69274997
+      ],
+      "expected": 8826842
+    },
+    {
+      "name": "target_6858199_width_357896361",
+      "args": [
+        6858199,
+        357896361
+      ],
+      "expected": 13716398
+    },
+    {
+      "name": "target_9906148_width_23961295",
+      "args": [
+        9906148,
+        23961295
+      ],
+      "expected": 19812296
+    },
+    {
+      "name": "target_11245977_width_1032896791",
+      "args": [
+        11245977,
+        1032896791
+      ],
+      "expected": 22491954
+    },
+    {
+      "name": "target_11564753_width_73567646",
+      "args": [
+        11564753,
+        73567646
+      ],
+      "expected": 23129506
+    },
+    {
+      "name": "target_12594936_width_378288741",
+      "args": [
+        12594936,
+        378288741
+      ],
+      "expected": 25189872
+    },
+    {
+      "name": "target_19726154_width_1016559906",
+      "args": [
+        19726154,
+        1016559906
+      ],
+      "expected": 39452308
+    },
+    {
+      "name": "target_21039759_width_442812570",
+      "args": [
+        21039759,
+        442812570
+      ],
+      "expected": 42079518
+    },
+    {
+      "name": "target_23798991_width_28216602",
+      "args": [
+        23798991,
+        28216602
+      ],
+      "expected": 28216602
+    },
+    {
+      "name": "target_32720473_width_108309359",
+      "args": [
+        32720473,
+        108309359
+      ],
+      "expected": 65440946
+    },
+    {
+      "name": "target_40939128_width_64162544",
+      "args": [
+        40939128,
+        64162544
+      ],
+      "expected": 64162544
+    },
+    {
+      "name": "target_45801660_width_1590354614",
+      "args": [
+        45801660,
+        1590354614
+      ],
+      "expected": 91603320
+    },
+    {
+      "name": "target_51148731_width_148857481",
+      "args": [
+        51148731,
+        148857481
+      ],
+      "expected": 102297462
+    },
+    {
+      "name": "target_61732275_width_1065905492",
+      "args": [
+        61732275,
+        1065905492
+      ],
+      "expected": 123464550
+    },
+    {
+      "name": "target_71746287_width_582352991",
+      "args": [
+        71746287,
+        582352991
+      ],
+      "expected": 143492574
+    },
+    {
+      "name": "target_76250973_width_307475738",
+      "args": [
+        76250973,
+        307475738
+      ],
+      "expected": 152501946
+    },
+    {
+      "name": "target_79827211_width_1145703268",
+      "args": [
+        79827211,
+        1145703268
+      ],
+      "expected": 159654422
+    },
+    {
+      "name": "target_81917413_width_209901464",
+      "args": [
+        81917413,
+        209901464
+      ],
+      "expected": 163834826
+    },
+    {
+      "name": "target_86550338_width_1760850142",
+      "args": [
+        86550338,
+        1760850142
+      ],
+      "expected": 173100676
+    },
+    {
+      "name": "target_88366772_width_131846202",
+      "args": [
+        88366772,
+        131846202
+      ],
+      "expected": 131846202
+    },
+    {
+      "name": "target_92288463_width_97629235",
+      "args": [
+        92288463,
+        97629235
+      ],
+      "expected": 97629235
+    },
+    {
+      "name": "target_102183124_width_1400354453",
+      "args": [
+        102183124,
+        1400354453
+      ],
+      "expected": 204366248
+    },
+    {
+      "name": "target_107760069_width_242158925",
+      "args": [
+        107760069,
+        242158925
+      ],
+      "expected": 215520138
+    },
+    {
+      "name": "target_124729385_width_1474532074",
+      "args": [
+        124729385,
+        1474532074
+      ],
+      "expected": 249458770
+    },
+    {
+      "name": "target_124998696_width_701217164",
+      "args": [
+        124998696,
+        701217164
+      ],
+      "expected": 249997392
+    },
+    {
+      "name": "target_131088268_width_289322342",
+      "args": [
+        131088268,
+        289322342
+      ],
+      "expected": 262176536
+    },
+    {
+      "name": "target_143463443_width_815535546",
+      "args": [
+        143463443,
+        815535546
+      ],
+      "expected": 286926886
+    },
+    {
+      "name": "target_151081218_width_253002456",
+      "args": [
+        151081218,
+        253002456
+      ],
+      "expected": 253002456
+    },
+    {
+      "name": "target_158040104_width_318572651",
+      "args": [
+        158040104,
+        318572651
+      ],
+      "expected": 316080208
+    },
+    {
+      "name": "target_164601848_width_1943219064",
+      "args": [
+        164601848,
+        1943219064
+      ],
+      "expected": 329203696
+    },
+    {
+      "name": "target_176016510_width_1880418735",
+      "args": [
+        176016510,
+        1880418735
+      ],
+      "expected": 352033020
+    },
+    {
+      "name": "target_193656976_width_245555393",
+      "args": [
+        193656976,
+        245555393
+      ],
+      "expected": 245555393
+    },
+    {
+      "name": "target_200932473_width_1237915372",
+      "args": [
+        200932473,
+        1237915372
+      ],
+      "expected": 401864946
+    },
+    {
+      "name": "target_236364250_width_426142796",
+      "args": [
+        236364250,
+        426142796
+      ],
+      "expected": 426142796
+    },
+    {
+      "name": "target_238910017_width_1194949718",
+      "args": [
+        238910017,
+        1194949718
+      ],
+      "expected": 477820034
+    },
+    {
+      "name": "target_262743391_width_573012176",
+      "args": [
+        262743391,
+        573012176
+      ],
+      "expected": 525486782
+    },
+    {
+      "name": "target_265282533_width_636910824",
+      "args": [
+        265282533,
+        636910824
+      ],
+      "expected": 530565066
+    },
+    {
+      "name": "target_267321907_width_1295319861",
+      "args": [
+        267321907,
+        1295319861
+      ],
+      "expected": 534643814
+    },
+    {
+      "name": "target_281949108_width_416822120",
+      "args": [
+        281949108,
+        416822120
+      ],
+      "expected": 416822120
+    },
+    {
+      "name": "target_286129549_width_1771965585",
+      "args": [
+        286129549,
+        1771965585
+      ],
+      "expected": 572259098
+    },
+    {
+      "name": "target_302736817_width_390654697",
+      "args": [
+        302736817,
+        390654697
+      ],
+      "expected": 390654697
+    },
+    {
+      "name": "target_341089454_width_1315469315",
+      "args": [
+        341089454,
+        1315469315
+      ],
+      "expected": 682178908
+    },
+    {
+      "name": "target_379871315_width_1073973528",
+      "args": [
+        379871315,
+        1073973528
+      ],
+      "expected": 759742630
+    },
+    {
+      "name": "target_386482235_width_1184929021",
+      "args": [
+        386482235,
+        1184929021
+      ],
+      "expected": 772964470
+    },
+    {
+      "name": "target_396531154_width_1205616440",
+      "args": [
+        396531154,
+        1205616440
+      ],
+      "expected": 793062308
+    },
+    {
+      "name": "target_400142489_width_638217794",
+      "args": [
+        400142489,
+        638217794
+      ],
+      "expected": 638217794
+    },
+    {
+      "name": "target_400179374_width_1236316597",
+      "args": [
+        400179374,
+        1236316597
+      ],
+      "expected": 800358748
+    },
+    {
+      "name": "target_411109259_width_2005191546",
+      "args": [
+        411109259,
+        2005191546
+      ],
+      "expected": 822218518
+    },
+    {
+      "name": "target_419667456_width_579898459",
+      "args": [
+        419667456,
+        579898459
+      ],
+      "expected": 579898459
+    },
+    {
+      "name": "target_437898584_width_1199002431",
+      "args": [
+        437898584,
+        1199002431
+      ],
+      "expected": 875797168
+    },
+    {
+      "name": "target_453644889_width_1963535913",
+      "args": [
+        453644889,
+        1963535913
+      ],
+      "expected": 907289778
+    },
+    {
+      "name": "target_456560580_width_944018680",
+      "args": [
+        456560580,
+        944018680
+      ],
+      "expected": 913121160
+    },
+    {
+      "name": "target_499949212_width_1783769601",
+      "args": [
+        499949212,
+        1783769601
+      ],
+      "expected": 999898424
+    },
+    {
+      "name": "target_502863128_width_2123493340",
+      "args": [
+        502863128,
+        2123493340
+      ],
+      "expected": 1005726256
+    },
+    {
+      "name": "target_510918234_width_1997456025",
+      "args": [
+        510918234,
+        1997456025
+      ],
+      "expected": 1021836468
+    },
+    {
+      "name": "target_514899799_width_1829474410",
+      "args": [
+        514899799,
+        1829474410
+      ],
+      "expected": 1029799598
+    },
+    {
+      "name": "target_531976517_width_1528534391",
+      "args": [
+        531976517,
+        1528534391
+      ],
+      "expected": 1063953034
+    },
+    {
+      "name": "target_536870910_width_1073741823",
+      "args": [
+        536870910,
+        1073741823
+      ],
+      "expected": 1073741820
+    },
+    {
+      "name": "target_536870911_width_1073741823",
+      "args": [
+        536870911,
+        1073741823
+      ],
+      "expected": 1073741822
+    },
+    {
+      "name": "target_536870911_width_1073741824",
+      "args": [
+        536870911,
+        1073741824
+      ],
+      "expected": 1073741822
+    },
+    {
+      "name": "target_536870911_width_1073741825",
+      "args": [
+        536870911,
+        1073741825
+      ],
+      "expected": 1073741822
+    },
+    {
+      "name": "target_536870912_width_1073741823",
+      "args": [
+        536870912,
+        1073741823
+      ],
+      "expected": 1073741823
+    },
+    {
+      "name": "target_536870912_width_1073741824",
+      "args": [
+        536870912,
+        1073741824
+      ],
+      "expected": 1073741824
+    },
+    {
+      "name": "target_536870912_width_1073741825",
+      "args": [
+        536870912,
+        1073741825
+      ],
+      "expected": 1073741824
+    },
+    {
+      "name": "target_536870913_width_1073741824",
+      "args": [
+        536870913,
+        1073741824
+      ],
+      "expected": 1073741824
+    },
+    {
+      "name": "target_536870913_width_1073741825",
+      "args": [
+        536870913,
+        1073741825
+      ],
+      "expected": 1073741825
+    },
+    {
+      "name": "target_546316023_width_2095993951",
+      "args": [
+        546316023,
+        2095993951
+      ],
+      "expected": 1092632046
+    },
+    {
+      "name": "target_552044473_width_827732395",
+      "args": [
+        552044473,
+        827732395
+      ],
+      "expected": 827732395
+    },
+    {
+      "name": "target_584469835_width_1250258853",
+      "args": [
+        584469835,
+        1250258853
+      ],
+      "expected": 1168939670
+    },
+    {
+      "name": "target_647730496_width_1250216924",
+      "args": [
+        647730496,
+        1250216924
+      ],
+      "expected": 1250216924
+    },
+    {
+      "name": "target_657619645_width_887193801",
+      "args": [
+        657619645,
+        887193801
+      ],
+      "expected": 887193801
+    },
+    {
+      "name": "target_670201883_width_1570781483",
+      "args": [
+        670201883,
+        1570781483
+      ],
+      "expected": 1340403766
+    },
+    {
+      "name": "target_673485257_width_1017609437",
+      "args": [
+        673485257,
+        1017609437
+      ],
+      "expected": 1017609437
+    },
+    {
+      "name": "target_693724032_width_1299531770",
+      "args": [
+        693724032,
+        1299531770
+      ],
+      "expected": 1299531770
+    },
+    {
+      "name": "target_719186885_width_719737532",
+      "args": [
+        719186885,
+        719737532
+      ],
+      "expected": 719737532
+    },
+    {
+      "name": "target_727350631_width_754384088",
+      "args": [
+        727350631,
+        754384088
+      ],
+      "expected": 754384088
+    },
+    {
+      "name": "target_740496331_width_1744622981",
+      "args": [
+        740496331,
+        1744622981
+      ],
+      "expected": 1480992662
+    },
+    {
+      "name": "target_756714950_width_2122144264",
+      "args": [
+        756714950,
+        2122144264
+      ],
+      "expected": 1513429900
+    },
+    {
+      "name": "target_758811696_width_1907593451",
+      "args": [
+        758811696,
+        1907593451
+      ],
+      "expected": 1517623392
+    },
+    {
+      "name": "target_778270189_width_1000498489",
+      "args": [
+        778270189,
+        1000498489
+      ],
+      "expected": 1000498489
+    },
+    {
+      "name": "target_792925560_width_1359672999",
+      "args": [
+        792925560,
+        1359672999
+      ],
+      "expected": 1359672999
+    },
+    {
+      "name": "target_843090655_width_1229327782",
+      "args": [
+        843090655,
+        1229327782
+      ],
+      "expected": 1229327782
+    },
+    {
+      "name": "target_845090745_width_1879463164",
+      "args": [
+        845090745,
+        1879463164
+      ],
+      "expected": 1690181490
+    },
+    {
+      "name": "target_847077172_width_1093394458",
+      "args": [
+        847077172,
+        1093394458
+      ],
+      "expected": 1093394458
+    },
+    {
+      "name": "target_847697343_width_1995560948",
+      "args": [
+        847697343,
+        1995560948
+      ],
+      "expected": 1695394686
+    },
+    {
+      "name": "target_849854611_width_1906304596",
+      "args": [
+        849854611,
+        1906304596
+      ],
+      "expected": 1699709222
+    },
+    {
+      "name": "target_899348465_width_1929740662",
+      "args": [
+        899348465,
+        1929740662
+      ],
+      "expected": 1798696930
+    },
+    {
+      "name": "target_906035094_width_1663235113",
+      "args": [
+        906035094,
+        1663235113
+      ],
+      "expected": 1663235113
+    },
+    {
+      "name": "target_907368443_width_1777654359",
+      "args": [
+        907368443,
+        1777654359
+      ],
+      "expected": 1777654359
+    },
+    {
+      "name": "target_946931964_width_2056023648",
+      "args": [
+        946931964,
+        2056023648
+      ],
+      "expected": 1893863928
+    },
+    {
+      "name": "target_951020889_width_1495312811",
+      "args": [
+        951020889,
+        1495312811
+      ],
+      "expected": 1495312811
+    },
+    {
+      "name": "target_957316950_width_1417726658",
+      "args": [
+        957316950,
+        1417726658
+      ],
+      "expected": 1417726658
+    },
+    {
+      "name": "target_976268299_width_1503539172",
+      "args": [
+        976268299,
+        1503539172
+      ],
+      "expected": 1503539172
+    },
+    {
+      "name": "target_983529168_width_1006395953",
+      "args": [
+        983529168,
+        1006395953
+      ],
+      "expected": 1006395953
+    },
+    {
+      "name": "target_1008388478_width_1217760484",
+      "args": [
+        1008388478,
+        1217760484
+      ],
+      "expected": 1217760484
+    },
+    {
+      "name": "target_1020303664_width_1724008642",
+      "args": [
+        1020303664,
+        1724008642
+      ],
+      "expected": 1724008642
+    },
+    {
+      "name": "target_1068716686_width_1695892309",
+      "args": [
+        1068716686,
+        1695892309
+      ],
+      "expected": 1695892309
+    },
+    {
+      "name": "target_1073741822_width_1073741823",
+      "args": [
+        1073741822,
+        1073741823
+      ],
+      "expected": 1073741823
+    },
+    {
+      "name": "target_1073741822_width_2147483646",
+      "args": [
+        1073741822,
+        2147483646
+      ],
+      "expected": 2147483644
+    },
+    {
+      "name": "target_1073741822_width_2147483647",
+      "args": [
+        1073741822,
+        2147483647
+      ],
+      "expected": 2147483644
+    },
+    {
+      "name": "target_1073741823_width_1073741823",
+      "args": [
+        1073741823,
+        1073741823
+      ],
+      "expected": 1073741823
+    },
+    {
+      "name": "target_1073741823_width_1073741824",
+      "args": [
+        1073741823,
+        1073741824
+      ],
+      "expected": 1073741824
+    },
+    {
+      "name": "target_1073741823_width_2147483646",
+      "args": [
+        1073741823,
+        2147483646
+      ],
+      "expected": 2147483646
+    },
+    {
+      "name": "target_1073741823_width_2147483647",
+      "args": [
+        1073741823,
+        2147483647
+      ],
+      "expected": 2147483646
+    },
+    {
+      "name": "target_1073741824_width_1073741824",
+      "args": [
+        1073741824,
+        1073741824
+      ],
+      "expected": 1073741824
+    },
+    {
+      "name": "target_1073741824_width_1073741825",
+      "args": [
+        1073741824,
+        1073741825
+      ],
+      "expected": 1073741825
+    },
+    {
+      "name": "target_1073741824_width_2147483646",
+      "args": [
+        1073741824,
+        2147483646
+      ],
+      "expected": 2147483646
+    },
+    {
+      "name": "target_1073741824_width_2147483647",
+      "args": [
+        1073741824,
+        2147483647
+      ],
+      "expected": 2147483647
+    },
+    {
+      "name": "target_1073741825_width_1073741825",
+      "args": [
+        1073741825,
+        1073741825
+      ],
+      "expected": 1073741825
+    },
+    {
+      "name": "target_1267682995_width_1441285754",
+      "args": [
+        1267682995,
+        1441285754
+      ],
+      "expected": 1441285754
+    },
+    {
+      "name": "target_1310171744_width_1387202122",
+      "args": [
+        1310171744,
+        1387202122
+      ],
+      "expected": 1387202122
+    },
+    {
+      "name": "target_1395665404_width_1806946000",
+      "args": [
+        1395665404,
+        1806946000
+      ],
+      "expected": 1806946000
+    },
+    {
+      "name": "target_1422251138_width_1962140746",
+      "args": [
+        1422251138,
+        1962140746
+      ],
+      "expected": 1962140746
+    },
+    {
+      "name": "target_1537277166_width_1992250723",
+      "args": [
+        1537277166,
+        1992250723
+      ],
+      "expected": 1992250723
+    },
+    {
+      "name": "target_1545579104_width_2039985158",
+      "args": [
+        1545579104,
+        2039985158
+      ],
+      "expected": 2039985158
+    },
+    {
+      "name": "target_1584357406_width_1605546153",
+      "args": [
+        1584357406,
+        1605546153
+      ],
+      "expected": 1605546153
+    },
+    {
+      "name": "target_1647608236_width_2107304495",
+      "args": [
+        1647608236,
+        2107304495
+      ],
+      "expected": 2107304495
+    },
+    {
+      "name": "target_1721121644_width_1749603640",
+      "args": [
+        1721121644,
+        1749603640
+      ],
+      "expected": 1749603640
+    },
+    {
+      "name": "target_1744826038_width_2132755474",
+      "args": [
+        1744826038,
+        2132755474
+      ],
+      "expected": 2132755474
+    },
+    {
+      "name": "target_2017558116_width_2141903698",
+      "args": [
+        2017558116,
+        2141903698
+      ],
+      "expected": 2141903698
+    },
+    {
+      "name": "target_2147483645_width_2147483646",
+      "args": [
+        2147483645,
+        2147483646
+      ],
+      "expected": 2147483646
+    },
+    {
+      "name": "target_2147483646_width_2147483646",
+      "args": [
+        2147483646,
+        2147483646
+      ],
+      "expected": 2147483646
+    },
+    {
+      "name": "target_2147483646_width_2147483647",
+      "args": [
+        2147483646,
+        2147483647
+      ],
+      "expected": 2147483647
+    },
+    {
+      "name": "target_2147483647_width_2147483647",
+      "args": [
+        2147483647,
+        2147483647
+      ],
+      "expected": 2147483647
+    }
+  ]
+}

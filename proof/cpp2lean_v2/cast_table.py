@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ir_types import BaseType, NamedType, UnknownType, TypeIR
+from ir_types import BaseType, NamedType, PtrType, UnknownType, TypeIR
 
 
 # ============================================================
@@ -71,6 +71,8 @@ def canonicalize_type(ty: TypeIR | None) -> str:
         if ty.name in ("ValueType", "DependentType", "ResultType", "StlInternal"):
             return "unresolved"
         return f"named:{ty.name}"
+    if isinstance(ty, PtrType):
+        return f"ptr:{canonicalize_type(ty.elem)}"
     if isinstance(ty, UnknownType):
         # Pass 1 对 `std::size_t` / `std::size_type` 有时保留为 UnknownType（
         # typedef 未穿透）。CLPoly 里它们一律是 unsigned 容器索引，规范化为 'nat'。
@@ -110,6 +112,7 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     ("uint32", "uint64"):  CastResolution("({x}).toUInt64", None),           # 2 次
     ("int32",  "nat"):     CastResolution("({x}).toNatClampNeg", "nonneg"),  # Lean 4: Int32 没 .toNat
     ("int32",  "uint64"):  CastResolution("({x}).toInt64.toUInt64", "nonneg"),
+    ("int32",  "uint32"):  CastResolution("({x}).toUInt32", None),
     # int → size_t 走和 int → nat 相同路径（CLPoly Pass 1 size_t 常是 NAT；
     # UnknownType("std::size_t") 出现 4 次 — fallback 到 int32→nat 含义）
 
@@ -129,6 +132,12 @@ CAST_TABLE: dict[tuple[str, str], CastResolution] = {
     # ====================================================================
     ("int32",  "float64"): CastResolution("Int.toFloat ({x})", None),
     ("uint64", "float64"): CastResolution("Nat.toFloat (UInt64.toNat {x})", None),
+    # `assert(bool_expr)` on libc headers materializes this integral cast in
+    # Clang's expanded AST.  Preserve the C++ 0/1 conversion exactly.
+    ("bool", "int64"): CastResolution(
+        "(if {x} then (1 : Int64) else (0 : Int64))", None),
+    ("uint64", "uint128"): CastResolution("uint128_of_uint64 {x}", None),
+    ("uint128", "uint64"): CastResolution("uint128_lo {x}", None),
 
     # ====================================================================
     # FloatingToIntegral（1 处实测）

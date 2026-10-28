@@ -197,7 +197,7 @@ _poly_divrem(uint64_t* Q, uint64_t* R,
 // C 预分配 2*len_a - 1 元素（Karatsuba 零填充后写满 2n-1，
 //   其中 C[len_a+len_b-1 .. 2*len_a-2] 数学上为零但会被写入）
 // schoolbook 分支只写 len_a + len_b - 1 元素
-// scratch 预分配 7*len_a（b_pad[len_a] + kar_scratch[6*len_a]）
+// scratch 预分配 8*len_a（b_pad[len_a] + kar_scratch[7*len_a]）
 // 前置：len_a >= len_b > 0
 void _mul(uint64_t* C,
           const uint64_t* A, size_t len_a,
@@ -228,7 +228,7 @@ void _mul(uint64_t* C,
 
 **空间需求**：
 - **C 空间**：`2*len_a - 1` 元素（Karatsuba 分支）。schoolbook 分支只需 `len_a + len_b - 1`，但统一按 `2*len_a - 1` 分配以避免分支判断。
-- **scratch**：`7*len_a`（`b_pad[len_a]` + `kar_scratch[6*len_a]`）。schoolbook 分支不使用 scratch。
+- **scratch**：`8*len_a`（`b_pad[len_a]` + `kar_scratch[7*len_a]`）。schoolbook 分支不使用 scratch。
 
 **安全性**：HGCD 中所有 `_mul` 调用点的 C 空间均已验证足够（详见正确性验证记录）——`_mat_row_update` 的 *pT 为 n 大小，`_mat_mul_entry` 的 C 为父层 half ≈ 2*子层 half。
 
@@ -1037,12 +1037,12 @@ void _gcd_hgcd(uint64_t* G, size_t& len_G,
     // 工作区分配
     // GCD 外层：J[n] + R[n] + Q[n] + W3_gcd[3n]
     // HGCD 递归：28*n + 16*(ceil_log2(n)+1)（含每层 word3 空间）
-    // scratch: 7*n（_mul 所需）
+    // scratch: 8*n（_mul 所需）
     size_t log2n = 0;
     { size_t tmp = n; while (tmp > 1) { tmp = (tmp + 1) / 2; ++log2n; } }
 
     size_t hgcd_ws = 28 * n + 16 * (log2n + 1);
-    size_t scratch_size = 7 * n + 1;
+    size_t scratch_size = 8 * n + 1;
     size_t half = (n + 1) / 2;
     size_t mat_size = 4 * half;  // M_dummy 的 4 个行向量，compute_M=false 不写入
     size_t total = 6 * n + hgcd_ws + scratch_size + mat_size;
@@ -1179,7 +1179,7 @@ W_hgcd = sum_{i=0}^{log n} (9*(n/2^i) + 10*(n/2^i + 1)/2)
 | GCD 外层：J, R, Q | 3n | 临时多项式 |
 | GCD 外层：W3_gcd | 3n | GCD 外层 divrem 的 word3 空间 |
 | HGCD 递归工作区 W | 28n + 16*log2(n) | 逐层切片（含 word3） |
-| _mul scratch | 7n | Karatsuba 零填充 + scratch |
+| _mul scratch | 8n | Karatsuba 零填充 + scratch |
 | 矩阵 M_dummy | 4 * (n+1)/2 | GCD 不需要矩阵但参数要有效 |
 | **总计** | ~43n | 对 n=10000 约 3.4MB |
 
@@ -1199,7 +1199,7 @@ W_hgcd = sum_{i=0}^{log n} (9*(n/2^i) + 10*(n/2^i + 1)/2)
 | pt (矩阵临时) | T1 | half |
 | Q (商) | q | half |
 | R.poly[0..3] | R.poly[0..3] | 各 half |
-| scratch | 外部传入 | 7n |
+| scratch | 外部传入 | 8n |
 
 迭代结束后 `pA` 和 `pB` 可能已被 swap 到 `a3`/`b3`/`T0` 中的任意位置。如果 `pA != a3`，需要拷贝回 `a3`（重构步需要 `a3` 在固定位置）。
 

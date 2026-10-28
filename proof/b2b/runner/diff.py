@@ -44,6 +44,15 @@ def diff_one(cpp_resp: dict, lean_resp: dict, expected: dict | None = None
     lean_ok = lean_resp.get("ok", False)
 
     if not cpp_ok and not lean_ok:
+        if expected is not None and "error_contains" in expected:
+            needle = expected["error_contains"]
+            cpp_err = str(cpp_resp.get("err", ""))
+            lean_err = str(lean_resp.get("err", ""))
+            if needle in cpp_err and needle in lean_err:
+                return ("PASS", "")
+            return ("FAIL_EXPECTED",
+                    f"expected both errors to contain {needle!r}; "
+                    f"cpp_err={cpp_err}; lean_err={lean_err}")
         return ("FAIL_BOTH",
                 f"cpp_err={cpp_resp.get('err')}; lean_err={lean_resp.get('err')}")
     if not cpp_ok:

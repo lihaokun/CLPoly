@@ -9,6 +9,7 @@ import CLPoly.Model
 import Mathlib.Tactic.Ring
 import Mathlib.Tactic.Linarith
 import Mathlib.Tactic.Push
+import Mathlib.Data.ZMod.Basic
 
 namespace CLPoly.Math
 
@@ -57,6 +58,39 @@ theorem Nat.extGcd_bezout (a b : Nat) :
               ring
         _ = (b : Int) * x' + r * y' := by rw [hr_eq]
         _ = (g : Int) := ih'
+
+/-- A successful call to the concrete GMP-style `ZZ.invert` implementation
+returns an actual multiplicative inverse in `ZMod m`.  This unfolds the
+generated runtime implementation and derives the result from
+`Nat.extGcd_bezout`; success is not treated as an abstract assumption. -/
+theorem ZZ.invert_success_mul_eq_one (a : Int) (m : Nat)
+    (hsuccess : (ZZ.invert 0 a (m : Int)).1 = true) :
+    (a : ZMod m) * ((ZZ.invert 0 a (m : Int)).2 : ZMod m) = 1 := by
+  simp only [ZZ.invert, ZZ.invertImpl] at hsuccess ⊢
+  by_cases hm : m ≤ 1
+  · simp [hm] at hsuccess
+  · simp [hm] at hsuccess ⊢
+    let am : Int := a % (m : Int)
+    by_cases ham : am = 0
+    · simp [am, ham] at hsuccess
+    · simp [am, ham] at hsuccess ⊢
+      rcases hext : Nat.extGcd am.natAbs m with ⟨d, x, y⟩
+      have hextA : Nat.extGcd (a % (m : Int)).natAbs m = (d, x, y) := by
+        simpa [am] using hext
+      by_cases hd : d = 1
+      · simp [hd]
+        have hbez := Nat.extGcd_bezout am.natAbs m
+        simp only [hext] at hbez
+        have hmInt : (m : Int) ≠ 0 := by omega
+        have hamNonneg : 0 ≤ am := by
+          dsimp [am]
+          exact Int.emod_nonneg a hmInt
+        have hnatAbs : (am.natAbs : Int) = am :=
+          Int.natAbs_of_nonneg hamNonneg
+        have hbezCast := congrArg (fun z : Int => (z : ZMod m)) hbez
+        simp [hnatAbs, hd] at hbezCast
+        simpa [am] using hbezCast
+      · simp [hextA, hd] at hsuccess
 
 -- ============================================================
 -- 数值验证（使用 Bezout 测试已实现的 extGcd）

@@ -1,0 +1,1656 @@
+-- Auto-generated strict raw C++ control flow for recombination helpers in
+-- `__vanhoeij_recombine`.
+import CLPoly.Model
+import CLPoly.Generated.StrictHensel
+
+set_option autoImplicit false
+
+namespace Generated.StrictRecombine
+
+abbrev LLLMatrix := Array (Array ZZ)
+abbrev QQMatrix := Array (Array QQ)
+
+/-- Source `vector<ZZ>(columns, 0)` constructor. -/
+def zeroMatrixRowLoop (columns index : Nat) (row : Array ZZ) : Array ZZ :=
+  if hindex : index < columns then
+    zeroMatrixRowLoop columns (index + 1) (row.push 0)
+  else row
+termination_by columns - index
+decreasing_by omega
+
+def zeroMatrixRow (columns : Nat) : Array ZZ :=
+  zeroMatrixRowLoop columns 0 #[]
+
+/-- Source `LLLMatrix(rows, vector<ZZ>(columns, 0))` constructor. -/
+def zeroMatrixLoop (rows columns index : Nat) (matrix : LLLMatrix) :
+    LLLMatrix :=
+  if hindex : index < rows then
+    zeroMatrixLoop rows columns (index + 1)
+      (matrix.push (zeroMatrixRow columns))
+  else matrix
+termination_by rows - index
+decreasing_by omega
+
+def zeroMatrix (rows columns : Nat) : LLLMatrix :=
+  zeroMatrixLoop rows columns 0 #[]
+
+def zeroQQRowLoop (columns index : Nat) (row : Array QQ) : Array QQ :=
+  if hindex : index < columns then
+    zeroQQRowLoop columns (index + 1) (row.push 0)
+  else row
+termination_by columns - index
+decreasing_by omega
+
+def zeroQQRow (columns : Nat) : Array QQ :=
+  zeroQQRowLoop columns 0 #[]
+
+def zeroQQMatrixLoop (rows columns index : Nat) (matrix : QQMatrix) :
+    QQMatrix :=
+  if hindex : index < rows then
+    zeroQQMatrixLoop rows columns (index + 1)
+      (matrix.push (zeroQQRow columns))
+  else matrix
+termination_by rows - index
+decreasing_by omega
+
+def zeroQQMatrix (rows columns : Nat) : QQMatrix :=
+  zeroQQMatrixLoop rows columns 0 #[]
+
+/-- Exact diagonal assignment loop in C++ `make_initial_M`. -/
+def setInitialDiagonalLoop (scale : ZZ) (size index : Nat)
+    (matrix : LLLMatrix) : RawExec LLLMatrix :=
+  if hindex : index < size then
+    if hrow : index < matrix.size then
+      if hcolumn : index < matrix[index].size then
+        setInitialDiagonalLoop scale size (index + 1)
+          (matrix.set index (matrix[index].set index scale))
+      else .error (.outOfBounds index matrix[index].size)
+    else .error (.outOfBounds index matrix.size)
+  else .ok matrix
+termination_by size - index
+decreasing_by omega
+
+/-- Source `make_initial_M(rr, U_exp_)`, with the shift already evaluated by
+the caller as `scale`. -/
+def makeInitialMatrix (size : Nat) (scale : ZZ) : RawExec LLLMatrix :=
+  setInitialDiagonalLoop scale size 0 (zeroMatrix size size)
+
+/-- Exact lowering of the range-for that maps active indices back to the
+original Hensel-lifted factor array.  Invalid source indices are observable
+raw faults instead of `get!` defaults. -/
+def gatherActiveLoop (active : Array Int32) (lifted : Array SparsePolyZZ)
+    (index : Nat) (result : Array SparsePolyZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  if hindex : index < active.size then
+    let sourceIndex := active[index]
+    if hnonnegative : 0 ≤ sourceIndex then
+      let sourceNat := sourceIndex.toInt64.toNat
+      if hsource : sourceNat < lifted.size then
+        gatherActiveLoop active lifted (index + 1)
+          (result.push lifted[sourceNat])
+      else .error (.outOfBounds sourceNat lifted.size)
+    else .error .arithmeticDomain
+  else .ok result
+termination_by active.size - index
+decreasing_by omega
+
+def gatherActive (active : Array Int32) (lifted : Array SparsePolyZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  gatherActiveLoop active lifted 0 #[]
+
+/-- Exact lowering of the fallback range-for that moves every Zassenhaus
+factor into the already accumulated van-Hoeij result. -/
+def appendFallbackLoop (fallback : Array SparsePolyZZ) (index : Nat)
+    (result : Array SparsePolyZZ) : RawExec (Array SparsePolyZZ) :=
+  if hindex : index < fallback.size then
+    appendFallbackLoop fallback (index + 1) (result.push fallback[index])
+  else .ok result
+termination_by fallback.size - index
+decreasing_by omega
+
+def appendFallback (fallback result : Array SparsePolyZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  appendFallbackLoop fallback 0 result
+
+/-- Reverse source loop removing every active entry marked consumed.  The
+reverse direction is semantically relevant: erasing a larger index preserves
+all still-to-be-tested smaller indices. -/
+def removeConsumedLoop (consumed : Array Bool) :
+    (remaining : Nat) → Array Int32 → RawExec (Array Int32)
+  | 0, active => .ok active
+  | remaining + 1, active =>
+      let index := remaining
+      if hconsumed : index < consumed.size then
+        if consumed[index] then
+          if hactive : index < active.size then
+            removeConsumedLoop consumed remaining
+              (active.eraseIdxIfInBounds index)
+          else .error (.outOfBounds index active.size)
+        else removeConsumedLoop consumed remaining active
+      else .error (.outOfBounds index consumed.size)
+termination_by remaining _ => remaining
+
+def removeConsumed (active : Array Int32) (consumed : Array Bool) :
+    RawExec (Array Int32) :=
+  if _hsizes : consumed.size = active.size then
+    removeConsumedLoop consumed active.size active
+  else .error .assertionFailure
+
+inductive PrecisionAction where
+  | retry (target : Nat)
+  | fallback
+deriving DecidableEq
+
+/-- Exact no-factor branch of the source precision schedule. -/
+def nextPrecision (target initial maximum : Nat) : PrecisionAction :=
+  let next := if target = 0 then initial else target * 2
+  if maximum < next then .fallback else .retry next
+
+/-- Number of remaining strict target increases before fallback.  It is
+termination evidence derived from the bounded precision state, not an
+execution counter passed to the source loop. -/
+def precisionRank (target _initial maximum : Nat) : Nat :=
+  if target = 0 then maximum + 2
+  else maximum + 1 - target
+
+theorem nextPrecision_retry_decreases (target initial maximum next : Nat)
+    (hinitial : 0 < initial)
+    (haction : nextPrecision target initial maximum = .retry next) :
+    precisionRank next initial maximum < precisionRank target initial maximum := by
+  unfold nextPrecision at haction
+  split at haction <;> rename_i htarget
+  · dsimp at haction
+    split at haction
+    next hover => contradiction
+    next hfits =>
+      cases PrecisionAction.retry.inj haction
+      simp [precisionRank, htarget, Nat.ne_of_gt hinitial]
+      omega
+  · dsimp at haction
+    split at haction
+    next hover => contradiction
+    next hfits =>
+      cases PrecisionAction.retry.inj haction
+      simp [precisionRank, htarget]
+      omega
+
+/-- Mutable source variables of `__vanhoeij_recombine`, including the lattice
+that C++ retains across unsuccessful precision rounds. -/
+structure VanHoeijState where
+  active : Array Int32
+  fStar : SparsePolyZZ
+  result : Array SparsePolyZZ
+  matrix : LLLMatrix
+  currentColumns : Nat
+  shortBound : ZZ
+  target : Nat
+
+/-- The source `iota` constructing the first lexicographic subset
+`[0, ..., count - 1]`. -/
+def initialCombinationLoop (count index : Nat) (result : Array Nat) :
+    Array Nat :=
+  if hindex : index < count then
+    initialCombinationLoop count (index + 1) (result.push index)
+  else result
+termination_by count - index
+decreasing_by omega
+
+def initialCombination (count : Nat) : Array Nat :=
+  initialCombinationLoop count 0 #[]
+
+/-- Exact right-to-left search in C++ `next_combination`.  `inspected`
+counts positions already rejected at the right edge, avoiding signed-loop
+indices while preserving the source comparisons. -/
+def nextCombinationPivot (indices : Array Nat) (upper inspected : Nat) :
+    Option Nat :=
+  if hinspected : inspected < indices.size then
+    let position := indices.size - 1 - inspected
+    if indices[position] = upper - indices.size + position then
+      nextCombinationPivot indices upper (inspected + 1)
+    else some position
+  else none
+termination_by indices.size - inspected
+decreasing_by omega
+
+/-- Source suffix reset `idx[j] = idx[j-1] + 1` after incrementing the
+pivot. -/
+def resetCombinationSuffix (indices : Array Nat) (pivot offset : Nat) :
+    Array Nat :=
+  let position := pivot + 1 + offset
+  if hposition : position < indices.size then
+    resetCombinationSuffix
+      (indices.set position (indices[pivot + offset]'(by omega) + 1))
+      pivot (offset + 1)
+  else indices
+termination_by indices.size - (pivot + 1 + offset)
+decreasing_by simp only [Array.size_set]; omega
+
+/-- Fuel-free lowering of the complete C++ `next_combination` lambda. -/
+def nextCombination (indices : Array Nat) (upper : Nat) : Bool × Array Nat :=
+  if hfits : indices.size ≤ upper then
+    match hpivot : nextCombinationPivot indices upper 0 with
+    | none => (false, indices)
+    | some pivot =>
+        if hpivotBounds : pivot < indices.size then
+          let incremented := indices.set pivot (indices[pivot] + 1)
+          (true, resetCombinationSuffix incremented pivot 0)
+        else (false, indices)
+  else (false, indices)
+
+/-- Exact C++ `__upoly_const_term`: canonical sparse inputs store a constant
+term at the back when one exists. -/
+def constantTerm (input : SparsePolyZZ) : ZZ :=
+  if hempty : input.isEmpty then 0
+  else
+    let term := input[input.size - 1]'(by
+      have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+      omega)
+    if term.1.deg = 0 then term.2 else 0
+
+/-- Leading-coefficient pruning product over one active-relative subset. -/
+def selectedLeadingProductLoop (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) (acc : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hactive : activeIndex < activeLifted.size then
+      let factor := activeLifted[activeIndex]
+      if hempty : factor.isEmpty then .error .assertionFailure
+      else
+        selectedLeadingProductLoop candidate activeLifted (index + 1)
+          (acc * (factor[0]'(by
+            have : factor.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+            omega)).2)
+    else .error (.outOfBounds activeIndex activeLifted.size)
+  else .ok acc
+termination_by candidate.size - index
+decreasing_by omega
+
+/-- Constant-coefficient pruning product over the same concrete subset. -/
+def selectedConstantProductLoop (candidate : Array Nat)
+    (activeLifted : Array SparsePolyZZ) (index : Nat) (acc : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hactive : activeIndex < activeLifted.size then
+      selectedConstantProductLoop candidate activeLifted (index + 1)
+        (acc * constantTerm activeLifted[activeIndex])
+    else .error (.outOfBounds activeIndex activeLifted.size)
+  else .ok acc
+termination_by candidate.size - index
+decreasing_by omega
+
+/-- Check one candidate's active-relative indices exactly as the source inner
+loop does before constructing its trial product. -/
+def candidateAvailableLoop (candidate : Array Int32) (consumed : Array Bool)
+    (index : Nat) : RawExec Bool :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < consumed.size then
+        if consumed[activeNat] then .ok false
+        else candidateAvailableLoop candidate consumed (index + 1)
+      else .error (.outOfBounds activeNat consumed.size)
+    else .error .arithmeticDomain
+  else .ok true
+termination_by candidate.size - index
+decreasing_by omega
+
+def candidateAvailable (candidate : Array Int32) (consumed : Array Bool) :
+    RawExec Bool := candidateAvailableLoop candidate consumed 0
+
+/-- Concrete mutation performed after a successful trial division. -/
+def markConsumedLoop (candidate : Array Int32) (index : Nat)
+    (consumed : Array Bool) : RawExec (Array Bool) :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < consumed.size then
+        markConsumedLoop candidate (index + 1) (consumed.set activeNat true)
+      else .error (.outOfBounds activeNat consumed.size)
+    else .error .arithmeticDomain
+  else .ok consumed
+termination_by candidate.size - index
+decreasing_by omega
+
+/-- Inner source multiplication loop for one left sparse term. -/
+def multiplyRowLoop (left : UMonomial × Int) (right : SparsePolyZZ)
+    (rightIndex : Nat) (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hright : rightIndex < right.size then
+    let rightTerm := right[rightIndex]
+    multiplyRowLoop left right (rightIndex + 1)
+      (terms.push (⟨left.1.deg + rightTerm.1.deg⟩,
+        left.2 * rightTerm.2))
+  else terms
+termination_by right.size - rightIndex
+decreasing_by omega
+
+/-- Exact double range-for producing every monomial product before the C++
+normalization pass merges equal degrees. -/
+def multiplyTermsLoop (left right : SparsePolyZZ) (leftIndex : Nat)
+    (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hleft : leftIndex < left.size then
+    multiplyTermsLoop left right (leftIndex + 1)
+      (multiplyRowLoop left[leftIndex] right 0 terms)
+  else terms
+termination_by left.size - leftIndex
+decreasing_by omega
+
+def multiplyNormalizeRaw (left right : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (SparsePolyZZ.normalization (multiplyTermsLoop left right 0 #[]))
+
+/-- Exact coefficient reduction performed after every Zassenhaus subset
+product multiplication. -/
+def modCoeffLoop (input : SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    if hmodulus : modulus ≠ 0 then
+      let coefficient := input[index].2 % modulus
+      modCoeffLoop input modulus (index + 1)
+        (if coefficient = 0 then result
+         else result.push (input[index].1, coefficient))
+    else .error .arithmeticDomain
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+def multiplyNormalizeModRaw (left right : SparsePolyZZ) (modulus : ZZ) :
+    RawExec SparsePolyZZ :=
+  match multiplyNormalizeRaw left right with
+  | .error fault => .error fault
+  | .ok product => modCoeffLoop product modulus 0 #[]
+
+/-- This operation record is deliberately data-free.  Earlier revisions
+stored a semantic multiplication callback here; the strict boundary now
+always executes `multiplyNormalizeModRaw`. -/
+structure TrialProductRawOps where
+  marker : Unit := ()
+
+/-- Source candidate-product loop: multiply by every selected active lifted
+factor, normalize, and reduce coefficients after each multiplication. -/
+def trialProductLoop (_ops : TrialProductRawOps)
+    (candidate : Array Int32) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) (index : Nat) (product : SparsePolyZZ) :
+    RawExec SparsePolyZZ :=
+  if hindex : index < candidate.size then
+    let activeIndex := candidate[index]
+    if hnonnegative : 0 ≤ activeIndex then
+      let activeNat := activeIndex.toInt64.toNat
+      if hactive : activeNat < activeLifted.size then
+        match multiplyNormalizeModRaw product activeLifted[activeNat] modulus with
+        | .error fault => .error fault
+        | .ok product' => trialProductLoop _ops candidate activeLifted modulus
+            (index + 1) product'
+      else .error (.outOfBounds activeNat activeLifted.size)
+    else .error .arithmeticDomain
+  else .ok product
+termination_by candidate.size - index
+decreasing_by omega
+
+/-- Exact range-for in C++ `__upoly_symmetric_mod`: symmetrically reduce each
+coefficient and omit concrete zero coefficients. -/
+def symmetricModLoop (input : SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    let term := input[index]
+    let coefficient := ZZ.symmetricMod term.2 modulus
+    symmetricModLoop input modulus (index + 1)
+      (if coefficient = 0 then result else result.push (term.1, coefficient))
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+def symmetricModRaw (input : SparsePolyZZ) (modulus : ZZ) :
+    RawExec SparsePolyZZ :=
+  if hmodulus : 0 < modulus then symmetricModLoop input modulus 0 #[]
+  else .error .arithmeticDomain
+
+/-- Exact range-for lowering of the integer-polynomial derivative used by
+`__cld_polys`; zero derivative terms are omitted as in the C++ sparse
+normalization invariant. -/
+def derivativeZZLoop (input : SparsePolyZZ) (index : Nat)
+    (result : SparsePolyZZ) : SparsePolyZZ :=
+  if hindex : index < input.size then
+    let term := input[index]
+    if term.1.deg = 0 then
+      derivativeZZLoop input (index + 1) result
+    else
+      let coefficient := term.2 * term.1.deg
+      derivativeZZLoop input (index + 1)
+        (if coefficient = 0 then result
+         else result.push (⟨term.1.deg - 1⟩, coefficient))
+  else result
+termination_by input.size - index
+decreasing_by all_goals omega
+
+def derivativeZZRaw (input : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  .ok (derivativeZZLoop input 0 #[])
+
+/-- Concrete raw dependencies of `__cld_polys`.  The sole field is an erased
+well-founded trace for the already-generated modular long division; it cannot
+choose or replace any result. -/
+structure CldRawOps where
+  divmodTermination : Generated.StrictHensel.DivmodTermination
+
+/-- Exact outer range-for of C++ `__cld_polys`: modular division, derivative,
+modular multiplication, and symmetric recovery are all executed here. -/
+def cldPolysLoop (ops : CldRawOps) (fStar : SparsePolyZZ)
+    (activeFactors : Array SparsePolyZZ) (modulus : ZZ) (index : Nat)
+    (result : Array SparsePolyZZ) : RawExec (Array SparsePolyZZ) :=
+  if hindex : index < activeFactors.size then
+    match Generated.StrictHensel.__upoly_divmod_mod_raw_ir
+        ops.divmodTermination fStar activeFactors[index] modulus with
+    | .error fault => .error fault
+    | .ok (quotient, remainder) =>
+      if hremainder : remainder.isEmpty then
+        match derivativeZZRaw activeFactors[index] with
+        | .error fault => .error fault
+        | .ok derivativeRaw =>
+          match modCoeffLoop derivativeRaw modulus 0 #[] with
+          | .error fault => .error fault
+          | .ok derivativeMod =>
+            match multiplyNormalizeModRaw quotient derivativeMod modulus with
+            | .error fault => .error fault
+            | .ok product =>
+              match symmetricModRaw product modulus with
+              | .error fault => .error fault
+              | .ok cld => cldPolysLoop ops fStar activeFactors modulus
+                  (index + 1) (result.push cld)
+      else .error .assertionFailure
+  else .ok result
+termination_by activeFactors.size - index
+decreasing_by omega
+
+def cldPolys (ops : CldRawOps) (fStar : SparsePolyZZ)
+    (activeFactors : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  cldPolysLoop ops fStar activeFactors modulus 0 #[]
+
+/-- Linear sparse coefficient lookup used by the C++ `upoly_coeff` lambda. -/
+def sparseCoeffLoop (input : SparsePolyZZ) (degree index : Nat) : ZZ :=
+  if hindex : index < input.size then
+    if input[index].1.deg = degree then input[index].2
+    else sparseCoeffLoop input degree (index + 1)
+  else 0
+termination_by input.size - index
+decreasing_by omega
+
+def sparseCoeff (input : SparsePolyZZ) (degree : Nat) : ZZ :=
+  sparseCoeffLoop input degree 0
+
+/-- Maximum `front.degree + 1` scan that computes the source spiral width N. -/
+def cldSpiralWidthLoop (cld : Array SparsePolyZZ) (index maximum : Nat) : Nat :=
+  if hindex : index < cld.size then
+    let width := if cld[index].isEmpty then 0 else cld[index][0]!.1.deg + 1
+    cldSpiralWidthLoop cld (index + 1) (Nat.max maximum width)
+  else maximum
+termination_by cld.size - index
+decreasing_by omega
+
+def cldSpiralWidth (cld : Array SparsePolyZZ) : Nat :=
+  cldSpiralWidthLoop cld 0 0
+
+/-- C++ loop appending one zero coordinate to every existing lattice row. -/
+def appendZeroColumnLoop (matrix : LLLMatrix) (index : Nat)
+    (result : LLLMatrix) : RawExec LLLMatrix :=
+  if hindex : index < matrix.size then
+    appendZeroColumnLoop matrix (index + 1)
+      (result.push (matrix[index].push 0))
+  else .ok result
+termination_by matrix.size - index
+decreasing_by omega
+
+def appendZeroColumn (matrix : LLLMatrix) : RawExec LLLMatrix :=
+  appendZeroColumnLoop matrix 0 #[]
+
+/-- Fill the first `r` coordinates of a freshly zeroed CLD data row. -/
+def fillCldDataRowLoop (cld : Array SparsePolyZZ) (degree index : Nat)
+    (row : Array ZZ) : RawExec (Array ZZ) :=
+  if hindex : index < cld.size then
+    if hrow : index < row.size then
+      fillCldDataRowLoop cld degree (index + 1)
+        (row.set index (sparseCoeff cld[index] degree))
+    else .error (.outOfBounds index row.size)
+  else .ok row
+termination_by cld.size - index
+decreasing_by omega
+
+/-- One source iteration of `__build_cld_matrix`, including row extension,
+spiral coefficient selection, and the new identity coordinate. -/
+def appendCldColumn (matrix : LLLMatrix) (cld : Array SparsePolyZZ)
+    (existingColumns : Nat) (spiralDegree : Nat) : RawExec LLLMatrix := do
+  let extended ← appendZeroColumn matrix
+  let rowLength := cld.size + existingColumns + 1
+  let row ← fillCldDataRowLoop cld spiralDegree 0 (zeroMatrixRow rowLength)
+  if hidentity : cld.size + existingColumns < row.size then
+    .ok (extended.push (row.set (cld.size + existingColumns) 1))
+  else .error (.outOfBounds (cld.size + existingColumns) row.size)
+
+/-- Exact bounded source loop of `__build_cld_matrix`. -/
+def buildCldMatrixLoop (cld : Array SparsePolyZZ) (current target width : Nat) :
+    (added : Nat) → LLLMatrix → RawExec (LLLMatrix × Nat)
+  | added, matrix =>
+      if htarget : added < target then
+        let k := current + added
+        if hwidth : k < width then
+          let degree := if k % 2 = 0 then k / 2
+            else width - 1 - (k - 1) / 2
+          match appendCldColumn matrix cld (current + added) degree with
+          | .error fault => .error fault
+          | .ok matrix' => buildCldMatrixLoop cld current target width
+              (added + 1) matrix'
+        else .ok (matrix, added)
+      else .ok (matrix, added)
+termination_by added _ => target - added
+decreasing_by omega
+
+def buildCldMatrix (matrix : LLLMatrix) (cld : Array SparsePolyZZ)
+    (current target : Nat) : RawExec (LLLMatrix × Nat) :=
+  buildCldMatrixLoop cld current target (cldSpiralWidth cld) 0 matrix
+
+/-- Exact integer dot-product lambda used throughout `__lll_reduce`. -/
+def dotRowsLoop (left right : Array ZZ) (index : Nat) (sum : ZZ) :
+    RawExec ZZ :=
+  if hindex : index < left.size then
+    if hright : index < right.size then
+      dotRowsLoop left right (index + 1) (sum + left[index] * right[index])
+    else .error (.outOfBounds index right.size)
+  else .ok sum
+termination_by left.size - index
+decreasing_by omega
+
+def dotRows (left right : Array ZZ) : RawExec ZZ :=
+  dotRowsLoop left right 0 0
+
+/-- C++ `round_qq`: floor(q + 1/2), with ties toward positive infinity. -/
+def roundQQ (value : QQ) : RawExec ZZ :=
+  let numerator := QQ.num value * 2 + QQ.den value
+  let denominator := QQ.den value * 2
+  if hdenominator : denominator ≠ 0 then
+    .ok (ZZ.fdiv_q 0 numerator denominator)
+  else .error .arithmeticDomain
+
+/-- Pointwise source row operation for both M and its unimodular transform U. -/
+def subtractRowsLoop (targetM sourceM targetU sourceU : Array ZZ)
+    (coefficient : ZZ) (size index : Nat)
+    (resultM resultU : Array ZZ) : RawExec (Array ZZ × Array ZZ) :=
+  if hindex : index < size then
+    if htM : index < targetM.size then
+      if hsM : index < sourceM.size then
+        if htU : index < targetU.size then
+          if hsU : index < sourceU.size then
+            subtractRowsLoop targetM sourceM targetU sourceU coefficient size
+              (index + 1)
+              (resultM.push (targetM[index] - coefficient * sourceM[index]))
+              (resultU.push (targetU[index] - coefficient * sourceU[index]))
+          else .error (.outOfBounds index sourceU.size)
+        else .error (.outOfBounds index targetU.size)
+      else .error (.outOfBounds index sourceM.size)
+    else .error (.outOfBounds index targetM.size)
+  else .ok (resultM, resultU)
+termination_by size - index
+decreasing_by omega
+
+def subtractMatrixRows (matrix transform : LLLMatrix) (target source : Nat)
+    (coefficient : ZZ) : RawExec (LLLMatrix × LLLMatrix) :=
+  if htM : target < matrix.size then
+    if hsM : source < matrix.size then
+      if htU : target < transform.size then
+        if hsU : source < transform.size then
+          match subtractRowsLoop matrix[target] matrix[source]
+              transform[target] transform[source] coefficient matrix.size 0 #[] #[] with
+          | .error fault => .error fault
+          | .ok (rowM, rowU) =>
+            .ok (matrix.set target rowM, transform.set target rowU)
+        else .error (.outOfBounds source transform.size)
+      else .error (.outOfBounds target transform.size)
+    else .error (.outOfBounds source matrix.size)
+  else .error (.outOfBounds target matrix.size)
+
+def swapMatrixRows (matrix : LLLMatrix) (left right : Nat) : RawExec LLLMatrix :=
+  if hleft : left < matrix.size then
+    if hright : right < matrix.size then
+      .ok ((matrix.set left matrix[right]).set right matrix[left] (by simpa))
+    else .error (.outOfBounds right matrix.size)
+  else .error (.outOfBounds left matrix.size)
+
+/-- Inner `l < j` subtraction in the Gram–Schmidt numerator. -/
+def gramNumeratorLoop (mu : QQMatrix) (norms : Array QQ) (i j : Nat) :
+    (l : Nat) → QQ → RawExec QQ
+  | l, numerator =>
+      if hl : l < j then
+        if hi : i < mu.size then
+          if hj : j < mu.size then
+            if hil : l < mu[i].size then
+              if hjl : l < mu[j].size then
+                if hn : l < norms.size then
+                  gramNumeratorLoop mu norms i j (l + 1)
+                    (numerator - mu[i][l] * mu[j][l] * norms[l])
+                else .error (.outOfBounds l norms.size)
+              else .error (.outOfBounds l mu[j].size)
+            else .error (.outOfBounds l mu[i].size)
+          else .error (.outOfBounds j mu.size)
+        else .error (.outOfBounds i mu.size)
+      else .ok numerator
+termination_by l _ => j - l
+decreasing_by omega
+
+/-- Source `j < i` loop computing one complete row of Gram–Schmidt μ. -/
+def gramMuRowLoop (matrix : LLLMatrix) (i : Nat) :
+    (j : Nat) → QQMatrix → Array QQ → RawExec (QQMatrix × Array QQ)
+  | j, mu, norms =>
+      if hj : j < i then
+        if hiM : i < matrix.size then
+          if hjM : j < matrix.size then
+            match dotRows matrix[i] matrix[j] with
+            | .error fault => .error fault
+            | .ok dot =>
+              match gramNumeratorLoop mu norms i j 0 (dot : QQ) with
+              | .error fault => .error fault
+              | .ok numerator =>
+                if hiMu : i < mu.size then
+                  if hjMu : j < mu[i].size then
+                    if hjNorm : j < norms.size then
+                      let coefficient :=
+                        if norms[j] = 0 then 0 else numerator / norms[j]
+                      gramMuRowLoop matrix i (j + 1)
+                        (mu.set i (mu[i].set j coefficient)) norms
+                    else .error (.outOfBounds j norms.size)
+                  else .error (.outOfBounds j mu[i].size)
+                else .error (.outOfBounds i mu.size)
+          else .error (.outOfBounds j matrix.size)
+        else .error (.outOfBounds i matrix.size)
+      else .ok (mu, norms)
+termination_by j _ _ => i - j
+decreasing_by omega
+
+/-- Source `j < i` loop subtracting μ²B from the raw row norm. -/
+def gramNormLoop (mu : QQMatrix) (norms : Array QQ) (i : Nat) :
+    (j : Nat) → QQ → RawExec QQ
+  | j, norm =>
+      if hj : j < i then
+        if hi : i < mu.size then
+          if hij : j < mu[i].size then
+            if hn : j < norms.size then
+              gramNormLoop mu norms i (j + 1)
+                (norm - mu[i][j] * mu[i][j] * norms[j])
+            else .error (.outOfBounds j norms.size)
+          else .error (.outOfBounds j mu[i].size)
+        else .error (.outOfBounds i mu.size)
+      else .ok norm
+termination_by j _ => i - j
+decreasing_by omega
+
+/-- Outer Gram–Schmidt initialization loop for rows `i = 1 .. n-1`. -/
+def initializeGramSchmidtLoop (matrix : LLLMatrix) :
+    (i : Nat) → QQMatrix → Array QQ → RawExec (QQMatrix × Array QQ)
+  | i, mu, norms =>
+      if hi : i < matrix.size then
+        match gramMuRowLoop matrix i 0 mu norms with
+        | .error fault => .error fault
+        | .ok (mu', norms') =>
+          match dotRows matrix[i] matrix[i] with
+          | .error fault => .error fault
+          | .ok dot =>
+            match gramNormLoop mu' norms' i 0 (dot : QQ) with
+            | .error fault => .error fault
+            | .ok norm =>
+              if hn : i < norms'.size then
+                initializeGramSchmidtLoop matrix (i + 1) mu'
+                  (norms'.set i norm)
+              else .error (.outOfBounds i norms'.size)
+      else .ok (mu, norms)
+termination_by i _ _ => matrix.size - i
+decreasing_by omega
+
+/-- Exact C++ initialization of μ, B_gs, and the identity transform U. -/
+def initializeLLL (matrix : LLLMatrix) :
+    RawExec (QQMatrix × Array QQ × LLLMatrix) :=
+  let size := matrix.size
+  if hsize : 0 < size then
+    match makeInitialMatrix size 1 with
+    | .error fault => .error fault
+    | .ok transform =>
+      let mu := zeroQQMatrix size size
+      let norms := Array.replicate size (0 : QQ)
+      match dotRows matrix[0] matrix[0] with
+      | .error fault => .error fault
+      | .ok dot =>
+        initializeGramSchmidtLoop matrix 1 mu
+          (norms.set 0 (dot : QQ) (by simp [norms, hsize])) |>.map
+          (fun state => (state.1, state.2, transform))
+  else .error .assertionFailure
+
+structure LLLState where
+  matrix : LLLMatrix
+  transform : LLLMatrix
+  mu : QQMatrix
+  norms : Array QQ
+  k : Nat
+
+/-- Update `mu[k][l] -= q * mu[source][l]` for `l < limit`. -/
+def reduceMuPrefixLoop (mu : QQMatrix) (k source : Nat) (q : ZZ)
+    (limit index : Nat) : RawExec QQMatrix :=
+  if hindex : index < limit then
+    if hk : k < mu.size then
+      if hs : source < mu.size then
+        if hki : index < mu[k].size then
+          if hsi : index < mu[source].size then
+            let value := mu[k][index] - (q : QQ) * mu[source][index]
+            reduceMuPrefixLoop (mu.set k (mu[k].set index value))
+              k source q limit (index + 1)
+          else .error (.outOfBounds index mu[source].size)
+        else .error (.outOfBounds index mu[k].size)
+      else .error (.outOfBounds source mu.size)
+    else .error (.outOfBounds k mu.size)
+  else .ok mu
+termination_by limit - index
+decreasing_by omega
+
+/-- One concrete C++ size-reduction at row `k` against row `j`. -/
+def sizeReduceAt (state : LLLState) (j : Nat) : RawExec LLLState :=
+  if hk : state.k < state.mu.size then
+    if hj : j < state.mu[state.k].size then
+      match roundQQ state.mu[state.k][j] with
+      | .error fault => .error fault
+      | .ok q =>
+        if hzero : q = 0 then .ok state
+        else
+          match subtractMatrixRows state.matrix state.transform state.k j q with
+          | .error fault => .error fault
+          | .ok (matrix', transform') =>
+            match reduceMuPrefixLoop state.mu state.k j q j 0 with
+            | .error fault => .error fault
+            | .ok mu' =>
+              if hk' : state.k < mu'.size then
+                if hj' : j < mu'[state.k].size then
+                  .ok (LLLState.mk matrix' transform'
+                    (mu'.set state.k
+                      (mu'[state.k].set j (mu'[state.k][j] - (q : QQ))))
+                    state.norms state.k)
+                else .error (.outOfBounds j mu'[state.k].size)
+              else .error (.outOfBounds state.k mu'.size)
+    else .error (.outOfBounds j state.mu[state.k].size)
+  else .error (.outOfBounds state.k state.mu.size)
+
+/-- Descending source loop `j = k-2 .. 0` after a successful Lovász test. -/
+def extraSizeReduceLoop : Nat → LLLState → RawExec LLLState
+  | 0, state => .ok state
+  | remaining + 1, state =>
+      match sizeReduceAt state remaining with
+      | .error fault => .error fault
+      | .ok state' => extraSizeReduceLoop remaining state'
+termination_by remaining _ => remaining
+
+/-- Correct `mu[j][k]` and `mu[j][k-1]` for every row below a swapped pair. -/
+def updateMuAfterSwapLoop (mu : QQMatrix) (k : Nat) (muOld muNew : QQ)
+    (row : Nat) : RawExec QQMatrix :=
+  if hrow : row < mu.size then
+    if hk : k < mu[row].size then
+      if hpred : k - 1 < mu[row].size then
+        let oldAtK := mu[row][k]
+        let newAtK := mu[row][k - 1] - muOld * oldAtK
+        let updated := mu[row].set k newAtK
+        let updated := updated.set (k - 1) (oldAtK + muNew * newAtK)
+          (by rw [Array.size_set]; exact hpred)
+        updateMuAfterSwapLoop (mu.set row updated) k muOld muNew (row + 1)
+      else .error (.outOfBounds (k - 1) mu[row].size)
+    else .error (.outOfBounds k mu[row].size)
+  else .ok mu
+termination_by mu.size - row
+decreasing_by simp only [Array.size_set]; omega
+
+def swapQQRows (matrix : QQMatrix) (left right : Nat) : RawExec QQMatrix :=
+  if hleft : left < matrix.size then
+    if hright : right < matrix.size then
+      .ok ((matrix.set left matrix[right]).set right matrix[left] (by simpa))
+    else .error (.outOfBounds right matrix.size)
+  else .error (.outOfBounds left matrix.size)
+
+inductive LLLStepResult where
+  | advanced (state : LLLState)
+  | swapped (state : LLLState)
+
+def LLLStepResult.state : LLLStepResult → LLLState
+  | .advanced state => state
+  | .swapped state => state
+
+/-- The two adjacent `B_gs` assignments in the failed-Lovász branch.  The
+caller has already checked both indices; `set!` only packages those erased
+proofs independently of the recursive state. -/
+def normsAfterLovaszSwap (norms : Array QQ) (k : Nat) (muOld : QQ) : Array QQ :=
+  let newNorm := norms[k]! + muOld * muOld * norms[k - 1]!
+  if hnew : newNorm ≠ 0 then
+    (norms.set! k (norms[k]! * norms[k - 1]! / newNorm)).set! (k - 1) newNorm
+  else norms
+
+/-- One complete body execution of the C++ LLL `while (k < n)` loop. -/
+def lllStep (state : LLLState) : RawExec LLLStepResult :=
+  if hkPositive : 0 < state.k then
+    if hkMatrix : state.k < state.matrix.size then
+      match sizeReduceAt state (state.k - 1) with
+      | .error fault => .error fault
+      | .ok reduced =>
+        if hkNorm : reduced.k < reduced.norms.size then
+          if hpredNorm : reduced.k - 1 < reduced.norms.size then
+            if hkMu : reduced.k < reduced.mu.size then
+              if hpredMu : reduced.k - 1 < reduced.mu[reduced.k].size then
+                let muValue := reduced.mu[reduced.k][reduced.k - 1]
+                let lhs := reduced.norms[reduced.k]
+                let rhs := ((3 : QQ) / 4 - muValue * muValue) *
+                  reduced.norms[reduced.k - 1]
+                if hlovasz : rhs ≤ lhs then
+                  match extraSizeReduceLoop (reduced.k - 1) reduced with
+                  | .error fault => .error fault
+                  | .ok fullyReduced =>
+                    .ok (.advanced { fullyReduced with k := fullyReduced.k + 1 })
+                else
+                  let muOld := muValue
+                  let newNorm := reduced.norms[reduced.k] +
+                    muOld * muOld * reduced.norms[reduced.k - 1]
+                  let muNew := if newNorm ≠ 0 then
+                    muOld * reduced.norms[reduced.k - 1] / newNorm else 0
+                  let norms' := normsAfterLovaszSwap reduced.norms reduced.k muOld
+                  match swapMatrixRows reduced.matrix reduced.k (reduced.k - 1) with
+                  | .error fault => .error fault
+                  | .ok matrix' =>
+                    match swapMatrixRows reduced.transform reduced.k
+                        (reduced.k - 1) with
+                    | .error fault => .error fault
+                    | .ok transform' =>
+                      match swapQQRows reduced.mu reduced.k (reduced.k - 1) with
+                      | .error fault => .error fault
+                      | .ok swappedMu =>
+                        if hkSwapped : reduced.k < swappedMu.size then
+                          if hpredSwapped : reduced.k - 1 < swappedMu[reduced.k].size then
+                            let correctedMu := swappedMu.set reduced.k
+                              (swappedMu[reduced.k].set (reduced.k - 1) muNew)
+                            match updateMuAfterSwapLoop correctedMu reduced.k
+                                muOld muNew (reduced.k + 1) with
+                            | .error fault => .error fault
+                            | .ok finalMu =>
+                              .ok (.swapped (LLLState.mk matrix' transform' finalMu
+                                norms' (Nat.max (reduced.k - 1) 1)))
+                          else .error (.outOfBounds (reduced.k - 1)
+                            swappedMu[reduced.k].size)
+                        else .error (.outOfBounds reduced.k swappedMu.size)
+              else .error (.outOfBounds (reduced.k - 1) reduced.mu[reduced.k].size)
+            else .error (.outOfBounds reduced.k reduced.mu.size)
+          else .error (.outOfBounds (reduced.k - 1) reduced.norms.size)
+        else .error (.outOfBounds reduced.k reduced.norms.size)
+    else .error (.outOfBounds state.k state.matrix.size)
+  else .error .assertionFailure
+
+/-- Erased well-founded certificate for the concrete LLL transition.  It
+cannot supply a matrix, branch, or result: every recursive state must be the
+output of `lllStep` above. -/
+structure LLLTermination where
+  valid : LLLState → Prop
+  rank : LLLState → Nat
+  step_valid : ∀ current branch, valid current →
+    lllStep current = .ok branch → valid branch.state
+  step_decreases : ∀ current branch, valid current →
+    lllStep current = .ok branch → rank branch.state < rank current
+
+/-- Strict well-founded C++ `while (k < n)` loop. -/
+def lllMainLoop (termination : LLLTermination) :
+    (state : LLLState) → termination.valid state → RawExec LLLState
+  | state, hvalid =>
+      if hk : state.k < state.matrix.size then
+        match hstep : lllStep state with
+        | .error fault => .error fault
+        | .ok branch =>
+          lllMainLoop termination branch.state
+            (termination.step_valid state branch hvalid hstep)
+      else .ok state
+termination_by state _ => termination.rank state
+decreasing_by
+  exact termination.step_decreases state branch hvalid hstep
+
+/-- Erased initialization fact needed to enter the well-founded LLL loop.
+It cannot choose any executable state: that state is fixed by `initializeLLL`. -/
+structure LLLExecution where
+  inputValid : LLLMatrix → Prop
+  termination : LLLTermination
+  initialized_valid : ∀ matrix mu norms transform,
+    inputValid matrix →
+    initializeLLL matrix = .ok (mu, norms, transform) →
+    termination.valid (LLLState.mk matrix transform mu norms 1)
+  output_input_valid : ∀ initial output hvalid,
+    lllMainLoop termination initial hvalid = .ok output →
+    inputValid output.matrix
+  output_size : ∀ initial output hvalid,
+    lllMainLoop termination initial hvalid = .ok output →
+    output.matrix.size = initial.matrix.size
+
+/-- Insert one short-row index into the already norm-sorted prefix.  This is
+the deterministic strict model of the source `std::sort` comparator. -/
+def insertShortRow (matrix : LLLMatrix) (row : Nat) :
+    Array Nat → Nat → RawExec (Array Nat)
+  | sorted, position =>
+      if hposition : position < sorted.size then
+        if hrow : row < matrix.size then
+          if hexisting : sorted[position] < matrix.size then
+            match dotRows matrix[row] matrix[row] with
+            | .error fault => .error fault
+            | .ok rowNorm =>
+              match dotRows matrix[sorted[position]] matrix[sorted[position]] with
+              | .error fault => .error fault
+              | .ok existingNorm =>
+                if rowNorm < existingNorm then
+                  .ok (sorted.extract 0 position ++ #[row] ++
+                    sorted.extract position sorted.size)
+                else insertShortRow matrix row sorted (position + 1)
+          else .error (.outOfBounds sorted[position] matrix.size)
+        else .error (.outOfBounds row matrix.size)
+      else .ok (sorted.push row)
+termination_by sorted position => sorted.size - position
+decreasing_by omega
+
+/-- Collect exactly the rows satisfying the C++ squared-norm bound, keeping
+them sorted by the same strict norm comparator. -/
+def collectShortRows (matrix : LLLMatrix) (bound : ZZ) :
+    Nat → Array Nat → RawExec (Array Nat)
+  | row, result =>
+      if hrow : row < matrix.size then
+        match dotRows matrix[row] matrix[row] with
+        | .error fault => .error fault
+        | .ok norm =>
+          if norm ≤ bound then
+            match insertShortRow matrix row result 0 with
+            | .error fault => .error fault
+            | .ok result' => collectShortRows matrix bound (row + 1) result'
+          else collectShortRows matrix bound (row + 1) result
+      else .ok result
+termination_by row _ => matrix.size - row
+decreasing_by all_goals omega
+
+/-- Complete concrete execution of C++ `__lll_reduce`: initialize exact
+Gram–Schmidt data, run the well-founded main loop, then collect short rows. -/
+def lllReduce (execution : LLLExecution) (matrix : LLLMatrix)
+    (hinput : execution.inputValid matrix) (bound : ZZ) :
+    RawExec { output : LLLMatrix × LLLMatrix × Array Nat //
+      execution.inputValid output.1 ∧ output.1.size = matrix.size } :=
+  match hinitialize : initializeLLL matrix with
+  | .error fault => .error fault
+  | .ok (mu, norms, transform) =>
+    let state := LLLState.mk matrix transform mu norms 1
+    match hrun : lllMainLoop execution.termination state
+        (execution.initialized_valid matrix mu norms transform hinput hinitialize) with
+    | .error fault => .error fault
+    | .ok reduced =>
+      match collectShortRows reduced.matrix bound 0 #[] with
+      | .error fault => .error fault
+      | .ok rows => .ok ⟨(reduced.matrix, reduced.transform, rows),
+          execution.output_input_valid state reduced
+            (execution.initialized_valid matrix mu norms transform hinput hinitialize)
+            hrun,
+          execution.output_size state reduced
+            (execution.initialized_valid matrix mu norms transform hinput hinitialize)
+            hrun⟩
+
+/-- Test equality of two columns on every selected short row. -/
+def candidateColumnsEqual (transform : LLLMatrix) (shortRows : Array Nat)
+    (left right : Nat) : Nat → RawExec Bool
+  | index =>
+      if hindex : index < shortRows.size then
+        let row := shortRows[index]
+        if hrow : row < transform.size then
+          if hleft : left < transform[row].size then
+            if hright : right < transform[row].size then
+              if transform[row][left] = transform[row][right] then
+                candidateColumnsEqual transform shortRows left right (index + 1)
+              else .ok false
+            else .error (.outOfBounds right transform[row].size)
+          else .error (.outOfBounds left transform[row].size)
+        else .error (.outOfBounds row transform.size)
+      else .ok true
+termination_by index => shortRows.size - index
+decreasing_by omega
+
+/-- Inner `j2 = j+1 .. r-1` equivalence-class assignment loop. -/
+def assignCandidateClass (transform : LLLMatrix) (shortRows : Array Nat)
+    (left factorCount classId : Nat) : Nat → Array (Option Nat) →
+      RawExec (Array (Option Nat))
+  | right, classes =>
+      if hright : right < factorCount then
+        if hclass : right < classes.size then
+          match classes[right] with
+          | some _ => assignCandidateClass transform shortRows left factorCount
+              classId (right + 1) classes
+          | none =>
+            match candidateColumnsEqual transform shortRows left right 0 with
+            | .error fault => .error fault
+            | .ok equal =>
+              let classes' := if equal then classes.set right (some classId)
+                else classes
+              assignCandidateClass transform shortRows left factorCount classId
+                (right + 1) classes'
+        else .error (.outOfBounds right classes.size)
+      else .ok classes
+termination_by right _ => factorCount - right
+decreasing_by all_goals omega
+
+/-- Outer source loop assigning consecutive candidate class identifiers. -/
+def partitionCandidateColumns (transform : LLLMatrix) (shortRows : Array Nat)
+    (factorCount : Nat) : Nat → Nat → Array (Option Nat) →
+      RawExec (Array (Option Nat) × Nat)
+  | column, classCount, classes =>
+      if hcolumn : column < factorCount then
+        if hclass : column < classes.size then
+          match classes[column] with
+          | some _ => partitionCandidateColumns transform shortRows factorCount
+              (column + 1) classCount classes
+          | none =>
+            let classes' := classes.set column (some classCount)
+            match assignCandidateClass transform shortRows column factorCount
+                classCount (column + 1) classes' with
+            | .error fault => .error fault
+            | .ok assigned => partitionCandidateColumns transform shortRows
+                factorCount (column + 1) (classCount + 1) assigned
+        else .error (.outOfBounds column classes.size)
+      else .ok (classes, classCount)
+termination_by column _ _ => factorCount - column
+decreasing_by all_goals omega
+
+def collectCandidateClasses (classes : Array (Option Nat)) :
+    Nat → Array (Array Int32) → RawExec (Array (Array Int32))
+  | column, result =>
+      if hcolumn : column < classes.size then
+        match classes[column] with
+        | none => .error .assertionFailure
+        | some classId =>
+          if hclass : classId < result.size then
+            let candidate := result[classId].push column.toUInt32.toInt32
+            collectCandidateClasses classes (column + 1)
+              (result.set classId candidate)
+          else .error (.outOfBounds classId result.size)
+      else .ok result
+termination_by column _ => classes.size - column
+decreasing_by omega
+
+/-- Concrete C++ `__extract_candidates`, including the empty-short-row case,
+column equivalence classes, and class-ordered collection. -/
+def extractCandidates (shortRows : Array Nat) (transform : LLLMatrix)
+    (factorCount : Nat) : RawExec (Array (Array Int32)) :=
+  if shortRows.isEmpty then .ok #[]
+  else
+    match partitionCandidateColumns transform shortRows factorCount 0 0
+        (Array.replicate factorCount none) with
+    | .error fault => .error fault
+    | .ok (classes, classCount) =>
+      collectCandidateClasses classes 0 (Array.replicate classCount #[])
+
+def contentLoop (input : SparsePolyZZ) (index acc : Nat) : Nat :=
+  if hindex : index < input.size then
+    contentLoop input (index + 1) (Nat.gcd acc input[index].2.natAbs)
+  else acc
+termination_by input.size - index
+decreasing_by omega
+
+def primitiveDivideLoop (input : SparsePolyZZ) (divisor : ZZ) (index : Nat)
+    (result : SparsePolyZZ) : RawExec SparsePolyZZ :=
+  if hindex : index < input.size then
+    if hdivisor : divisor ≠ 0 then
+      if hdivides : divisor ∣ input[index].2 then
+        primitiveDivideLoop input divisor (index + 1)
+          (result.push (input[index].1, input[index].2 / divisor))
+      else .error .arithmeticDomain
+    else .error .arithmeticDomain
+  else .ok result
+termination_by input.size - index
+decreasing_by omega
+
+/-- Exact C++ `__upoly_primitive`: content gcd, leading-sign adjustment,
+and coefficient-wise exact division. -/
+def primitiveRaw (input : SparsePolyZZ) : RawExec (ZZ × SparsePolyZZ) :=
+  if hempty : input.isEmpty then .ok (1, input)
+  else
+    let content : ZZ := contentLoop input 0 0
+    let divisor := if (input[0]'(by
+      have : input.size ≠ 0 := by simpa [Array.isEmpty] using hempty
+      omega)).2 < 0
+      then -content else content
+    match primitiveDivideLoop input divisor 0 #[] with
+    | .error fault => .error fault
+    | .ok primitive => .ok (divisor, primitive)
+
+def subtractScaledTermsLoop (divisor : SparsePolyZZ) (scale : ZZ)
+    (degreeShift index : Nat) (terms : SparsePolyZZ) : SparsePolyZZ :=
+  if hindex : index < divisor.size then
+    subtractScaledTermsLoop divisor scale degreeShift (index + 1)
+      (terms.push
+        (⟨divisor[index].1.deg + degreeShift⟩, -(scale * divisor[index].2)))
+  else terms
+termination_by divisor.size - index
+decreasing_by omega
+
+def subtractScaledNormalize (remainder divisor : SparsePolyZZ) (scale : ZZ)
+    (degreeShift : Nat) : SparsePolyZZ :=
+  SparsePolyZZ.normalization
+    (subtractScaledTermsLoop divisor scale degreeShift 0 remainder)
+
+def divisionRank (remainder : SparsePolyZZ) : Nat :=
+  if h : 0 < remainder.size then remainder[0].1.deg + 1 else 0
+
+/-- Checked exact sparse long division used by the C++ trial-division call.
+The degree guard is a runtime validation of the mathematical decrease, not a
+fuel counter: a malformed/noncanonical intermediate produces a raw fault. -/
+def exactDivmodLoop (divisor : SparsePolyZZ) :
+    SparsePolyZZ → SparsePolyZZ → RawExec (SparsePolyZZ × SparsePolyZZ)
+  | remainder, quotient =>
+      if hremainder : 0 < remainder.size then
+        if hdivisor : 0 < divisor.size then
+          let remainderLead := remainder[0]
+          let divisorLead := divisor[0]
+          if hdegree : divisorLead.1.deg ≤ remainderLead.1.deg then
+            if hnonzero : divisorLead.2 ≠ 0 then
+              if hdivides : divisorLead.2 ∣ remainderLead.2 then
+                let degreeShift := remainderLead.1.deg - divisorLead.1.deg
+                let scale := remainderLead.2 / divisorLead.2
+                let remainder' := subtractScaledNormalize remainder divisor scale degreeShift
+                let quotient' := quotient.push (⟨degreeShift⟩, scale)
+                if hdecrease : divisionRank remainder' < divisionRank remainder then
+                  exactDivmodLoop divisor remainder' quotient'
+                else .error .arithmeticDomain
+              else .ok (quotient, remainder)
+            else .error .arithmeticDomain
+          else .ok (quotient, remainder)
+        else .error .arithmeticDomain
+      else .ok (quotient, remainder)
+termination_by remainder quotient => divisionRank remainder
+decreasing_by exact hdecrease
+
+def exactDivmodRaw (dividend divisor : SparsePolyZZ) :
+    RawExec (SparsePolyZZ × SparsePolyZZ) :=
+  exactDivmodLoop divisor dividend #[]
+
+/-- Checked lowering of the source `vector<int>` combination indices. -/
+def combinationToInt32Loop (indices : Array Nat) (index : Nat)
+    (result : Array Int32) : RawExec (Array Int32) :=
+  if hindex : index < indices.size then
+    if hfits : indices[index] < 2 ^ 31 then
+      combinationToInt32Loop indices (index + 1)
+        (result.push indices[index].toUInt32.toInt32)
+    else .error .arithmeticDomain
+  else .ok result
+termination_by indices.size - index
+decreasing_by omega
+
+def combinationToInt32 (indices : Array Nat) : RawExec (Array Int32) :=
+  combinationToInt32Loop indices 0 #[]
+
+/-- Reverse erase of the selected active positions after one successful
+Zassenhaus extraction. -/
+def removeCombinationLoop (candidate : Array Nat) :
+    (remaining : Nat) → Array SparsePolyZZ → RawExec (Array SparsePolyZZ)
+  | 0, active => .ok active
+  | remaining + 1, active =>
+      let candidateIndex := remaining
+      if hcand : candidateIndex < candidate.size then
+        let activeIndex := candidate[candidateIndex]
+        if hactive : activeIndex < active.size then
+          removeCombinationLoop candidate remaining
+            (active.eraseIdxIfInBounds activeIndex)
+        else .error (.outOfBounds activeIndex active.size)
+      else .error (.outOfBounds candidateIndex candidate.size)
+termination_by remaining _ => remaining
+
+def removeCombination (candidate : Array Nat)
+    (active : Array SparsePolyZZ) : RawExec (Array SparsePolyZZ) :=
+  removeCombinationLoop candidate candidate.size active
+
+inductive ZassenhausAttemptResult where
+  | rejected
+  | extracted (factor quotient : SparsePolyZZ)
+
+inductive ZassenhausScanResult (count : Nat) where
+  | exhausted
+  | extracted (factor quotient : SparsePolyZZ) (candidate : Array Nat)
+      (candidateSize : candidate.size = count)
+
+/-- One complete C++ Zassenhaus candidate attempt, including both scalar
+pruning tests and the actual sparse exact division. -/
+def zassenhausAttempt (fStar : SparsePolyZZ)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidate : Array Nat) : RawExec ZassenhausAttemptResult :=
+  if hfstar : 0 < fStar.size then
+    let leading := fStar[0].2
+    match selectedLeadingProductLoop candidate activeLifted 0 leading with
+    | .error fault => .error fault
+    | .ok leadingProduct =>
+      let recoveredLeading := ZZ.symmetricMod leadingProduct modulus
+      let leadingSquare := leading * leading
+      if recoveredLeading ≠ 0 ∧ ZZ.fdiv_r 0 leadingSquare recoveredLeading ≠ 0 then
+        .ok .rejected
+      else
+        match selectedConstantProductLoop candidate activeLifted 0 leading with
+        | .error fault => .error fault
+        | .ok constantProduct =>
+          let recoveredConstant := ZZ.symmetricMod constantProduct modulus
+          let targetConstant := leading * constantTerm fStar
+          if recoveredConstant ≠ 0 ∧
+              ZZ.fdiv_r 0 targetConstant recoveredConstant ≠ 0 then
+            .ok .rejected
+          else
+            match combinationToInt32 candidate with
+            | .error fault => .error fault
+            | .ok candidate32 =>
+              match trialProductLoop ⟨()⟩ candidate32 activeLifted modulus 0
+                  #[(⟨0⟩, leading)] with
+              | .error fault => .error fault
+              | .ok product =>
+                match symmetricModRaw product modulus with
+                | .error fault => .error fault
+                | .ok symmetric =>
+                  match primitiveRaw symmetric with
+                  | .error fault => .error fault
+                  | .ok (_, factor) =>
+                    match exactDivmodRaw fStar factor with
+                    | .error fault => .error fault
+                    | .ok (quotient, remainder) =>
+                      if remainder.isEmpty then
+                        match primitiveRaw quotient with
+                        | .error fault => .error fault
+                        | .ok (_, quotientPrimitive) =>
+                          .ok (.extracted factor quotientPrimitive)
+                      else .ok .rejected
+  else .error .assertionFailure
+
+/-- Erased well-founded metric for the concrete lexicographic
+`next_combination` execution.  The refinement layer constructs this
+certificate from the generated combination arithmetic. -/
+structure CombinationTermination (upper count : Nat) where
+  valid : Array Nat → Prop
+  valid_size : ∀ current, valid current → current.size = count
+  rank : Array Nat → Nat
+  next_valid : ∀ current next, valid current →
+    nextCombination current upper = (true, next) → valid next
+  next_decreases : ∀ current next, valid current →
+    nextCombination current upper = (true, next) → rank next < rank current
+
+/-- Exact source do-while over all fixed-size combinations. -/
+def scanZassenhausCombinations {upper count : Nat}
+    (termination : CombinationTermination upper count)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ)
+    (modulus : ZZ) : (candidate : Array Nat) → termination.valid candidate →
+      RawExec (ZassenhausScanResult count)
+  | candidate, hvalid =>
+      match zassenhausAttempt fStar activeLifted modulus candidate with
+      | .error fault => .error fault
+      | .ok (.extracted factor quotient) =>
+          .ok (.extracted factor quotient candidate
+            (termination.valid_size candidate hvalid))
+      | .ok .rejected =>
+          match hnext : nextCombination candidate upper with
+          | (false, _) => .ok .exhausted
+          | (true, next) =>
+              scanZassenhausCombinations termination fStar activeLifted
+                modulus next (termination.next_valid candidate next hvalid hnext)
+termination_by candidate _ => termination.rank candidate
+decreasing_by exact termination.next_decreases candidate next hvalid hnext
+
+structure ZassenhausTermination where
+  combinations : ∀ upper count, CombinationTermination upper count
+  initial_valid : ∀ upper count, count ≤ upper →
+    (combinations upper count).valid (initialCombination count)
+  removal_decreases : ∀ active candidate output,
+    0 < candidate.size → removeCombination candidate active = .ok output →
+      output.size < active.size
+
+def sortFactorsByDegree (factors : Array SparsePolyZZ) : Array SparsePolyZZ :=
+  (factors.toList.mergeSort fun left right =>
+    left[0]!.1.deg < right[0]!.1.deg).toArray
+
+def finishZassenhaus (fStar : SparsePolyZZ)
+    (result : Array SparsePolyZZ) : Array SparsePolyZZ :=
+  let completed :=
+    if hnonempty : 0 < fStar.size then
+      if 0 < fStar[0].1.deg then result.push fStar else result
+    else result
+  sortFactorsByDegree completed
+
+/-- Complete source-shaped Zassenhaus outer loop.  Successful extraction
+strictly shrinks the active factor array and restarts at subset size one;
+exhaustion advances the bounded subset size. -/
+def zassenhausLoop (termination : ZassenhausTermination) (modulus : ZZ) :
+    (active : Array SparsePolyZZ) → SparsePolyZZ → Array SparsePolyZZ →
+      (subsetSize : Nat) → 0 < subsetSize → RawExec (Array SparsePolyZZ)
+  | active, fStar, result, subsetSize, hsubsetPositive =>
+      if hcontinue : 2 * subsetSize ≤ active.size then
+        let combinationTermination :=
+          termination.combinations active.size subsetSize
+        let initial := initialCombination subsetSize
+        let hinitial := termination.initial_valid active.size subsetSize
+          (by omega)
+        match scanZassenhausCombinations combinationTermination fStar active
+            modulus initial hinitial with
+        | .error fault => .error fault
+        | .ok .exhausted =>
+            zassenhausLoop termination modulus active fStar result
+              (subsetSize + 1) (by omega)
+        | .ok (.extracted factor quotient candidate candidateSize) =>
+            match hremove : removeCombination candidate active with
+            | .error fault => .error fault
+            | .ok active' =>
+                zassenhausLoop termination modulus active' quotient
+                  (result.push factor) 1 (by omega)
+      else .ok (finishZassenhaus fStar result)
+termination_by active _ _ subsetSize _ =>
+  (active.size, active.size + 1 - subsetSize)
+decreasing_by
+  · exact Prod.Lex.right _ (by omega)
+  · exact Prod.Lex.left _ _
+      (termination.removal_decreases active candidate active'
+        (by rw [candidateSize]; exact hsubsetPositive) hremove)
+
+def zassenhausRecombine (termination : ZassenhausTermination)
+    (f : SparsePolyZZ) (lifted : Array SparsePolyZZ) (modulus : ZZ) :
+    RawExec (Array SparsePolyZZ) :=
+  if lifted.size ≤ 1 then
+    if hnonempty : 0 < f.size then
+      if 0 < f[0].1.deg then .ok #[f] else .ok #[]
+    else .ok #[]
+  else zassenhausLoop termination modulus lifted f #[] 1 (by omega)
+
+/-- Concrete C++ callees used inside candidate validation.  Each field returns
+only computed polynomial data; no field may return a semantic proposition or
+choose an L2 factorization witness. -/
+structure CandidateValidationRawOps where
+  product : TrialProductRawOps
+
+/-- Exact source `for (auto& cand : candidates)` validation loop: reject empty,
+trivial, or already-consumed candidates; build the modular product; recover a
+primitive integer polynomial; run actual trial division; and mutate `fStar`,
+`result`, and `consumed` only when the concrete remainder is empty. -/
+def validateCandidatesLoop (ops : CandidateValidationRawOps)
+    (candidates : Array (Array Int32)) (candidateIndex : Nat)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ) :
+    SparsePolyZZ → Array SparsePolyZZ → Array Bool → Nat →
+      RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool)
+  | fStar, result, consumed, remaining =>
+      if hcandidates : candidateIndex < candidates.size then
+        let candidate := candidates[candidateIndex]
+        if hempty : candidate.isEmpty then
+          validateCandidatesLoop ops candidates (candidateIndex + 1)
+            activeLifted modulus fStar result consumed remaining
+        else if htrivial : remaining ≤ candidate.size then
+          validateCandidatesLoop ops candidates (candidateIndex + 1)
+            activeLifted modulus fStar result consumed remaining
+        else
+          match candidateAvailable candidate consumed with
+          | .error fault => .error fault
+          | .ok false => validateCandidatesLoop ops candidates
+              (candidateIndex + 1) activeLifted modulus fStar result consumed remaining
+          | .ok true =>
+            if hfstar : 0 < fStar.size then
+              let initial : SparsePolyZZ := #[(⟨0⟩, fStar[0].2)]
+              match trialProductLoop ops.product candidate activeLifted modulus 0 initial with
+              | .error fault => .error fault
+              | .ok product =>
+                match symmetricModRaw product modulus with
+                | .error fault => .error fault
+                | .ok symmetric =>
+                  match primitiveRaw symmetric with
+                  | .error fault => .error fault
+                  | .ok (_, factor) =>
+                    match exactDivmodRaw fStar factor with
+                    | .error fault => .error fault
+                    | .ok (quotient, remainder) =>
+                      if hremainder : remainder.isEmpty then
+                        match primitiveRaw quotient with
+                        | .error fault => .error fault
+                        | .ok (_, quotientPrimitive) =>
+                          match markConsumedLoop candidate 0 consumed with
+                          | .error fault => .error fault
+                          | .ok consumed' =>
+                            validateCandidatesLoop ops candidates
+                              (candidateIndex + 1) activeLifted modulus
+                              quotientPrimitive (result.push factor) consumed'
+                              (remaining - candidate.size)
+                      else validateCandidatesLoop ops candidates
+                        (candidateIndex + 1) activeLifted modulus
+                        fStar result consumed remaining
+            else .error (.outOfBounds 0 fStar.size)
+      else .ok (fStar, result, consumed)
+termination_by fStar result consumed remaining => candidates.size - candidateIndex
+decreasing_by all_goals omega
+
+def validateCandidates (ops : CandidateValidationRawOps)
+    (fStar : SparsePolyZZ) (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (candidates : Array (Array Int32)) (result : Array SparsePolyZZ) :
+    RawExec (SparsePolyZZ × Array SparsePolyZZ × Array Bool) :=
+  validateCandidatesLoop ops candidates 0 activeLifted modulus fStar result
+    (Array.replicate activeLifted.size false) activeLifted.size
+
+def vanHoeijExponent (factorCount : Nat) : Nat :=
+  Nat.log2 (Nat.max factorCount 20) + 1
+
+def vanHoeijBound (factorCount : Nat) : ZZ :=
+  ((factorCount + 1 : Nat) : ZZ) * (2 : ZZ) ^ (2 * vanHoeijExponent factorCount)
+
+def resetVanHoeijLattice (factorCount : Nat) : RawExec (LLLMatrix × ZZ) :=
+  let exponent := vanHoeijExponent factorCount
+  match makeInitialMatrix factorCount ((2 : ZZ) ^ exponent) with
+  | .error fault => .error fault
+  | .ok matrix => .ok (matrix, vanHoeijBound factorCount)
+
+/-- Only proof-bearing/arithmetic callees used by one van-Hoeij iteration.
+There is deliberately no callback capable of supplying candidate subsets. -/
+structure VanHoeijRawOps where
+  cld : CldRawOps
+  lll : LLLExecution
+  gather_size : ∀ active lifted activeLifted,
+    gatherActive active lifted = .ok activeLifted →
+    activeLifted.size = active.size
+  cld_size : ∀ fStar activeFactors modulus cldOutput,
+    cldPolys cld fStar activeFactors modulus = .ok cldOutput →
+    cldOutput.size = activeFactors.size
+  cld_extension_valid : ∀ matrix cld current target matrix' added,
+    lll.inputValid matrix →
+    matrix.size = cld.size + current →
+    buildCldMatrix matrix cld current target = .ok (matrix', added) →
+    lll.inputValid matrix' ∧ matrix'.size = cld.size + current + added
+  reset_valid : ∀ factorCount matrix bound,
+    resetVanHoeijLattice factorCount = .ok (matrix, bound) →
+    lll.inputValid matrix ∧ matrix.size = factorCount
+  validation : CandidateValidationRawOps
+  zassenhausTermination : ZassenhausTermination
+
+/-- The source lattice always has one row/column per active lifted factor plus
+one coordinate for every retained CLD column.  Keeping this equality beside
+the full-rank LLL premise prevents an impossible over-broad extension
+contract on dimension-mismatched raw arrays. -/
+structure VanHoeijStateValid (ops : VanHoeijRawOps)
+    (state : VanHoeijState) : Prop where
+  input : ops.lll.inputValid state.matrix
+  dimension : state.matrix.size = state.active.size + state.currentColumns
+
+/-- Concrete M1–M4 execution of one source iteration.  The returned matrix
+and column count are retained if validation finds no factor. -/
+def prepareCandidates (ops : VanHoeijRawOps) (state : VanHoeijState)
+    (activeLifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hinput : ops.lll.inputValid state.matrix)
+    (hdimension : state.matrix.size = activeLifted.size + state.currentColumns)
+    :
+    RawExec { output : LLLMatrix × Nat × Array (Array Int32) //
+      ops.lll.inputValid output.1 ∧
+        output.1.size = activeLifted.size + output.2.1 } :=
+  let finish (matrix : LLLMatrix) (columns : Nat)
+      (hmatrix : ops.lll.inputValid matrix)
+      (hmatrixSize : matrix.size = activeLifted.size + columns) :=
+    match lllReduce ops.lll matrix hmatrix state.shortBound with
+    | .error fault => .error fault
+    | .ok reducedOutput =>
+      let reduced := reducedOutput.1.1
+      let transform := reducedOutput.1.2.1
+      let shortRows := reducedOutput.1.2.2
+      match extractCandidates shortRows transform activeLifted.size with
+      | .error fault => .error fault
+      | .ok candidates => .ok ⟨(reduced, columns, candidates),
+          reducedOutput.2.1, reducedOutput.2.2.trans hmatrixSize⟩
+  if state.target = 0 then finish state.matrix state.currentColumns hinput
+      hdimension
+  else
+    match hcld : cldPolys ops.cld state.fStar activeLifted modulus with
+    | .error fault => .error fault
+    | .ok cld =>
+      match hbuild : buildCldMatrix state.matrix cld state.currentColumns state.target with
+      | .error fault => .error fault
+      | .ok (matrix', added) => finish matrix' (state.currentColumns + added)
+          (ops.cld_extension_valid state.matrix cld state.currentColumns
+            state.target matrix' added hinput (by
+              rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+              exact hdimension) hbuild).1
+          (by
+            rw [(ops.cld_extension_valid state.matrix cld state.currentColumns
+              state.target matrix' added hinput (by
+                rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+                exact hdimension) hbuild).2]
+            rw [ops.cld_size state.fStar activeLifted modulus cld hcld]
+            omega)
+
+/-- Erased termination certificate for the successful-extraction branch.
+It refers only to concrete successful raw executions and the consumed bits
+they returned. -/
+structure VanHoeijTermination (ops : VanHoeijRawOps) where
+  extraction_decreases : ∀ (lifted : Array SparsePolyZZ) (modulus : ZZ)
+      (state : VanHoeijState) activeLifted candidates fStar' result'
+      consumed active',
+    gatherActive state.active lifted = .ok activeLifted →
+    validateCandidates ops.validation state.fStar activeLifted modulus candidates state.result =
+      .ok (fStar', result', consumed) →
+    (∃ index, ∃ hindex : index < consumed.size, consumed[index] = true) →
+    removeConsumed state.active consumed = .ok active' →
+    active'.size < state.active.size
+
+def removeConsumedDecreasing (ops : VanHoeijRawOps)
+    (termination : VanHoeijTermination ops) (lifted : Array SparsePolyZZ)
+    (modulus : ZZ)
+    (state : VanHoeijState) (activeLifted : Array SparsePolyZZ)
+    (candidates : Array (Array Int32)) (fStar' : SparsePolyZZ)
+    (result' : Array SparsePolyZZ) (consumed : Array Bool)
+    (hgather : gatherActive state.active lifted = .ok activeLifted)
+    (hvalidate : validateCandidates ops.validation state.fStar activeLifted modulus
+      candidates state.result = .ok (fStar', result', consumed))
+    (hfound : ∃ index, ∃ hindex : index < consumed.size,
+      consumed[index] = true) :
+    RawExec { active' : Array Int32 // active'.size < state.active.size } :=
+  match hremove : removeConsumed state.active consumed with
+  | .error fault => .error fault
+  | .ok active' => .ok ⟨active', termination.extraction_decreases lifted modulus
+      state activeLifted candidates fStar' result' consumed active'
+      hgather hvalidate hfound hremove⟩
+
+/-- Source-shaped van-Hoeij main loop.  Successful extraction decreases the
+active set; an unsuccessful round strictly advances bounded precision; an
+overflowing precision target executes the actual Zassenhaus fallback. -/
+def vanHoeijLoop (ops : VanHoeijRawOps) (termination : VanHoeijTermination ops)
+    (lifted : Array SparsePolyZZ)
+    (modulus : ZZ) (initial maximum : Nat) (hinitial : 0 < initial) :
+    (state : VanHoeijState) → VanHoeijStateValid ops state →
+      RawExec (SparsePolyZZ × Array SparsePolyZZ)
+  | state, hstate =>
+    if hdone : state.active.size ≤ 1 then .ok (state.fStar, state.result)
+    else
+      match hgather : gatherActive state.active lifted with
+      | .error fault => .error fault
+      | .ok activeLifted =>
+        match prepareCandidates ops state activeLifted modulus hstate.input (by
+            rw [ops.gather_size state.active lifted activeLifted hgather]
+            exact hstate.dimension) with
+        | .error fault => .error fault
+        | .ok prepared =>
+          let matrix' := prepared.1.1
+          let currentColumns' := prepared.1.2.1
+          let candidates := prepared.1.2.2
+          match hvalidate : validateCandidates ops.validation state.fStar activeLifted modulus candidates
+              state.result with
+          | .error fault => .error fault
+          | .ok (fStar', result', consumed) =>
+            if hfound : ∃ index, ∃ hindex : index < consumed.size,
+                consumed[index] = true then
+              match removeConsumedDecreasing ops termination lifted modulus state
+                  activeLifted candidates fStar' result' consumed hgather hvalidate hfound with
+              | .error fault => .error fault
+              | .ok activeNext =>
+                match hreset : resetVanHoeijLattice activeNext.1.size with
+                | .error fault => .error fault
+                | .ok (resetMatrix, resetBound) =>
+                  vanHoeijLoop ops termination lifted modulus initial maximum hinitial
+                    { active := activeNext.1, fStar := fStar', result := result',
+                      matrix := resetMatrix, currentColumns := 0,
+                      shortBound := resetBound, target := 0 }
+                    ⟨(ops.reset_valid activeNext.1.size resetMatrix resetBound
+                        hreset).1,
+                      by simpa using
+                        (ops.reset_valid activeNext.1.size resetMatrix resetBound
+                          hreset).2⟩
+            else
+              match hprecision : nextPrecision state.target initial maximum with
+              | .retry target' =>
+                vanHoeijLoop ops termination lifted modulus initial maximum hinitial
+                  { active := state.active, fStar := state.fStar,
+                    result := state.result, matrix := matrix',
+                    currentColumns := currentColumns', shortBound := state.shortBound,
+                    target := target' } ⟨prepared.2.1, by
+                      have hactiveSize :=
+                        ops.gather_size state.active lifted activeLifted hgather
+                      dsimp only
+                      exact prepared.2.2.trans (by omega)⟩
+              | .fallback =>
+                match zassenhausRecombine ops.zassenhausTermination
+                    state.fStar activeLifted modulus with
+                | .error fault => .error fault
+                | .ok fallback =>
+                  match appendFallback fallback state.result with
+                  | .error fault => .error fault
+                  | .ok output => .ok (#[], output)
+termination_by state _ =>
+  (state.active.size, precisionRank state.target initial maximum)
+decreasing_by
+  · exact Prod.Lex.left _ _ activeNext.2
+  · exact Prod.Lex.right _
+      (nextPrecision_retry_decreases state.target initial maximum target'
+        hinitial hprecision)
+
+/-- Exact source-shaped entry for C++ `__vanhoeij_recombine`.  Initialization
+builds the scaled diagonal lattice and the active index array, the main loop
+uses its genuine lexicographic well-founded recursion, and the final source
+step appends the remaining positive-degree factor before sorting by degree. -/
+def __vanhoeij_recombine_raw_ir (ops : VanHoeijRawOps)
+    (termination : VanHoeijTermination ops) (f : SparsePolyZZ)
+    (lifted : Array SparsePolyZZ) (modulus : ZZ)
+    (hdegree : 2 ≤ (get_deg f).toNatClampNeg) :
+    RawExec (Array SparsePolyZZ) :=
+  let factorCount := lifted.size
+  let degree := (get_deg f).toNatClampNeg
+  let maximum := (degree + 1) / 2
+  let starting := if 3 * factorCount > degree + 1 then 30 else 10
+  let initial := min starting maximum
+  match hreset : resetVanHoeijLattice factorCount with
+  | .error fault => .error fault
+  | .ok (matrix, bound) =>
+    let active := (Array.range factorCount).map
+      (fun index => index.toUInt32.toInt32)
+    let state : VanHoeijState :=
+      { active := active, fStar := f, result := #[], matrix := matrix,
+        currentColumns := 0, shortBound := bound, target := 0 }
+    match vanHoeijLoop ops termination lifted modulus initial maximum (by
+        have hmaximum : 0 < maximum := by
+          dsimp [maximum, degree]
+          apply Nat.div_pos <;> omega
+        have hstarting : 0 < starting := by
+          dsimp [starting]
+          split <;> omega
+        exact lt_min hstarting hmaximum) state
+      ⟨(ops.reset_valid factorCount matrix bound hreset).1, by
+          dsimp [state, active, factorCount]
+          rw [(ops.reset_valid lifted.size matrix bound hreset).2]
+          simp⟩ with
+    | .error fault => .error fault
+    | .ok (fStar, result) => .ok (finishZassenhaus fStar result)
+
+end Generated.StrictRecombine

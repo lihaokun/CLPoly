@@ -185,6 +185,9 @@ def test_emit_expr_call():
     # 未知 callee 但是合法 ident → 直接输出
     c5 = Call(callee="some_var", args=[])
     assert emit_expr(c5, _ctx()) == "some_var"
+    c6 = Call(callee="__builtin_expect",
+              args=[Var("cond", ty=BaseType.BOOL), Lit(1, BaseType.INT64)])
+    assert emit_expr(c6, _ctx()) == "cond"
     print("PASS test_emit_expr_call")
 
 

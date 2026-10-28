@@ -1,0 +1,25 @@
+{
+  "fn": "__hensel_factor_count_fits",
+  "cases": [
+    {
+      "name": "zero",
+      "args": [{"type": "UInt64", "val": "0"}]
+    },
+    {
+      "name": "minimum_hensel_factor_count",
+      "args": [{"type": "UInt64", "val": "2"}]
+    },
+    {
+      "name": "int_max",
+      "args": [{"type": "UInt64", "val": "2147483647"}]
+    },
+    {
+      "name": "one_above_int_max",
+      "args": [{"type": "UInt64", "val": "2147483648"}]
+    },
+    {
+      "name": "uint64_max",
+      "args": [{"type": "UInt64", "val": "18446744073709551615"}]
+    }
+  ]
+}

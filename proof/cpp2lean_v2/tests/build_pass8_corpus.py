@@ -4,6 +4,7 @@
 """
 
 from __future__ import annotations
+import argparse
 import sys
 import json
 from pathlib import Path
@@ -24,13 +25,14 @@ from pass5_operator_resolve import operator_resolve_pass
 from pass6_ssa_build import ssa_build_pass
 from pass7_loop_lower import loop_lower_pass
 from pass8_codegen import codegen_corpus
+from pass9_refine_gen import refine_gen_pass
 from smoke_pass2_full import _get_factorize_instances
 
 AST_CACHE = V2_ROOT / "tests" / "ast_cache"
 OUT = V2_ROOT.parent / "lean" / "CLPoly" / "Generated" / "Corpus.lean"
 
 
-def main():
+def generate_corpus() -> tuple[str, list[tuple[str, str]], list]:
     targets = sorted(TRANSLATION_SCOPE)
     mirs = []
     skipped = []
@@ -71,19 +73,41 @@ def main():
         except Exception as e:
             skipped.append((fn, type(e).__name__))
 
-    src = codegen_corpus(mirs)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(src)
+    return codegen_corpus(mirs), skipped, mirs
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate the aggregate Pass 8 Lean corpus.")
+    parser.add_argument(
+        "--output", type=Path, default=OUT,
+        help="output path (use a temporary path for reproducibility checks)")
+    parser.add_argument(
+        "--skip-refinement", action="store_true",
+        help="do not update Pass 9 refinement skeletons")
+    args = parser.parse_args()
+
+    src, skipped, mirs = generate_corpus()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(src)
 
     n_lines = src.count("\n") + 1
     n_sorry = src.count("sorry")
     print(f"OK: {len(mirs)} top funcs aggregated", file=sys.stderr)
-    print(f"  output: {OUT}", file=sys.stderr)
+    print(f"  output: {args.output}", file=sys.stderr)
     print(f"  lines:  {n_lines}", file=sys.stderr)
     print(f"  sorry:  {n_sorry}", file=sys.stderr)
     if skipped:
         print(f"  skipped: {len(skipped)}", file=sys.stderr)
         for s in skipped: print(f"    {s}", file=sys.stderr)
+
+    # Pass 9: 生成精化定理骨架
+    if not args.skip_refinement:
+        try:
+            refine_gen_pass(mirs)
+            print(f"Refinement skeletons generated.", file=sys.stderr)
+        except Exception as e:
+            print(f"Refinement gen error: {type(e).__name__}: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

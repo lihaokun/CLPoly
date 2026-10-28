@@ -2,7 +2,7 @@
 // 覆盖：void 函数、non-const ref 参数（输出参数）
 // 源：clpoly/polynomial_factorize_zp.hh:49-56
 
-#include <clpoly/polynomial_factorize.hh>
+#include <clpoly/upolynomial.hh>
 
 namespace clpoly {
     // §4.1.3 商和余式: f = q*g + r in Zp[x]

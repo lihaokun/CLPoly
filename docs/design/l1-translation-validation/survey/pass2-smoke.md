@@ -1,14 +1,14 @@
 # Pass 1 + Pass 2 全量烟测（65 函数）
 
-- 总函数数：**65**
-- OK: **67**
+- 总函数数：**66**
+- OK: **68**
   - 有 ref 参数被消除: **22**
-  - 无 ref 参数（passthrough）: **45**
+  - 无 ref 参数（passthrough）: **46**
 - FAIL: **0**
 
 ## 转换后函数详情（按 ref 参数数分组）
 
-### 0 ref 参数（45 函数）
+### 0 ref 参数（46 函数）
 
 - `__assign_partial_zp`
 - `__binomial`
@@ -55,6 +55,7 @@
 - `factorize_upoly`
 - `factorize_lex`
 - `factorize_grlex`
+- `squarefreefactorize`
 
 ### 1 ref 参数（18 函数）
 

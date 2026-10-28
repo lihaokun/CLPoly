@@ -65,6 +65,17 @@ def _normalize_typename(name: str) -> str:
 # ============================================================
 
 CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
+    "hgcd_mat": {
+        0: ConstructorResolution("HgcdMat.uninit", is_default=True),
+    },
+    # `dense_upoly_zp` algorithms are emitted into the strict GCD dependency
+    # closure.  Constructor resolution names those generated bodies; it does
+    # not substitute the sparse Lean GCD implementation.
+    "dense_upoly_zp": {
+        0: ConstructorResolution("dense_upoly_zp_default_ir"),
+        1: ConstructorResolution("dense_upoly_zp_of_prime_ir {a0}"),
+        2: ConstructorResolution("dense_upoly_zp_of_sparse_ir {a0} {a1}"),
+    },
     # ZZ：任意精度整数
     "ZZ": {
         0: ConstructorResolution("(0 : Int)", is_default=True),
@@ -271,7 +282,10 @@ CLPOLY_CONSTRUCTORS: dict[str, dict[int, ConstructorResolution]] = {
 # - arity 3: (n, default_val, allocator) — alloc 忽略
 _VECTOR_PATTERNS = {
     0: ConstructorResolution("#[]", is_default=True),
-    1: ConstructorResolution("({a0} : Array _)"),       # copy
+    # Same-type copy construction is removed as identity by Pass 5 before
+    # this table is consulted.  The remaining one-argument overload is
+    # vector(size_type n), which value-initializes n elements.
+    1: ConstructorResolution("Array.replicate (({a0}).toNat) default"),
     2: ConstructorResolution("Array.replicate (({a0}).toNat) {a1}"),  # size → Nat
     3: ConstructorResolution("Array.replicate (({a0}).toNat) {a1}"),
 }
@@ -342,6 +356,12 @@ DEFAULT_INIT_MAP: dict[str, ConstructorResolution] = {
     "default_init_const std::allocator<char>": ConstructorResolution("()", is_default=True),
     "default_init_int":  ConstructorResolution("0", is_default=True),
     "default_init_bool": ConstructorResolution("false", is_default=True),
+    # Uninitialized scalar locals are assigned before their first read in the
+    # translated C++ control flow.  Lean still needs a total initial value;
+    # zero is the exact value-initialized representation used only until that
+    # dominating assignment executes.
+    "default_init_uint64_t": ConstructorResolution("(0 : UInt64)", is_default=True),
+    "default_init_size_t": ConstructorResolution("(0 : UInt64)", is_default=True),
     # 其他 default_init_* 走规则
 }
 

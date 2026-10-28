@@ -55,7 +55,14 @@ def _fmt_expr(e) -> str:
         return f"({_fmt_expr(e.lhs)} {e.op} {_fmt_expr(e.rhs)})"
     if isinstance(e, UnaryOp): return f"({e.op}{_fmt_expr(e.operand)})"
     if isinstance(e, Call):
-        cs = e.callee if isinstance(e.callee, str) else f"<op>{e.callee.op_name}"
+        if isinstance(e.callee, str):
+            cs = e.callee
+        elif isinstance(e.callee, UnresolvedOp):
+            cs = f"<op>{e.callee.op_name}"
+        elif isinstance(e.callee, Var):
+            cs = _fmt_var(e.callee)
+        else:
+            cs = f"<{type(e.callee).__name__}>"
         return f"{cs}({', '.join(_fmt_expr(a) for a in e.args)})"
     if isinstance(e, Cast):
         return f"cast<{e.target_ty}>({_fmt_expr(e.expr)})"

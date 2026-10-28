@@ -1,5 +1,9 @@
 # P1a van Hoeij LLL 重组：细化设计
 
+> **2026-10-16 修正完成**：本文件原 M2 矩阵、M3 短行选择和 M5 接受条件已废弃，保留作历史记录。新实现使用同一正除数截断 CLD 与模数、显式短向量误差界、GS 后缀保留和完整分组验证。主控制器已取消三次预算及终端 Zassenhaus 回退，未获证时持续提高精度，接近机器指数上限时饱和至 INT_MAX。实际入口充分精度成功与纯重试证明见[分离与执行草稿](../../../proof/nl-proof/vanhoeij-eventual-separation.md)；精度可表示范围和真实 Hensel 就绪契约明确保留，不宣称未限定机器输入的普遍成功。
+
+> 实际启发式前缀已检查浮点和 signed 指数边界，并构造正常正返回；格行数、行号及 iota 使用 size_t，避免 r+j 超出 int。额外大小规约使用正剩余计数实现相同降序访问。源码对应关系与最终验收见[源码审查](../../test-reports/vanhoeij-source-correspondence.md)。
+
 > 阶段：细化（§2.3）
 > 依赖：`docs/design/vanhoeij/architecture.md`（架构文档，不得变更模块划分）
 > 实现目标文件：`clpoly/polynomial_factorize_univar.hh`
@@ -634,3 +638,34 @@ __factor_recombine(
 | `upolynomial_<ZZ>::normalization()` | `upolynomial.hh` | M5：规范化 |
 | `operator*(upolynomial_, upolynomial_)` | `polynomial.hh`（via `basic_polynomial`） | M5：g_trial 乘法（同 `__subset_product_mod` §7.4 第574行） |
 | `ZZ::fdiv_q(ZZ&, const ZZ&, const ZZ&)` | `ZZ.hh:633`（静态方法，输出参数形式） | M3：round_qq 中的 floor 除法 |
+
+## 截断执行的验证接口（2026-10-15）
+
+2026-10-16 精度策略修正：设 D₀ 是从 1 倍增得到的最小满足 32D₀≥H
+的二次幂，位数截断仍尝试令有效格位数约为 r+16，但最终除数限制为
+`min(D₀², max(D₀, 2^(bits(m)−r−16)))`；未触发位数截断时取 D₀。
+因此 D₀≤D≤D₀²，D 的上界只依赖输入。原残差界保持，模数增长可以
+越过统一结式分离阈值。详见[充分精度草稿 §26](../../../proof/nl-proof/vanhoeij-eventual-separation.md)。
+实际重试控制器已改为无固定次数的获证循环，并连接该阈值：若
+T<p^INT_MAX，则在真实 Hensel 就绪条件下从正请求指数开始必获证。
+整数上限之外保留溢出结果。启发式前缀的成功及正指数条件仍单独列明，
+其机器范围对应检查、最终整体验收仍待完成。
+
+将 try-recombine 内逐系数 `fdiv_q` 与逐多项式 `normalization` 原样提取为
+`__vanhoeij_truncate_cld(cld, divisor)`，由生产路径调用，前提 divisor>0。
+该接口用于严格模型及 B2B 对比，保持数组顺序、系数更新顺序与每次规范化
+时机。它不是另一份测试专用截断实现。
+
+## 完整分区验证接口（2026-10-15）
+
+将 try-recombine 的验证 lambda 原样提取为
+`__vanhoeij_validate_partition(f, lifted, m, groups, answer)`，生产单例
+快速路径与 LLL 分组路径都调用此 helper。每组按顺序累积模乘积和
+Int64 次数；对称恢复、本原化、次数检查、精确试除全部通过，且最终
+余商为常数 1 后，才更新 answer.factors 和 answer.complete。
+失败保持整个 answer 不变，列数与保留行数在成功时也不改变。
+
+严格模型逐项保留这些分支和状态更新。排序使用已有按次数排序模型；
+由于 C++ 未规定同次数 tie 顺序，B2B 比较输出因子多重集合，并精确
+比较接受标志和其余状态。该验证器本身不证明任意输入分组产生不可约
+因子；不可约性需要与 LLL 支持分组证明和 Hensel 来源共同组合。

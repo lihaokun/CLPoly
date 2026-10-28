@@ -87,6 +87,16 @@ def _system_includes() -> list[str]:
 
 SYS_INCLUDES = _system_includes()
 
+# 追加 nix 的 boost 路径（如存在）
+_BOOST_NIX = "/nix/store/6ykbczwj77apyp4ja4c4ny6a0231rwhm-boost-1.87.0-dev/include"
+if os.path.isdir(_BOOST_NIX):
+    SYS_INCLUDES.append(f"-I{_BOOST_NIX}")
+
+# 追加 nix 的 gmp 路径（如存在）
+_GMP_NIX = "/nix/store/1mi9ngqny23syw2kkrbcp7l9k0ywk951-gmp-with-cxx-6.3.0-dev/include"
+if os.path.isdir(_GMP_NIX):
+    SYS_INCLUDES.append(f"-I{_GMP_NIX}")
+
 
 def dump_ast_json(func_name: str, timeout: int = 30) -> dict | None:
     """通过 clang++ -ast-dump-filter 拿单个函数的 AST JSON。
@@ -98,6 +108,7 @@ def dump_ast_json(func_name: str, timeout: int = 30) -> dict | None:
         "clang++",
         "-std=c++17",
         f"-I{PROJECT_ROOT}",
+        "-Wno-parentheses",           # Chained comparison 在 CLPoly 中有意使用
     ] + SYS_INCLUDES + [
         "-Xclang", "-ast-dump=json",
         "-Xclang", f"-ast-dump-filter={func_name}",

@@ -1,0 +1,12 @@
+r=24 repeat=0 ms=3491.54
+phases r=24 repeat=0 hensel_ns=12173833 lll_ns=3473663250 inner_zass_ns=0 outer_zass_ns=0 hensel_calls=2 lll_calls=2 inner_zass_calls=0 outer_zass_calls=0
+certified=1 fallback=0 lifts=2 lll=2 columns=6
+flint=3.1.2 r=24 repeat=0 ms=13.0133 factors=2
+r=24 repeat=1 ms=3679.39
+phases r=24 repeat=1 hensel_ns=13000167 lll_ns=3661703709 inner_zass_ns=0 outer_zass_ns=0 hensel_calls=2 lll_calls=2 inner_zass_calls=0 outer_zass_calls=0
+certified=1 fallback=0 lifts=2 lll=2 columns=6
+flint=3.1.2 r=24 repeat=1 ms=4.61967 factors=2
+r=24 repeat=2 ms=6331.49
+phases r=24 repeat=2 hensel_ns=11066082 lll_ns=6315639833 inner_zass_ns=0 outer_zass_ns=0 hensel_calls=2 lll_calls=2 inner_zass_calls=0 outer_zass_calls=0
+certified=1 fallback=0 lifts=2 lll=2 columns=6
+flint=3.1.2 r=24 repeat=2 ms=6.05513 factors=2

@@ -58,6 +58,13 @@ def encodeInt64 (v : Int64) : Json := Json.mkObj [("type", "Int64"), ("val", v.t
 def encodeUInt64 (v : UInt64) : Json :=
   Json.mkObj [("type", "UInt64"), ("val", Json.str (toString v.toNat))]
 
+def parseBool (j : Json) : Except String Bool := do
+  let v ← checkType j "Bool"
+  v.getBool?
+
+def encodeBool (value : Bool) : Json :=
+  Json.mkObj [("type", "Bool"), ("val", Json.bool value)]
+
 -- ---- ZZ (= Int) ----
 
 def parseZZ (j : Json) : Except String Int := do
@@ -160,6 +167,35 @@ def encodeTripleSPZp (g s t : SparsePolyZp) : Json :=
               ("val", Json.arr #[encodeSparsePolyZp g,
                                  encodeSparsePolyZp s,
                                  encodeSparsePolyZp t])]
+
+/-- Observable return encoding shared by the C++ and strict Lean
+`__factor_Zp` entries. -/
+def insertCanonicalJson (item : Json) (items : List Json) : List Json :=
+  match items with
+  | [] => [item]
+  | head :: tail =>
+    if item.compress < head.compress then item :: head :: tail
+    else head :: insertCanonicalJson item tail
+
+def encodeFactorZpResult
+    (result : Zp × Array (SparsePolyZp × UInt64)) : Json :=
+  let factors := result.2.toList.map (fun item =>
+      Json.arr #[encodeSparsePolyZp item.1, encodeUInt64 item.2])
+    |>.foldr insertCanonicalJson [] |>.toArray
+  Json.mkObj [
+    ("type", "FactorZpResult"),
+    ("val", Json.arr #[encodeZp result.1, Json.arr factors])
+  ]
+
+/-- Observable return encoding shared by the C++ and strict Lean
+`__factor_squarefree_primitive_ZZ` entries. -/
+def encodeArraySPZZ (factors : Array SparsePolyZZ) : Json :=
+  let factors := factors.toList.map encodeSparsePolyZZ
+    |>.foldr insertCanonicalJson [] |>.toArray
+  Json.mkObj [
+    ("type", "ArraySPZZ"),
+    ("val", Json.arr factors)
+  ]
 
 -- ---- A5: Variable ----
 

@@ -1,0 +1,9 @@
+r=24 repeat=0 ms=76.3151
+phases r=24 repeat=0 hensel_ns=4018000 lll_ns=67621708 inner_zass_ns=582209 outer_zass_ns=321584 hensel_calls=2 lll_calls=4 inner_zass_calls=2 outer_zass_calls=1
+flint=3.1.2 r=24 repeat=0 ms=1.14971 factors=12
+r=24 repeat=1 ms=70.8744
+phases r=24 repeat=1 hensel_ns=3311334 lll_ns=63320375 inner_zass_ns=568334 outer_zass_ns=298958 hensel_calls=2 lll_calls=4 inner_zass_calls=2 outer_zass_calls=1
+flint=3.1.2 r=24 repeat=1 ms=1.0235 factors=12
+r=24 repeat=2 ms=70.8417
+phases r=24 repeat=2 hensel_ns=3313166 lll_ns=63262335 inner_zass_ns=573584 outer_zass_ns=304583 hensel_calls=2 lll_calls=4 inner_zass_calls=2 outer_zass_calls=1
+flint=3.1.2 r=24 repeat=2 ms=1.02479 factors=12

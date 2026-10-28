@@ -110,6 +110,33 @@ def testSparsePolyZp : IO Bool := do
       all_ok := false
   return all_ok
 
+def testFactorResultEncodings : IO Bool := do
+  let factorZp : SparsePolyZp := #[
+    (UMonomial.mk 1, Zp.ofInt 1 5),
+    (UMonomial.mk 0, Zp.ofInt 4 5)
+  ]
+  let encodedZp := encodeFactorZpResult
+    (Zp.ofInt 3 5, #[(factorZp, (2 : UInt64))])
+  let expectedZp := Json.mkObj [
+    ("type", "FactorZpResult"),
+    ("val", Json.arr #[encodeZp (Zp.ofInt 3 5),
+      Json.arr #[Json.arr #[encodeSparsePolyZp factorZp, encodeUInt64 2]]])
+  ]
+  let encodedZZ := encodeArraySPZZ
+    #[#[(UMonomial.mk 1, (1 : Int)), (UMonomial.mk 0, (-2 : Int))]]
+  let expectedZZ := Json.mkObj [
+    ("type", "ArraySPZZ"),
+    ("val", Json.arr #[encodeSparsePolyZZ
+      #[(UMonomial.mk 1, (1 : Int)), (UMonomial.mk 0, (-2 : Int))]])
+  ]
+  let zpOk := encodedZp == expectedZp
+  let zzOk := encodedZZ == expectedZZ
+  if zpOk then IO.println "  PASS: FactorZpResult observable encoding"
+  else IO.println "  FAIL: FactorZpResult observable encoding"
+  if zzOk then IO.println "  PASS: ArraySPZZ observable encoding"
+  else IO.println "  FAIL: ArraySPZZ observable encoding"
+  return zpOk && zzOk
+
 def testTypeMismatch : IO Bool := do
   let j := encodeInt64 7
   match parseInt32 j with
@@ -128,8 +155,9 @@ def main : IO UInt32 := do
   let r4 ← runTest "ZZ" testZZ
   let r5 ← runTest "Zp" testZp
   let r6 ← runTest "SparsePolyZp" testSparsePolyZp
-  let r7 ← runTest "type mismatch" testTypeMismatch
-  let all := r1 && r2 && r3 && r4 && r5 && r6 && r7
+  let r7 ← runTest "factor result encodings" testFactorResultEncodings
+  let r8 ← runTest "type mismatch" testTypeMismatch
+  let all := r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
   if all then
     IO.println "\n=== All round-trip tests PASSED ==="
     return 0

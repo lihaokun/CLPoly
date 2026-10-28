@@ -68,6 +68,8 @@ json serialize_Zp(const Zp& z);
 // 用于 ZZ::invert 返回 (success, inverse)
 
 json serialize_BoolZZ(bool ok, const ZZ& z);
+bool parse_Bool(const json& j);
+json serialize_Bool(bool value);
 
 // ---- SparsePolyZp ----
 // JSON: {"type":"SparsePolyZp","val":[[<deg>,[<val>,<prime>]], ...]}
@@ -91,6 +93,17 @@ json serialize_TripleSPZp(
     const upolynomial_<Zp>& g,
     const upolynomial_<Zp>& s,
     const upolynomial_<Zp>& t);
+
+// FactorZpResult: complete observable result of C++ `__factor_Zp`.
+// JSON: {"type":"FactorZpResult","val":[<Zp>,[[<SparsePolyZp>,<UInt64>],...]]}
+json serialize_FactorZpResult(
+    const std::pair<Zp,
+      std::vector<std::pair<upolynomial_<Zp>, uint64_t>>>& result);
+
+// ArraySPZZ: complete observable result of C++
+// `__factor_squarefree_primitive_ZZ`.
+// JSON: {"type":"ArraySPZZ","val":[<SparsePolyZZ>,...]}
+json serialize_ArraySPZZ(const std::vector<upolynomial_<ZZ>>& factors);
 
 // ---- A5 类型：Variable + Monomial + MvPolyZZ/Zp + VarMap ----
 // Variable: clpoly::variable 通过 serial 复原（B2B 测试预声明 x/y/z/w = serial 1-4）

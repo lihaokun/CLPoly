@@ -1,0 +1,6 @@
+r=24 repeat=0 ms=140621
+phases r=24 repeat=0 hensel_ns=8566750 lll_ns=220675501 inner_zass_ns=86269803291 outer_zass_ns=54111696042 hensel_calls=2 lll_calls=4 inner_zass_calls=2 outer_zass_calls=1
+flint=3.1.2 r=24 repeat=0 ms=3.47025 factors=2
+r=24 repeat=1 ms=81374.4
+phases r=24 repeat=1 hensel_ns=5772125 lll_ns=151361709 inner_zass_ns=55565917251 outer_zass_ns=25644621292 hensel_calls=2 lll_calls=4 inner_zass_calls=2 outer_zass_calls=1
+flint=3.1.2 r=24 repeat=1 ms=2.92517 factors=2
